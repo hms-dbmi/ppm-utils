@@ -115,6 +115,35 @@ class PPM:
                     'Content-Type': 'application/json'}
 
         @classmethod
+        def head(cls, request, path, data={}, raw=False):
+            logger.debug('Path: {}'.format(path))
+
+            try:
+                # Build the url.
+                url = furl.furl(cls.service_url())
+                url.path.segments.extend(path.split('/'))
+
+                # Prepare the request.
+                response = requests.head(
+                    url.url,
+                    headers=cls.headers(request),
+                    params=json.dumps(data)
+                )
+
+                # Check response type
+                if raw:
+                    return response
+                else:
+                    return response.json()
+
+            except Exception as e:
+                logger.exception('{} error: {}'.format(cls.service, e), exc_info=True, extra={
+                    'data': data, 'path': path,
+                })
+
+            return None
+
+        @classmethod
         def get(cls, request, path, data={}, raw=False):
             logger.debug('Path: {}'.format(path))
 

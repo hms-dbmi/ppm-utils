@@ -4,7 +4,6 @@ import json
 import furl
 import random
 import re
-import uuid
 import base64
 from dateutil.parser import parse
 from dateutil.tz import tz
@@ -13,11 +12,13 @@ from fhirclient.client import FHIRClient
 from fhirclient.models.fhirdate import FHIRDate
 from fhirclient.models.period import Period
 from fhirclient.models.patient import Patient
+from fhirclient.models.list import List
 from fhirclient.models.flag import Flag
 from django.utils.safestring import mark_safe
 from fhirclient.models.bundle import Bundle
 
 from ppmutils.ppm import PPM
+from ppmutils.p2m2 import P2M2
 
 import logging
 logger = logging.getLogger(__name__)
@@ -39,6 +40,17 @@ class FHIR:
         }
 
         return FHIRClient(settings=settings)
+
+    @staticmethod
+    def questionnaire_id(project):
+        return PPM.Questionnaire.questionnaire_for_project(project)
+
+    @staticmethod
+    def consent_questionnaire_id(patient):
+        if not patient.get('composition') or patient.get('project') != PPM.Project.ASD.value:
+            return None
+
+        return PPM.Questionnaire.questionnaire_for_project(patient.get('composition'))
 
     @staticmethod
     def _bundle_get(bundle, resource_type, query={}):
@@ -175,6 +187,96 @@ class FHIR:
 
         return bundle_json
 
+    @staticmethod
+    def _get_list(bundle, resource_type):
+        """
+        Finds and returns the list resource for the passed resource type
+        :param bundle: The FHIR resource bundle
+        :type bundle: Bundle
+        :param resource_type: The resource type of the list's contained resources
+        :type resource_type: str
+        :return: The List resource
+        :rtype: List
+        """
+
+        # Check the bundle type
+        if type(bundle) is dict:
+            bundle = Bundle(bundle)
+
+        for list in [entry.resource for entry in bundle.entry if entry.resource.resource_type == 'List']:
+
+            # Compare the type
+            for item in [entry.item for entry in list.entry]:
+
+                # Check for a reference
+                if item.reference and resource_type == item.reference.split('/')[0]:
+
+                    return list
+
+        return None
+
+    @staticmethod
+    def _format_date(date_string, date_format):
+
+        try:
+            # Parse it
+            date = parse(date_string)
+
+            # Set UTC as timezone
+            from_zone = tz.gettz('UTC')
+            to_zone = tz.gettz('America/New_York')
+            utc = date.replace(tzinfo=from_zone)
+
+            # Convert time zone to assumed ET
+            et = utc.astimezone(to_zone)
+
+            # Format it and return it
+            return et.strftime(date_format)
+
+        except ValueError as e:
+            logger.exception('FHIR date parsing error: {}'.format(e), exc_info=True,
+                             extra={'date_string': date_string, 'date_format': date_format})
+
+            return '--/--/----'
+
+    @staticmethod
+    def _patient_query(identifier):
+        """
+        Accepts an identifier and builds the query for resources related to that Patient. Identifier can be
+        a FHIR ID, an email address, or a Patient object.
+        :param identifier: object
+        :return: dict
+        """
+        # Check types
+        if type(identifier) is str and re.match(r"^\d+$", identifier):
+
+            # Likely a FHIR ID
+            return {'patient': identifier}
+
+        # Check for an email address
+        elif type(identifier) is str and re.match(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)", identifier):
+
+            # An email address
+            return {'patient': 'http://schema.org/email|{}'.format(identifier)}
+
+        # Check for a resource
+        elif type(identifier) is dict and identifier.get('resourceType') == 'Patient':
+
+            return {'patient': identifier['id']}
+
+        # Check for a bundle entry
+        elif type(identifier) is dict and identifier.get('resource', {}).get('resourceType') == 'Patient':
+
+            return {'patient': identifier['resource']['id']}
+
+        # Check for a Patient object
+        elif type(identifier) is Patient:
+
+            return {'patient': identifier.id}
+
+        else:
+            raise ValueError('Unhandled instance of a Patient identifier: {}'.format(identifier))
+
     #
     # CREATE
     #
@@ -215,7 +317,7 @@ class FHIR:
     #
 
     @staticmethod
-    def _query_resources(fhir_url, resource_type, query=None):
+    def _query_resources(resource_type, query=None):
         """
         This method will fetch all resources for a given type, including paged results.
         :param resource_type: FHIR resource type
@@ -228,7 +330,7 @@ class FHIR:
         logger.debug('Query resource: {}'.format(resource_type))
 
         # Build the URL.
-        url_builder = furl.furl(fhir_url)
+        url_builder = furl.furl(PPM.fhir_url())
         url_builder.path.add(resource_type)
 
         # Add query if passed and set a return count to a high number, despite the server
@@ -268,7 +370,7 @@ class FHIR:
         return Bundle(total_bundle)
 
     @staticmethod
-    def _query_resource(fhir_url, resource_type, _id):
+    def _query_resource(resource_type, _id):
         """
         This method will fetch a resource for a given type.
         :param resource_type: FHIR resource type
@@ -281,7 +383,7 @@ class FHIR:
         logger.debug('Query resource "{}": {}'.format(resource_type, _id))
 
         # Build the URL.
-        url_builder = furl.furl(fhir_url)
+        url_builder = furl.furl(PPM.fhir_url())
         url_builder.path.add(resource_type)
         url_builder.path.add(_id)
 
@@ -324,6 +426,19 @@ class FHIR:
         return None
 
     @staticmethod
+    def query_document_references(patient, query=None):
+        """
+        Queries the current user's FHIR record for any DocumentReferences related to this type
+        :return: A list of DocumentReferences
+        :rtype: list
+        """
+        # Build the query
+        _query = FHIR._patient_query(patient)
+        _query.update(query)
+
+        return FHIR._query_resources('DocumentReference', query=query)
+
+    @staticmethod
     def query_enrollment_status(email):
 
         try:
@@ -351,6 +466,32 @@ class FHIR:
 
         return None
 
+    @staticmethod
+    def query_research_studies(bundle):
+
+        # Find Research subjects
+        subjects = [entry['resource'] for entry in bundle['entry'] if entry['resource']['resourceType'] == 'ResearchSubject']
+        if not subjects:
+            logger.debug('No Research Subjects, no Research Studies')
+            return None
+
+        # Get study IDs
+        research_study_ids = [subject['study']['reference'].split('/')[1] for subject in subjects]
+
+        # Make the query
+        research_study_url = furl.furl(PPM.fhir_url())
+        research_study_url.path.add('ResearchStudy')
+        research_study_url.query.params.add('_id', ','.join(research_study_ids))
+
+        # Fetch them
+        research_study_response = requests.get(research_study_url.url)
+
+        # Get the IDs
+        research_studies = research_study_response.json().get('entry', [])
+
+        # Return the titles
+        return [research_study['resource']['title'] for research_study in research_studies]
+
     #
     # UPDATE
     #
@@ -359,7 +500,7 @@ class FHIR:
     def update_patient(fhir_id, form):
 
         # Get their resource
-        patient = FHIR._query_resource(PPM.fhir_url(), 'Patient', fhir_id)
+        patient = FHIR._query_resource('Patient', fhir_id)
 
         # Make the updates
         content = None
@@ -742,6 +883,122 @@ class FHIR:
             names = ['Participant']
 
         return ' '.join(names)
+
+    @staticmethod
+    def flatten_participant(request, fhir_id=None, email=None, project=None, date_registered=None):
+
+        # Set the url
+        patient_url = furl.furl(PPM.fhir_url())
+        patient_url.path.segments.append('Patient')
+
+        # Check what to query on
+        if fhir_id:
+            patient_url.query.params.add('_id', fhir_id)
+        elif email:
+            patient_url.query.params.add('identifier', 'http://schema.org/email|' + email)
+        else:
+            logger.error('Must pass FHIR ID or email!')
+            return None
+
+        patient_url.query.params.add('_include', '*')
+        patient_url.query.params.add('_revinclude', '*')
+
+        try:
+            # Get it
+            response = requests.get(patient_url.url)
+            response.raise_for_status()
+
+            # Get the list of entries
+            patient_bundle = response.json()
+
+            # Ensure a patient exists
+            if not patient_bundle or not patient_bundle.get('total') or not patient_bundle.get('entry'):
+                logger.debug('No resources returned for patient query: {}'.format(fhir_id))
+                return {}
+
+            # Get included resources
+            patient_entries = patient_bundle['entry']
+
+            # Flatten patient profile
+            participant = FHIR.flatten_patient(patient_bundle)
+
+            # Fetch details from p2m2
+            if not project or not date_registered:
+                p2m2_participant = P2M2.get_participant(request, participant['email'])
+
+                if not project:
+                    # Get the project and the registered date.
+                    participant['project'] = p2m2_participant['project']
+
+                if not date_registered:
+                    # Convert the date
+                    participant['date_registered'] = FHIR._format_date(p2m2_participant['date_registered'], '%m/%d/%Y')
+
+        except Exception as e:
+            logger.exception('FHIR error: {}'.format(e), exc_info=True,
+                             extra={'ppm_id': fhir_id, 'email': email})
+            return None
+
+        try:
+            # Get the Flag resource
+            flag = next(
+                resource['resource'] for resource in patient_entries if resource['resource']['resourceType'] == 'Flag')
+            enrollment = FHIR.flatten_enrollment_flag(flag)
+            participant['enrollment'] = enrollment['enrollment']
+
+            # Check for accepted and a start date
+            if participant['enrollment'] == 'accepted' and enrollment['start']:
+
+                # Convert time zone to assumed ET
+                participant['enrollment_accepted_date'] = FHIR._format_date(enrollment['start'], '%-m/%-d/%Y')
+
+            else:
+                participant['enrollment_accepted_date'] = ""
+
+        except Exception as e:
+            logger.exception('FHIR enrollment flag error: {}'.format(e), exc_info=True,
+                             extra={'ppm_id': fhir_id, 'email': email})
+
+        try:
+            participant['composition'] = FHIR.flatten_consent_composition(patient_bundle)
+        except KeyError:
+            participant['composition'] = None
+
+        if participant['project'] == 'autism':
+            try:
+                # Get the questionnaire ID
+                quiz_id = FHIR.consent_questionnaire_id(participant)
+
+                # Sort it.
+                participant['consent_quiz'] = FHIR.flatten_questionnaire_response(patient_bundle, quiz_id)
+
+            except Exception:
+                participant['consent_quiz'] = None
+
+        try:
+            # Get the project
+            _questionnaire_id = FHIR.questionnaire_id(participant['project'])
+
+            # Parse out the responses
+            participant['questionnaire'] = FHIR.flatten_questionnaire_response(patient_bundle, _questionnaire_id)
+
+        except Exception:
+            participant['questionnaire'] = None
+
+        try:
+            participant['points_of_care'] = FHIR.flatten_list(patient_bundle, 'Organization')
+        except Exception:
+            participant['points_of_care'] = None
+
+        if participant['project'] == 'neer':
+
+            try:
+                participant['research_studies'] = FHIR.query_research_studies(patient_bundle)
+
+            except Exception:
+                participant['research_studies'] = None
+
+        return participant
 
     @staticmethod
     def flatten_questionnaire_response(bundle_dict, questionnaire_id):
@@ -1206,28 +1463,33 @@ class FHIR:
             return display
 
     @staticmethod
-    def format_date(date_string, date_format):
+    def flatten_list(bundle, resource_type):
 
-        try:
-            # Parse it
-            date = parse(date_string)
+        # Check the bundle type
+        if type(bundle) is dict:
+            bundle = Bundle(bundle)
 
-            # Set UTC as timezone
-            from_zone = tz.gettz('UTC')
-            to_zone = tz.gettz('America/New_York')
-            utc = date.replace(tzinfo=from_zone)
+        list = FHIR._get_list(bundle, resource_type)
 
-            # Convert time zone to assumed ET
-            et = utc.astimezone(to_zone)
+        # Get the references
+        references = [entry.item.reference for entry in list.entry if entry.item.reference]
 
-            # Format it and return it
-            return et.strftime(date_format)
+        # Find it in the bundle
+        resources = [entry.resource for entry in bundle.entry if '{}/{}'.format(resource_type, entry.resource.id)
+                     in references]
 
-        except ValueError as e:
-            logger.exception('FHIR date parsing error: {}'.format(e), exc_info=True,
-                             extra={'date_string': date_string, 'date_format': date_format})
+        # Flatten them according to type
+        if resource_type == 'Organization':
 
-            return '--/--/----'
+            return [organization.name for organization in resources]
+
+        elif resource_type == 'ResearchStudy':
+
+            return [study.title for study in resources]
+
+        else:
+            logger.error('Unhandled list resource type: {}'.format(resource_type))
+            return None
 
     class Resources:
 
