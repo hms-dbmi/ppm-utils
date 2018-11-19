@@ -1,13 +1,747 @@
 import collections
-
+import requests
+import json
+import furl
+import random
+import re
+import uuid
+import base64
+from dateutil.parser import parse
+from dateutil.tz import tz
+from datetime import datetime
+from fhirclient.client import FHIRClient
+from fhirclient.models.fhirdate import FHIRDate
+from fhirclient.models.period import Period
+from fhirclient.models.patient import Patient
+from fhirclient.models.flag import Flag
 from django.utils.safestring import mark_safe
 from fhirclient.models.bundle import Bundle
+
+from ppmutils.ppm import PPM
 
 import logging
 logger = logging.getLogger(__name__)
 
 
 class FHIR:
+
+    #
+    # META
+    #
+
+    @staticmethod
+    def get_client(fhir_url):
+
+        # Create the server
+        settings = {
+            'app_id': 'hms-dbmi-ppm-p2m2-admin',
+            'api_base': fhir_url
+        }
+
+        return FHIRClient(settings=settings)
+
+    @staticmethod
+    def _bundle_get(bundle, resource_type, query={}):
+        """
+        Searches through a bundle for the resource matching the given resourceType
+        and query, if passed,
+        """
+
+        # Get matching resources
+        resources = [entry.resource for entry in bundle.entry if entry.resource.resource_type == resource_type]
+
+        # Match
+        for resource in resources:
+            for key, value in query:
+                attribute = FHIR._get_attribute_or(resource, key)
+
+                # Compare
+                if not attribute or attribute != value:
+                    break
+
+            # All comparisons passed
+            return resource
+
+        return None
+
+    @staticmethod
+    def _get_or(item, keys, default=''):
+        '''
+        Fetch a property from a json object. Keys is a list of keys and indices to use to
+        fetch the property. Returns the passed default string if the path through the json
+        does not exist.
+        :param item: The json to parse properties from
+        :type item: json object
+        :param keys: The list of keys and indices for the property
+        :type keys: A list of string or int
+        :param default: The default string to use if a property could not be found
+        :type default: String
+        :return: The requested property or the default value if missing
+        :rtype: String
+        '''
+        try:
+            # Try it out.
+            for key in keys:
+                item = item[key]
+
+            return item
+        except (KeyError, IndexError):
+            return default
+
+    @staticmethod
+    def _get_attribute_or(item, keys, default=None):
+        '''
+        Fetch an attribute from an object. Keys is a list of attribute names and indices to use to
+        fetch the property. Returns the passed default object if the path through the object
+        does not exist.
+        :param item: The object to get from
+        :type item: object
+        :param keys: The list of keys and indices for the property
+        :type keys: A list of string or int
+        :param default: The default object to use if a property could not be found
+        :type default: object
+        :return: The requested property or the default value if missing
+        :rtype: object
+        '''
+        try:
+            # Try it out.
+            for key in keys:
+
+                # Check for integer or string
+                if type(key) is str:
+                    item = getattr(item, key)
+
+                elif type(key) is int:
+                    item = item[key]
+
+            return item
+        except (AttributeError, IndexError):
+            return default
+
+    @staticmethod
+    def _get_resource_type(bundle):
+
+        # Check for entries
+        if bundle.get('entry') and len(bundle.get('entry', [])) > 0:
+            return bundle['entry'][0]['resource']['resourceType']
+
+        logger.error('Could not determine resource type: {}'.format(bundle))
+        return None
+
+    @staticmethod
+    def _get_next_url(bundle, relative=False):
+
+        # Get the next URL
+        next_url = next((link['url'] for link in bundle['link'] if link['relation'] == 'next'), None)
+        if next_url:
+
+            # Check URL type
+            if relative:
+
+                # We only want the resource type and the parameters
+                resource_type = bundle['entry'][0]['resource']['resourceType']
+
+                return '{}?{}'.format(resource_type, next_url.split('?', 1)[1])
+
+            else:
+                return next_url
+
+        return None
+
+    @staticmethod
+    def _fix_bundle_json(bundle_json):
+        '''
+        Random tasks to make FHIR resources compliant. Some resources from early-on were'nt
+        strictly compliant and would throw exceptions when building FHIRClient objects. This
+        takes the json and adds needed properties/attributes.
+        :param bundle_json: FHIR Bundle json from server
+        :return: json
+        '''
+
+        # Appeases the FHIR library by ensuring question items all have linkIds, regardless of an associated answer.
+        for question in [entry['resource'] for entry in bundle_json['entry']
+                         if entry['resource']['resourceType'] == 'Questionnaire']:
+            for item in question['item']:
+                if 'linkId' not in item:
+                    # Assign a random string for the linkId
+                    item['linkId'] = "".join(
+                        [random.choice("abcdefghijklmnopqrstuvwxyz1234567890") for _ in range(10)])
+
+        # Appeases the FHIR library by ensuring document references have 'indexed'
+        for document in [entry['resource'] for entry in bundle_json['entry']
+                         if entry['resource']['resourceType'] == 'DocumentReference']:
+            if not document.get('indexed'):
+                document['indexed'] = datetime.utcnow().isoformat()
+
+        return bundle_json
+
+    #
+    # CREATE
+    #
+
+    @staticmethod
+    def create_patient_enrollment(patient_id, status='registered'):
+        """
+        Create a Flag resource in the FHIR server to indicate a user's enrollment.
+        :param patient_id:
+        :param status:
+        :return:
+        """
+        logger.debug("Patient: {}".format(patient_id))
+
+        # Use the FHIR client lib to validate our resource.
+        flag = Flag(FHIR.Resources.enrollment_flag(patient_id, status))
+
+        # Set a date if enrolled.
+        if status == 'accepted':
+            now = FHIRDate(datetime.now().isoformat())
+            period = Period()
+            period.start = now
+            flag.period = period
+
+        # Build the FHIR Flag destination URL.
+        url = furl.furl(PPM.fhir_url())
+        url.path.segments.append('Flag')
+
+        logger.debug('Creating flag at: {}'.format(url.url))
+
+        response = requests.post(url.url, json=flag.as_json())
+        logger.debug('Response: {}'.format(response.status_code))
+
+        return response
+
+    #
+    # READ
+    #
+
+    @staticmethod
+    def _query_resources(fhir_url, resource_type, query=None):
+        """
+        This method will fetch all resources for a given type, including paged results.
+        :param resource_type: FHIR resource type
+        :type resource_type: str
+        :param query: A dict of key value pairs for searching resources
+        :type query: dict
+        :return: A list of FHIR resource dicts
+        :rtype: list
+        """
+        logger.debug('Query resource: {}'.format(resource_type))
+
+        # Build the URL.
+        url_builder = furl.furl(fhir_url)
+        url_builder.path.add(resource_type)
+
+        # Add query if passed and set a return count to a high number, despite the server
+        # probably ignoring it.
+        url_builder.query.params.add('_count', 1000)
+        if query is not None:
+            url_builder.query.params.update(query)
+
+        # Prepare the final URL
+        url = url_builder.url
+
+        # Collect them.
+        total_bundle = None
+
+        # The url will be set to none on the second iteration if all resources
+        # were returned, or it will be set to the next page of resources if more exist.
+        while url is not None:
+
+            # Make the request.
+            response = requests.get(url)
+            response.raise_for_status()
+
+            # Parse the JSON.
+            bundle = response.json()
+            if total_bundle is None:
+                total_bundle = bundle
+            elif bundle.get('total', 0) > 0:
+                total_bundle['entry'].extend(bundle.get('entry'))
+
+            # Check for a page.
+            url = None
+
+            for link in bundle.get('link', []):
+                if link['relation'] == 'next':
+                    url = link['url']
+
+        return Bundle(total_bundle)
+
+    @staticmethod
+    def _query_resource(fhir_url, resource_type, _id):
+        """
+        This method will fetch a resource for a given type.
+        :param resource_type: FHIR resource type
+        :type resource_type: str
+        :param _id: The ID of the resource
+        :type _id: str
+        :return: A FHIR resource
+        :rtype: dict
+        """
+        logger.debug('Query resource "{}": {}'.format(resource_type, _id))
+
+        # Build the URL.
+        url_builder = furl.furl(fhir_url)
+        url_builder.path.add(resource_type)
+        url_builder.path.add(_id)
+
+        # Make the request.
+        response = requests.get(url_builder.url)
+        response.raise_for_status()
+
+        return response.json()
+
+    @staticmethod
+    def query_enrollment_flag(email, flatten_return=False):
+
+        # Build the FHIR Consent URL.
+        url = furl.furl(PPM.fhir_url())
+        url.path.segments.append('Flag')
+
+        # Get flags for current user
+        query = {
+            'subject:Patient.identifier': 'http://schema.org/email|' + email
+        }
+
+        # Make the call
+        content = None
+        try:
+            # Make the FHIR request.
+            response = requests.get(url.url, params=query)
+            content = response.content
+
+            if flatten_return:
+                return FHIR.flatten_enrollment_flag(response.json())
+            else:
+                return response.json()
+
+        except requests.HTTPError as e:
+            logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
+
+        except KeyError as e:
+            logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={'response': content})
+
+        return None
+
+    @staticmethod
+    def query_enrollment_status(email):
+
+        try:
+            # Make the FHIR request.
+            response = FHIR.query_enrollment_flag(email)
+
+            # Parse the bundle.
+            bundle = Bundle(response)
+            if bundle.total > 0:
+
+                # Check flags.
+                for flag in [entry.resource for entry in bundle.entry if entry.resource.resource_type == 'Flag']:
+
+                    # Get the code's value
+                    state = flag.code.coding[0].code
+                    logger.debug('Fetched state "{}" for user'.format(state))
+
+                    return state
+
+            else:
+                logger.debug('No flag found for user!')
+
+        except KeyError as e:
+            logger.exception('FHIR Error: {}'.format(e), exc_info=True)
+
+        return None
+
+    #
+    # UPDATE
+    #
+
+    @staticmethod
+    def update_patient(fhir_id, form):
+
+        # Get their resource
+        patient = FHIR._query_resource(PPM.fhir_url(), 'Patient', fhir_id)
+
+        # Make the updates
+        content = None
+        try:
+            # Check form data and make updates where necessary
+            first_name = form.pop('firstname')
+            if first_name:
+                patient['name'][0]['given'][0] = first_name
+
+            last_name = form.pop('lastname')
+            if last_name:
+                patient['name'][0]['family'] = last_name
+
+            street_address1 = form.pop('street_address1')
+            if street_address1:
+                patient['address'][0]['line'][0] = street_address1
+
+            street_address2 = form.pop('street_address2')
+            if street_address2:
+                patient['address'][0]['line'][1] = street_address2
+
+            city = form.pop('city')
+            if city:
+                patient['address'][0]['city'] = city
+
+            state = form.pop('state')
+            if state:
+                patient['address'][0]['state'] = state
+
+            zip_code = form.pop('zip')
+            if zip_code:
+                patient['address'][0]['postalCode'] = zip_code
+
+            phone = form.pop('phone')
+            if phone:
+                for telecom in patient['telecom']:
+                    if telecom['system'] == 'phone':
+                        telecom['value'] = phone
+                else:
+                    # Add it
+                    patient['telecom'].append({'system': 'phone', 'value': phone})
+
+            email = form.pop('contact_email')
+            if email:
+                for telecom in patient['telecom']:
+                    if telecom['system'] == 'email':
+                        telecom['value'] = email
+                else:
+                    # Add it
+                    patient['telecom'].append({'system': 'email', 'value': email})
+
+            # Build the URL
+            url = furl.furl(PPM.fhir_url())
+            url.path.segments.append('Patient')
+            url.path.segments.append(fhir_id)
+
+            # Put it
+            response = requests.put(url.url, json=patient)
+            content = response.content
+            response.raise_for_status()
+
+            return response.ok
+
+        except requests.HTTPError as e:
+            logger.error('FHIR Request Error: {}'.format(e), exc_info=True,
+                         extra={'ppm_id': fhir_id, 'response': content})
+
+        except Exception as e:
+            logger.error('FHIR Error: {}'.format(e), exc_info=True, extra={'ppm_id': fhir_id})
+
+        return False
+
+    @staticmethod
+    def update_patient_enrollment(patient_id, status):
+        logger.debug("Patient: {}, Status: {}".format(patient_id, status))
+
+        # Fetch the flag.
+        url = furl.furl(PPM.fhir_url())
+        url.path.segments.append('Flag')
+
+        query = {
+            'subject': 'Patient/{}'.format(patient_id),
+        }
+
+        try:
+            # Fetch the flag.
+            response = requests.get(url.url, params=query)
+            flag_entries = Bundle(response.json())
+
+            # Check for nothing.
+            if flag_entries.total == 0:
+                logger.debug('Creating enrollment flag for patient')
+
+                # Create it.
+                return FHIR.create_patient_enrollment('Patient/{}'.format(patient_id), status)
+
+            else:
+                logger.debug('Existing enrollment flag found')
+
+                # Get the first and only flag.
+                entry = flag_entries.entry[0]
+                flag = entry.resource
+                code = flag.code.coding[0]
+
+                # Update flag properties for particular states.
+                logger.debug('Current status: {}'.format(code.code))
+                if code.code != 'accepted' and status == 'accepted':
+                    logger.debug('Setting enrollment flag status to "active"')
+
+                    # Set status.
+                    flag.status = 'active'
+
+                    # Set a start date.
+                    now = FHIRDate(datetime.now().isoformat())
+                    period = Period()
+                    period.start = now
+                    flag.period = period
+
+                elif code.code != 'terminated' and status == 'terminated':
+                    logger.debug('Setting enrollment flag status to "inactive"')
+
+                    # Set status.
+                    flag.status = 'inactive'
+
+                    # Set an end date.
+                    now = FHIRDate(datetime.now().isoformat())
+                    flag.period.end = now
+
+                elif code.code == 'accepted' and status != 'accepted':
+                    logger.debug('Reverting back to inactive with no dates')
+
+                    # Flag defaults to inactive with no start or end dates.
+                    flag.status = 'inactive'
+                    flag.period = None
+
+                elif code.code != 'ineligible' and status == 'ineligible':
+                    logger.debug('Setting as ineligible, inactive with no dates')
+
+                    # Flag defaults to inactive with no start or end dates.
+                    flag.status = 'inactive'
+                    flag.period = None
+
+                else:
+                    logger.warning('Unhandled flag update: {} -> {}'.format(code.code, status))
+
+                # Set the code.
+                code.code = status
+                code.display = status.title()
+                flag.code.text = status.title()
+
+                # Build the URL
+                flag_url = furl.furl(PPM.fhir_url())
+                flag_url.path.segments.extend(['Flag', flag.id])
+
+                logger.debug('Updating Flag "{}" with code: "{}"'.format(flag_url.url, status))
+
+                # Post it.
+                response = requests.put(flag_url.url, json=flag.as_json())
+                logger.debug('Response: {}'.format(response.status_code))
+
+                return flag
+
+        except Exception as e:
+            logger.exception('FHIR enrollment update error: {}'.format(e), exc_info=True, extra={
+                'ppm_id': patient_id, 'status': status,
+            })
+            raise
+
+    @staticmethod
+    def update_twitter(email, handle=None):
+        logger.debug('Twitter handle: {}'.format(handle))
+
+        try:
+            # Fetch the Patient.
+            url = furl.furl(PPM.fhir_url())
+            url.path.segments.extend(['Patient'])
+            url.query.params.add('identifier', 'http://schema.org/email|{}'.format(email))
+            response = requests.get(url.url)
+            response.raise_for_status()
+            patient = response.json().get('entry')[0]['resource']
+
+            # Check if handle submitted or not
+            if handle:
+
+                # Set the value
+                twitter = {'system': 'other', 'value': 'https://twitter.com/' + handle}
+
+                # Add it to their contact points
+                patient.setdefault('telecom', []).append(twitter)
+
+            else:
+                # Check for existing handle and remove it
+                for telecom in patient.get('telecom', []):
+                    if 'twitter.com' in telecom['value']:
+                        patient['telecom'].remove(telecom)
+
+            # Check for an existing Twitter status extension
+            uses_twitter = next((extension for extension in patient.get('extension', [])
+                                 if 'uses-twitter' in extension.get('url')), None)
+            if uses_twitter:
+
+                # Update the flag
+                uses_twitter['valueBoolean'] = True if handle else False
+
+            else:
+                # Add an extension indicating their use of Twitter
+                uses_twitter = {
+                        'url': 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-twitter',
+                        'valueBoolean': True if handle else False
+                    }
+
+                # Add it to their extensions
+                patient.setdefault('extension', []).append(uses_twitter)
+
+            logger.debug('Extension: {}'.format(patient['extension']))
+
+            # Save
+            url.query.params.clear()
+            url.path.segments.append(patient['id'])
+            response = requests.put(url.url, data=json.dumps(patient))
+            response.raise_for_status()
+
+            return response.ok
+
+        except Exception as e:
+            logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={'ppm_id': email})
+
+        return False
+
+    #
+    # DELETE
+    #
+
+    @staticmethod
+    def delete_consent(patient_id, project):
+        logger.debug('Deleting consents: Patient/{}'.format(patient_id))
+
+        # Build the transaction
+        transaction = {
+            'resourceType': 'Bundle',
+            'type': 'transaction',
+            'entry': []
+        }
+
+        # Add the composition delete
+        transaction['entry'].append({
+            'request': {
+                'url': 'Composition?subject=Patient/{}'.format(patient_id),
+                'method': 'DELETE',
+            }
+        })
+
+        # Add the consent delete
+        transaction['entry'].append({
+            'request': {
+                'url': 'Consent?patient=Patient/{}'.format(patient_id),
+                'method': 'DELETE',
+            }
+        })
+
+        # Add the contract delete
+        transaction['entry'].append({
+            'request': {
+                'url': 'Contract?signer=Patient/{}'.format(patient_id),
+                'method': 'DELETE',
+            }
+        })
+
+        # Check project
+        if project == 'autism':
+
+            questionnaire_ids = ['ppm-asd-consent-guardian-quiz',
+                                 'ppm-asd-consent-individual-quiz',
+                                 'individual-signature-part-1',
+                                 'guardian-signature-part-1',
+                                 'guardian-signature-part-2',
+                                 'guardian-signature-part-3', ]
+
+            # Add the questionnaire response delete
+            for questionnaire_id in questionnaire_ids:
+                transaction['entry'].append({
+                    'request': {
+                        'url': 'QuestionnaireResponse?questionnaire=Questionnaire/{}&source=Patient/{}'
+                            .format(questionnaire_id, patient_id),
+                        'method': 'DELETE',
+                    }
+                })
+
+            # Add the contract delete
+            transaction['entry'].append({
+                'request': {
+                    'url': 'Contract?signer.patient={}'.format(patient_id),
+                    'method': 'DELETE',
+                }
+            })
+
+            # Remove related persons
+            transaction['entry'].append({
+                'request': {
+                    'url': 'RelatedPerson?patient=Patient/{}'.format(patient_id),
+                    'method': 'DELETE',
+                }
+            })
+
+        elif project == 'neer':
+
+            # Delete questionnaire responses
+            questionnaire_id = 'neer-signature'
+            transaction['entry'].append({
+                'request': {
+                    'url': 'QuestionnaireResponse?questionnaire=Questionnaire/{}&source=Patient/{}'
+                        .format(questionnaire_id, patient_id),
+                    'method': 'DELETE',
+                }
+            })
+
+        else:
+            logger.error('Unsupported project: {}'.format(project), extra={
+                'ppm_id': patient_id
+            })
+
+        # Make the FHIR request.
+        response = requests.post(PPM.fhir_url(), headers={'content-type': 'application/json'},
+                                 data=json.dumps(transaction))
+        response.raise_for_status()
+
+    #
+    # OUTPUT
+    #
+
+    @staticmethod
+    def get_ppm_id(fhir_url, email):
+
+        try:
+            # Get the client
+            client = FHIR.get_client(fhir_url)
+
+            # Query the Patient
+            search = Patient.where(struct={'identifier': 'http://schema.org/email|{}'.format(email)})
+            resources = search.perform_resources(client.server)
+            for resource in resources:
+
+                # Return the ID of the first Patient
+                return resource.id
+
+        except Exception as e:
+            logger.debug('Could not fetch Patient\'s ID: {}'.format(e))
+
+        return None
+
+    @staticmethod
+    def get_name(patient, full=False):
+
+        # Default to a generic name
+        names = []
+
+        # Check official names
+        for name in [name for name in patient.name if name.use == 'official']:
+            if name.given:
+                names.extend(name.given)
+
+            # Add family if full name
+            if name.family and (full or not names):
+                names.append(name.family)
+
+        if not names:
+            logger.error('Could not find name for {}'.format(patient.id))
+
+            # Default to their email address
+            email = next((identifier.value for identifier in patient.identifier if
+                          identifier.system == 'http://schema.org/email'), None)
+
+            if email:
+                names.append(email)
+
+            else:
+                logger.error('Could not find email for {}'.format(patient.id))
+
+        if not names:
+            names = ['Participant']
+
+        return ' '.join(names)
 
     @staticmethod
     def flatten_questionnaire_response(bundle_dict, questionnaire_id):
@@ -203,3 +937,333 @@ class FHIR:
                 responses[item.linkId].extend(sub_answers)
 
         return responses
+
+    @staticmethod
+    def flatten_patient(bundle_dict):
+
+        # Get the patient
+        resource = next(resource['resource'] for resource in bundle_dict['entry']
+                        if resource['resource']['resourceType'] == 'Patient')
+
+        # Collect properties
+        patient = dict()
+
+        # Get email and FHIR ID
+        patient["email"] = FHIR._get_or(resource, ['identifier', 0, 'value'])
+        patient["fhir_id"] = resource['id']
+        if not patient['email']:
+            logger.error('Patient email could not be found: {}'.format(resource['id']))
+            return {}
+
+        # Get the remaining optional properties
+        patient["firstname"] = FHIR._get_or(resource, ['name', 0, 'given', 0], '')
+        patient["lastname"] = FHIR._get_or(resource, ['name', 0, 'family'], '')
+        patient["street_address1"] = FHIR._get_or(resource, ['address', 0, 'line', 0], '')
+        patient["street_address2"] = FHIR._get_or(resource, ['address', 0, 'line', 1], '')
+        patient["city"] = FHIR._get_or(resource, ['address', 0, 'city'], '')
+        patient["state"] = FHIR._get_or(resource, ['address', 0, 'state'], '')
+        patient["zip"] = FHIR._get_or(resource, ['address', 0, 'postalCode'], '')
+        patient["phone"] = FHIR._get_or(resource, ['telecom', 0, 'postalCode'], '')
+
+        # Parse telecom properties
+        patient['phone'] = next((telecom['value'] for telecom in resource.get('telecom', [])
+                                 if telecom.get('system') == 'phone'), '')
+        patient['twitter_handle'] = next((telecom['value'] for telecom in resource.get('telecom', [])
+                                         if telecom.get('system') == 'other'), '')
+        patient['contact_email'] = next((telecom['value'] for telecom in resource.get('telecom', [])
+                                        if telecom.get('system') == 'email'), '')
+
+        # Get how they heard about PPM
+        patient['how_did_you_hear_about_us'] = next((extension['valueString'] for extension in resource.get('extension', [])
+                                                    if 'how-did-you-hear-about-us' in extension.get('url')), '')
+
+        # Get if they are not using Twitter
+        patient['uses_twitter'] = next((extension['valueBoolean'] for extension in resource.get('extension', [])
+                                                    if 'uses-twitter' in extension.get('url')), True)
+
+        return patient
+
+    @staticmethod
+    def flatten_enrollment_flag(resource):
+
+        # Get the resource.
+        record = dict()
+
+        # Try and get the values
+        record['enrollment'] = FHIR._get_or(resource, ['code', 'coding', 0, 'code'])
+        record['status'] = FHIR._get_or(resource, ['status'])
+        record['start'] = FHIR._get_or(resource, ['period', 'start'])
+        record['end'] = FHIR._get_or(resource, ['period', 'end'])
+
+        return record
+
+    @staticmethod
+    def flatten_consent_composition(bundle_json):
+        logger.debug('Flatten composition')
+
+        # Add link IDs.
+        FHIR._fix_bundle_json(bundle_json)
+
+        # Parse the bundle in not so strict mode
+        incoming_bundle = Bundle(bundle_json, strict=True)
+
+        # Prepare the object.
+        consent_object = {
+            'consent_questionnaires': [],
+            'assent_questionnaires': [],
+        }
+        consent_exceptions = []
+        assent_exceptions = []
+
+        if incoming_bundle.total > 0:
+
+            for bundle_entry in incoming_bundle.entry:
+                if bundle_entry.resource.resource_type == "Consent":
+
+                    signed_consent = bundle_entry.resource
+
+                    # We can pull the date from the Consent Resource. It's stamped in a few places.
+                    consent_object["date_signed"] = signed_consent.dateTime.origval
+
+                    # Exceptions are for when they refuse part of the consent.
+                    if signed_consent.except_fhir:
+                        for consent_exception in signed_consent.except_fhir:
+
+                            # Check for conversion
+                            display = consent_exception.code[0].display
+                            consent_exceptions.append(FHIR._exception_description(display))
+
+                elif bundle_entry.resource.resource_type == 'Composition':
+
+                    composition = bundle_entry.resource
+
+                    entries = [section.entry for section in composition.section if section.entry is not None]
+                    references = [entry[0].reference for entry in entries if
+                                  len(entry) > 0 and entry[0].reference is not None]
+                    text = [section.text.div for section in composition.section if section.text is not None][0]
+
+                    # Check the references for a Consent object, making this comp the consent one.
+                    if len([r for r in references if 'Consent' in r]) > 0:
+                        consent_object['consent_text'] = text
+                    else:
+                        consent_object['assent_text'] = text
+
+                elif bundle_entry.resource.resource_type == "RelatedPerson":
+                    pass
+                elif bundle_entry.resource.resource_type == "Contract":
+
+                    contract = bundle_entry.resource
+
+                    # Contracts with a binding reference are either the individual consent or the guardian consent.
+                    if contract.bindingReference:
+
+                        # Fetch the questionnaire and its responses.
+                        questionnaire_response_id = re.search('[^\/](\d+)$', contract.bindingReference.reference).group(0)
+                        questionnaire_response = next((entry.resource for entry in incoming_bundle.entry if
+                                                  entry.resource.resource_type == 'QuestionnaireResponse' and
+                                                  entry.resource.id == questionnaire_response_id), None)
+
+                        # Get the questionnaire and its response.
+                        questionnaire_id = questionnaire_response.questionnaire.reference.split('/')[1]
+                        questionnaire = [entry.resource for entry in incoming_bundle.entry if
+                                         entry.resource.resource_type == 'Questionnaire'
+                                         and entry.resource.id == questionnaire_id][0]
+
+                        if not questionnaire_response or not questionnaire:
+                            logger.error('FHIR Error: Could not find bindingReference Questionnaire/Response'
+                                         ' for Contract/{}'.format(contract.id),
+                                         extra={'ppm_id': contract.subject, 'questionnaire': questionnaire_id,
+                                                'questionnaire_response': questionnaire_response_id})
+                            break
+
+                        # The reference refers to a Questionnaire which is linked to a part of the consent form.
+                        if questionnaire_response.questionnaire.reference == "Questionnaire/individual-signature-part-1"\
+                                or questionnaire_response.questionnaire.reference == "Questionnaire/neer-signature":
+
+                            # This is a person consenting for themselves.
+                            consent_object["type"] = "INDIVIDUAL"
+                            consent_object["signer_signature"] = base64.b64decode(contract.signer[0].signature[0].blob)
+                            consent_object["participant_name"] = contract.signer[0].signature[0].whoReference.display
+
+                            # These don't apply on an Individual consent.
+                            consent_object["participant_acknowledgement_reason"] = "N/A"
+                            consent_object["participant_acknowledgement"] = "N/A"
+                            consent_object["signer_name"] = "N/A"
+                            consent_object["signer_relationship"] = "N/A"
+                            consent_object["assent_signature"] = "N/A"
+                            consent_object["assent_date"] = "N/A"
+                            consent_object["explained_signature"] = "N/A"
+
+                        elif questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-1":
+
+                            # This is a person consenting for someone else.
+                            consent_object["type"] = "GUARDIAN"
+
+                            related_id = contract.signer[0].party.reference.split('/')[1]
+                            related_person = [entry.resource for entry in incoming_bundle.entry if
+                                             entry.resource.resource_type == 'RelatedPerson'
+                                         and entry.resource.id == related_id][0]
+
+                            consent_object["signer_name"] = related_person.name[0].text
+                            consent_object["signer_relationship"] = related_person.relationship.text
+
+                            consent_object["participant_name"] = contract.signer[0].signature[0].onBehalfOfReference.display
+                            consent_object["signer_signature"] = base64.b64decode(contract.signer[0].signature[0].blob)
+
+                        elif questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-2":
+
+                            # This is the question about being able to get acknowledgement from the participant by the guardian/parent.
+                            consent_object["participant_acknowledgement"] = next(item.answer[0].valueString for item in questionnaire_response.item if item.linkId == 'question-1').title()
+
+                            # If the answer to the question is no, grab the reason.
+                            if consent_object["participant_acknowledgement"].lower() == "no":
+                                consent_object["participant_acknowledgement_reason"] = next(item.answer[0].valueString for item in questionnaire_response.item if item.linkId == 'question-1-1')
+
+                            # This is the Guardian's signature letting us know they tried to explain this study.
+                            consent_object["explained_signature"] = base64.b64decode(contract.signer[0].signature[0].blob)
+
+                        elif questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-3":
+
+                            # A contract without a reference is the assent page.
+                            consent_object["assent_signature"] = base64.b64decode(contract.signer[0].signature[0].blob)
+                            consent_object["assent_date"] = contract.issued.origval
+
+                            # Append the Questionnaire Text if the response is true.
+                            for current_response in questionnaire_response.item:
+
+                                if current_response.answer[0].valueBoolean:
+                                    answer = [item for item in questionnaire.item if item.linkId == current_response.linkId][0]
+                                    assent_exceptions.append(FHIR._exception_description(answer.text))
+
+                        # Prepare to parse the questionnaire.
+                        questionnaire_object = {
+                            'template': 'dashboard/{}.html'.format(questionnaire.id),
+                            'questions': []
+                        }
+
+                        for item in questionnaire.item:
+
+                            question_object = {
+                                'type': item.type,
+                            }
+
+                            if item.type == 'display':
+                                question_object['text'] = item.text
+
+                            elif item.type == 'boolean' or item.type == 'question':
+                                # Get the answer.
+                                for response in questionnaire_response.item:
+                                    if response.linkId == item.linkId:
+                                        # Process the question, answer and response.
+                                        if item.type == 'boolean':
+                                            question_object['text'] = item.text
+                                            question_object['answer'] = response.answer[0].valueBoolean
+
+                                        elif item.type == 'question':
+                                            question_object['yes'] = item.text
+                                            question_object['no'] = 'I was not able to explain this study to my child or ' \
+                                                                    'individual in my care who will be participating'
+                                            question_object['answer'] = response.answer[0].valueString is 'yes'
+
+                            # Add it.
+                            questionnaire_object['questions'].append(question_object)
+
+                        # Check the type.
+                    if questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-3":
+                        consent_object['assent_questionnaires'].append(questionnaire_object)
+                    else:
+                        consent_object['consent_questionnaires'].append(questionnaire_object)
+
+        consent_object["exceptions"] = consent_exceptions
+        consent_object["assent_exceptions"] = assent_exceptions
+
+        return consent_object
+
+    @staticmethod
+    def _exception_description(display):
+
+        # Check the various exception display values
+        if 'equipment monitoring' in display.lower() or 'fitbit' in display.lower():
+            return mark_safe('<span class="label label-danger">Fitbit monitoring</span>')
+
+        elif 'referral to clinical trial' in display.lower():
+            return mark_safe('<span class="label label-danger">Future contact/questionnaires</span>')
+
+        elif 'saliva' in display.lower():
+            return mark_safe('<span class="label label-danger">Saliva sample</span>')
+
+        elif 'blood sample' in display.lower():
+            return mark_safe('<span class="label label-danger">Blood sample</span>')
+
+        elif 'stool sample' in display.lower():
+            return mark_safe('<span class="label label-danger">Stool sample</span>')
+
+        elif 'tumor' in display.lower():
+            return mark_safe('<span class="label label-danger">Tumor tissue samples</span>')
+
+        else:
+            logger.warning('Could not format exception: {}'.format(display))
+            return display
+
+    @staticmethod
+    def format_date(date_string, date_format):
+
+        try:
+            # Parse it
+            date = parse(date_string)
+
+            # Set UTC as timezone
+            from_zone = tz.gettz('UTC')
+            to_zone = tz.gettz('America/New_York')
+            utc = date.replace(tzinfo=from_zone)
+
+            # Convert time zone to assumed ET
+            et = utc.astimezone(to_zone)
+
+            # Format it and return it
+            return et.strftime(date_format)
+
+        except ValueError as e:
+            logger.exception('FHIR date parsing error: {}'.format(e), exc_info=True,
+                             extra={'date_string': date_string, 'date_format': date_format})
+
+            return '--/--/----'
+
+    class Resources:
+
+        @staticmethod
+        def enrollment_flag(patient_id, status='proposed', start=None, end=None):
+
+            data = {
+                'resourceType': 'Flag',
+                'status': 'active' if status == 'accepted' else 'inactive',
+                'category': {
+                    'coding': [{
+                        'system': 'http://hl7.org/fhir/flag-category',
+                        'code': 'admin',
+                        'display': 'Admin',
+                    }],
+                    'text': 'Admin'
+                },
+                'code': {
+                    'coding': [{
+                        'system': 'https://peoplepoweredmedicine.org/enrollment-status',
+                        'code': status,
+                        'display': status.title(),
+                    }],
+                    'text': status.title(),
+                },
+                "subject": {
+                    "reference": patient_id
+                }
+            }
+
+            # Set dates if specified.
+            if start:
+                data['period'] = {
+                    'start': start.isoformat()
+                }
+                if end:
+                    data['period']['end'] = end.isoformat()
+
+            return data
