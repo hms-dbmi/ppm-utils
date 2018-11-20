@@ -367,7 +367,7 @@ class FHIR:
                 if link['relation'] == 'next':
                     url = link['url']
 
-        return Bundle(total_bundle)
+        return total_bundle.get('entry', []) if total_bundle else []
 
     @staticmethod
     def _query_resource(resource_type, _id):
@@ -429,7 +429,7 @@ class FHIR:
     def query_document_references(patient, query=None):
         """
         Queries the current user's FHIR record for any DocumentReferences related to this type
-        :return: A list of DocumentReferences
+        :return: A list of DocumentReference resources
         :rtype: list
         """
         # Build the query

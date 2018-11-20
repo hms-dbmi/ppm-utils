@@ -32,7 +32,6 @@ setup(
         'fhirclient',
         'requests',
         'furl',
-        'py-dateutil'
     ],
     include_package_data=True,
     classifiers=[
