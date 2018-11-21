@@ -1491,6 +1491,45 @@ class FHIR:
             logger.error('Unhandled list resource type: {}'.format(resource_type))
             return None
 
+    @staticmethod
+    def flatten_document_reference(resource):
+
+        # Pick out properties and build a dict
+        reference = {'id': FHIR._get_or(resource, ['id'])}
+
+        # Get dates
+        reference['timestamp'] = FHIR._get_or(resource, ['indexed'])
+        if reference.get('timestamp'):
+            reference['date'] = FHIR._format_date(reference['timestamp'], '%m-%d-%Y')
+
+        # Get data provider
+        reference['code'] = FHIR._get_or(resource, ['type', 'coding', 0, 'code'])
+        reference['display'] = FHIR._get_or(resource, ['type', 'coding', 0, 'display'])
+
+        # Get data properties
+        reference['title'] = FHIR._get_or(resource, ['content', 0, 'attachment', 'title'])
+        reference['size'] = FHIR._get_or(resource, ['content', 0, 'attachment', 'size'])
+        reference['hash'] = FHIR._get_or(resource, ['content', 0, 'attachment', 'hash'])
+        reference['url'] = FHIR._get_or(resource, ['content', 0, 'attachment', 'url'])
+
+        # Flatten the list of identifiers into a key value dictionary
+        if resource.get('identifier'):
+            for identifier in resource.get('identifier', []):
+                if identifier.get('system') and identifier.get('value'):
+                    reference[identifier.get('system')] = identifier.get('value')
+
+        # Get person
+        reference['patient'] = FHIR._get_or(resource, ['subject', 'reference'])
+        if reference.get('patient'):
+            reference['ppm_id'] = reference['patient'].split('/')[1]
+            reference['fhir_id'] = reference['ppm_id']
+
+        # Check for data
+        reference['data'] = FHIR._get_or(resource, ['content', 0, 'attachment', 'data'])
+
+        return reference
+
+
     class Resources:
 
         @staticmethod

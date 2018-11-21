@@ -1,3 +1,5 @@
+from furl import furl
+
 from ppmutils.ppm import PPM
 from ppmutils.fhir import FHIR
 
@@ -11,6 +13,10 @@ class P2MD(PPM.Service):
 
     # This is the system prefix used for coding DocumentReferences created by P2MD
     system = 'https://peoplepoweredmedicine.org/document-type'
+
+    # Set identifier systems
+    p2md_identifier_system = 'https://peoplepoweredmedicine.org/fhir/p2md/operation'
+    fileservice_identifier_system = 'https://peoplepoweredmedicine.org/fhir/fileservice/file'
 
     @classmethod
     def get_authorizations(cls, request, ppm_ids):
@@ -152,6 +158,24 @@ class P2MD(PPM.Service):
         return cls.get(request, '/smart')
 
     @classmethod
+    def get_providers(cls, request):
+        """
+        Return a list of all registered data providers' codes and titles
+        :param request: The current HttpRequest
+        :return: list
+        """
+        return cls.get(request, f'/provider')
+
+    @classmethod
+    def get_file_types(cls, request):
+        """
+        Return a list of all registered data providers' codes and titles
+        :param request: The current HttpRequest
+        :return: list
+        """
+        return cls.get(request, f'/file/type')
+
+    @classmethod
     def get_data_document_references(cls, ppm_id, provider=''):
         """
         Queries the current user's FHIR record for any DocumentReferences related to this type
@@ -160,8 +184,35 @@ class P2MD(PPM.Service):
         """
         # Gather data-related DocumentReferences
         query = {'type': f'{P2MD.system}|{provider}'}
-        resources = FHIR.query_document_references(ppm_id, query)
+        document_references = FHIR.query_document_references(ppm_id, query)
 
-        logger.debug(f'Found {len(resources)} DocumentReferences for: {ppm_id}')
+        logger.debug(f'Found {len(document_references)} DocumentReferences for: {ppm_id}')
 
-        return resources
+        # Flatten resources and pick out relevant identifiers
+        flats = []
+        for document_reference in document_references:
+
+            # Flatten it
+            flat = FHIR.flatten_document_reference(document_reference['resource'])
+
+            # Pick out P2MD and Fileservice identifiers
+            if P2MD.p2md_identifier_system in flat:
+                flat['p2md_id'] = flat[P2MD.p2md_identifier_system]
+                del flat[P2MD.p2md_identifier_system]
+
+            if P2MD.fileservice_identifier_system in flat:
+                flat['fileservice_id'] = flat[P2MD.fileservice_identifier_system]
+                del flat[P2MD.fileservice_identifier_system]
+
+            elif flat.get('url'):
+                # To support older documents, try to parse it from URL
+                url = furl(flat['url'])
+                flat['fileservice_id'] = url.path.segments.pop(3)
+
+            else:
+                # Just make it empty
+                flat['fileservice_id'] = 'ERROR'
+
+            flats.append(flat)
+
+        return flats
