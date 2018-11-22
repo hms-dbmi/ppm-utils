@@ -1,6 +1,6 @@
 from enum import Enum
 import requests
-import furl
+from furl import furl
 import json
 import re
 
@@ -105,7 +105,15 @@ class PPM:
         @classmethod
         def service_url(cls):
             if hasattr(settings, '{}_URL'.format(cls.service.upper())):
-                getattr(settings, '{}_URL'.format(cls.service.upper()))
+                service_url = getattr(settings, '{}_URL'.format(cls.service.upper()))
+
+                # We want only the domain and no paths, as those should be specified in the calls
+                # so strip any included paths and queries and return
+                url = furl(service_url)
+                url.path.segments.clear()
+                url.query.params.clear()
+
+                return url.url
 
             raise ValueError('{}_URL not defined in settings'.format(cls.service.upper()))
 
@@ -144,17 +152,22 @@ class PPM:
             return None
 
         @classmethod
+        def _build_url(cls, path):
+
+            # Build the url.
+            url = furl.furl(cls.service_url())
+            url.path.segments.extend(path.lstrip('/').split('/'))
+
+            return url.url
+
+        @classmethod
         def get(cls, request, path, data={}, raw=False):
             logger.debug('Path: {}'.format(path))
 
             try:
-                # Build the url.
-                url = furl.furl(cls.service_url())
-                url.path.segments.extend(path.split('/'))
-
                 # Prepare the request.
                 response = requests.get(
-                    url.url,
+                    cls._build_url(path),
                     headers=cls.headers(request),
                     params=json.dumps(data)
                 )
@@ -177,13 +190,9 @@ class PPM:
             logger.debug('Path: {}'.format(path))
 
             try:
-                # Build the url.
-                url = furl.furl(cls.service_url())
-                url.path.segments.extend(path.split('/'))
-
                 # Prepare the request.
                 response = requests.post(
-                    url.url,
+                    cls._build_url(path),
                     headers=cls.headers(request),
                     data=json.dumps(data)
                 )
@@ -206,13 +215,9 @@ class PPM:
             logger.debug('Path: {}'.format(path))
 
             try:
-                # Build the url.
-                url = furl.furl(cls.service_url())
-                url.path.segments.extend(path.split('/'))
-
                 # Prepare the request.
                 response = requests.put(
-                    url.url,
+                    cls._build_url(path),
                     headers=cls.headers(request),
                     data=json.dumps(data)
                 )
@@ -235,12 +240,8 @@ class PPM:
             logger.debug('Path: {}'.format(path))
 
             try:
-                # Build the url.
-                url = furl.furl(cls.service_url())
-                url.path.segments.extend(path.split('/'))
-
                 # Prepare the request.
-                response = requests.patch(url.url,
+                response = requests.patch(cls._build_url(path),
                                           headers=cls.headers(request),
                                           data=json.dumps(data))
 
@@ -262,12 +263,8 @@ class PPM:
             logger.debug('Path: {}'.format(path))
 
             try:
-                # Build the url.
-                url = furl.furl(cls.service_url())
-                url.path.segments.extend(path.split('/'))
-
                 # Prepare the request.
-                response = requests.delete(url.url,
+                response = requests.delete(cls._build_url(path),
                                            headers=cls.headers(request),
                                            data=json.dumps(data))
 

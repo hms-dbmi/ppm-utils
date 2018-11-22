@@ -92,7 +92,7 @@ class Fileservice(PPM.Service):
         }
 
         # Make the request.
-        file = cls.post(request, '/api/file/', data)
+        file = cls.post(request, '/filemaster/api/file/', data)
 
         # Get the UUID.
         uuid = file['uuid']
@@ -105,7 +105,7 @@ class Fileservice(PPM.Service):
         }
 
         # Make the request for an s3 presigned post.
-        response = cls.get(request, '/api/file/{}/post/'.format(uuid), params)
+        response = cls.get(request, '/filemaster/api/file/{}/post/'.format(uuid), params)
 
         return uuid, response
 
@@ -118,7 +118,7 @@ class Fileservice(PPM.Service):
         }
 
         # Make the request.
-        response = cls.get(request, '/api/file/{}/uploadcomplete/'.format(uuid), params)
+        response = cls.get(request, '/filemaster/api/file/{}/uploadcomplete/'.format(uuid), params)
 
         return response is not None
 
@@ -126,7 +126,7 @@ class Fileservice(PPM.Service):
     def download_file(cls, request, uuid):
 
         # Prepare the request.
-        response = cls.get(request, '/api/file/{}/download/'.format(uuid))
+        response = cls.get(request, '/filemaster/api/file/{}/download/'.format(uuid))
 
         return response['url']
 

@@ -31,7 +31,7 @@ class P2MD(PPM.Service):
         Make a request to P2MD to determine if a participant has authorized any SMART provider.
         """
         # Return True if no errors
-        response = cls.head(request, f'/smart/{ppm_id}/auths', raw=True)
+        response = cls.head(request, f'/sources/smart/{ppm_id}/auths', raw=True)
 
         return response.ok
 
@@ -41,7 +41,7 @@ class P2MD(PPM.Service):
         Make a request to P2MD to get a list of SMART providers authorized by the participant.
         """
         # Make the request
-        data = cls.head(request, f'/smart/{ppm_id}/auths')
+        data = cls.head(request, f'/sources/smart/{ppm_id}/auths')
 
         # Return auths
         auths = data.get("smart_authorizations", [])
@@ -54,14 +54,14 @@ class P2MD(PPM.Service):
         Make a request to P2MD to get a full history of all data operations conducted
         for the participant.
         """
-        return cls.get(request, f'/api/ppm/{ppm_id}')
+        return cls.get(request, f'/sources/api/ppm/{ppm_id}')
 
     @classmethod
     def get_twitter_data(cls, request, ppm_id, handle):
         """
         Make a request to P2MD to fetch Twitter data and store it in PPM.
         """
-        response = cls.post(request, f'/api/twitter/{ppm_id}', {'handle': handle}, raw=True)
+        response = cls.post(request, f'/sources/api/twitter/{ppm_id}', {'handle': handle}, raw=True)
 
         # Return True if no errors
         return response.ok
@@ -71,7 +71,7 @@ class P2MD(PPM.Service):
         """
         Make a request to P2MD to fetch Fitbit data and store it in PPM.
         """
-        response = cls.post(request, f'/api/fitbit/{ppm_id}', data={}, raw=True)
+        response = cls.post(request, f'/sources/api/fitbit/{ppm_id}', data={}, raw=True)
 
         # Return True if no errors
         return response.ok
@@ -81,7 +81,7 @@ class P2MD(PPM.Service):
         """
         Make a request to P2MD to fetch Gencove data and store it in PPM.
         """
-        response = cls.post(request, f'/api/gencove/{ppm_id}', data={'gencove_id': gencove_id}, raw=True)
+        response = cls.post(request, f'/sources/api/gencove/{ppm_id}', data={'gencove_id': gencove_id}, raw=True)
 
         # Return True if no errors
         return response.ok
@@ -91,7 +91,7 @@ class P2MD(PPM.Service):
         """
         Make a request to P2MD to fetch Facebook data and store it in PPM.
         """
-        response = cls.post(request, f'/api/facebook/{ppm_id}', data={}, raw=True)
+        response = cls.post(request, f'/sources/api/facebook/{ppm_id}', data={}, raw=True)
 
         # Return True if no errors
         return response.ok
@@ -101,7 +101,7 @@ class P2MD(PPM.Service):
         """
         Make a request to P2MD to fetch SMART on FHIR EHR data and store it in PPM.
         """
-        response = cls.post(request, f'/api/smart/{provider}/{ppm_id}', data={}, raw=True)
+        response = cls.post(request, f'/sources/api/smart/{provider}/{ppm_id}', data={}, raw=True)
 
         # Return True if no errors
         return response.ok
@@ -111,7 +111,7 @@ class P2MD(PPM.Service):
         """
         Queries P2MD for all uploaded files related to this participant.
         """
-        return cls.get(request, f'/api/file/{ppm_id}')
+        return cls.get(request, f'/sources/api/file/{ppm_id}')
 
     @classmethod
     def create_file(cls, request, ppm_id, document_type, filename, metadata=None, tags=None):
@@ -129,7 +129,7 @@ class P2MD(PPM.Service):
             data['tags'] = tags
 
         # Get the file data
-        upload = cls.post(request, f'/api/file/{ppm_id}', data)
+        upload = cls.post(request, f'/sources/api/file/{ppm_id}', data)
 
         # Get the UUID
         uuid = upload.get('uuid')
@@ -146,7 +146,7 @@ class P2MD(PPM.Service):
         data = {'uuid': uuid, 'location': location, 'type': document_type}
 
         # Return True if no errors
-        return cls.patch(request, f'/api/file/{ppm_id}', data)
+        return cls.patch(request, f'/sources/api/file/{ppm_id}', data)
 
     @classmethod
     def get_smart_endpoints(cls, request):
@@ -155,7 +155,7 @@ class P2MD(PPM.Service):
         :param request: The current HttpRequest
         :return: list
         """
-        return cls.get(request, '/smart')
+        return cls.get(request, '/sources/smart')
 
     @classmethod
     def get_providers(cls, request):
@@ -164,7 +164,7 @@ class P2MD(PPM.Service):
         :param request: The current HttpRequest
         :return: list
         """
-        return cls.get(request, f'/provider')
+        return cls.get(request, f'/sources/api/provider')
 
     @classmethod
     def get_file_types(cls, request):
@@ -173,7 +173,7 @@ class P2MD(PPM.Service):
         :param request: The current HttpRequest
         :return: list
         """
-        return cls.get(request, f'/file/type')
+        return cls.get(request, f'/sources/api/file/type')
 
     @classmethod
     def get_data_document_references(cls, ppm_id, provider=''):

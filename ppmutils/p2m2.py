@@ -10,36 +10,36 @@ class P2M2(PPM.Service):
 
     @classmethod
     def get_user(cls, request, email):
-        return cls.post(request, 'user', {'email': email})
+        return cls.post(request, '/api/user', {'email': email})
 
     @classmethod
     def get_participant(cls, request, email):
-        return cls.post(request, 'participant', {'email': email})
+        return cls.post(request, '/api/participant', {'email': email})
 
     @classmethod
     def get_participants(cls, request, emails):
-        return cls.post(request, 'participants', {'emails': emails})
+        return cls.post(request, '/api/participants', {'emails': emails})
 
     @classmethod
     def get_application(cls, request, email):
-        return cls.post(request, 'application', {'email': email})
+        return cls.post(request, '/api/application', {'email': email})
 
     @classmethod
     def get_applications(cls, request, emails):
-        return cls.post(request, 'applications', {'emails': emails})
+        return cls.post(request, '/api/applications', {'emails': emails})
 
     @classmethod
     def get_authorization(cls, request, email):
-        return cls.post(request, 'authorization', {'email': email})
+        return cls.post(request, '/api/authorization', {'email': email})
 
     @classmethod
     def get_authorizations(cls, request, emails):
-        return cls.post(request, 'authorizations', {'emails': emails})
+        return cls.post(request, '/api/authorizations', {'emails': emails})
 
     @classmethod
     def update_participant(cls, request, email, project):
-        return cls.patch(request, email, 'participant', {'project': project})
+        return cls.patch(request, '/api/participant', {'email': email, 'project': project})
 
     @classmethod
     def delete_user(cls, request, email):
-        return cls.delete(request, 'user', email)
+        return cls.delete(request, '/api/user', email)
