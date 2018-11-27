@@ -436,7 +436,7 @@ class FHIR:
         _query = FHIR._patient_query(patient)
         _query.update(query)
 
-        return FHIR._query_resources('DocumentReference', query=query)
+        return FHIR._query_resources('DocumentReference', query=_query)
 
     @staticmethod
     def query_enrollment_status(email):
