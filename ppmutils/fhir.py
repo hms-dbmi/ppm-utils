@@ -1,7 +1,7 @@
 import collections
 import requests
 import json
-import furl
+from furl import furl
 import random
 import re
 import base64
@@ -302,7 +302,7 @@ class FHIR:
             flag.period = period
 
         # Build the FHIR Flag destination URL.
-        url = furl.furl(PPM.fhir_url())
+        url = furl(PPM.fhir_url())
         url.path.segments.append('Flag')
 
         logger.debug('Creating flag at: {}'.format(url.url))
@@ -330,7 +330,7 @@ class FHIR:
         logger.debug('Query resource: {}'.format(resource_type))
 
         # Build the URL.
-        url_builder = furl.furl(PPM.fhir_url())
+        url_builder = furl(PPM.fhir_url())
         url_builder.path.add(resource_type)
 
         # Add query if passed and set a return count to a high number, despite the server
@@ -383,7 +383,7 @@ class FHIR:
         logger.debug('Query resource "{}": {}'.format(resource_type, _id))
 
         # Build the URL.
-        url_builder = furl.furl(PPM.fhir_url())
+        url_builder = furl(PPM.fhir_url())
         url_builder.path.add(resource_type)
         url_builder.path.add(_id)
 
@@ -397,7 +397,7 @@ class FHIR:
     def query_enrollment_flag(email, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl.furl(PPM.fhir_url())
+        url = furl(PPM.fhir_url())
         url.path.segments.append('Flag')
 
         # Get flags for current user
@@ -479,7 +479,7 @@ class FHIR:
         research_study_ids = [subject['study']['reference'].split('/')[1] for subject in subjects]
 
         # Make the query
-        research_study_url = furl.furl(PPM.fhir_url())
+        research_study_url = furl(PPM.fhir_url())
         research_study_url.path.add('ResearchStudy')
         research_study_url.query.params.add('_id', ','.join(research_study_ids))
 
@@ -553,7 +553,7 @@ class FHIR:
                     patient['telecom'].append({'system': 'email', 'value': email})
 
             # Build the URL
-            url = furl.furl(PPM.fhir_url())
+            url = furl(PPM.fhir_url())
             url.path.segments.append('Patient')
             url.path.segments.append(fhir_id)
 
@@ -578,7 +578,7 @@ class FHIR:
         logger.debug("Patient: {}, Status: {}".format(patient_id, status))
 
         # Fetch the flag.
-        url = furl.furl(PPM.fhir_url())
+        url = furl(PPM.fhir_url())
         url.path.segments.append('Flag')
 
         query = {
@@ -652,7 +652,7 @@ class FHIR:
                 flag.code.text = status.title()
 
                 # Build the URL
-                flag_url = furl.furl(PPM.fhir_url())
+                flag_url = furl(PPM.fhir_url())
                 flag_url.path.segments.extend(['Flag', flag.id])
 
                 logger.debug('Updating Flag "{}" with code: "{}"'.format(flag_url.url, status))
@@ -675,7 +675,7 @@ class FHIR:
 
         try:
             # Fetch the Patient.
-            url = furl.furl(PPM.fhir_url())
+            url = furl(PPM.fhir_url())
             url.path.segments.extend(['Patient'])
             url.query.params.add('identifier', 'http://schema.org/email|{}'.format(email))
             response = requests.get(url.url)
@@ -888,7 +888,7 @@ class FHIR:
     def flatten_participant(request, fhir_id=None, email=None, project=None, date_registered=None):
 
         # Set the url
-        patient_url = furl.furl(PPM.fhir_url())
+        patient_url = furl(PPM.fhir_url())
         patient_url.path.segments.append('Patient')
 
         # Check what to query on

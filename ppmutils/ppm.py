@@ -103,6 +103,15 @@ class PPM:
         service = None
 
         @classmethod
+        def _build_url(cls, path):
+
+            # Build the url.
+            url = furl(cls.service_url())
+            url.path.segments.extend(path.lstrip('/').split('/'))
+
+            return url.url
+
+        @classmethod
         def service_url(cls):
             if hasattr(settings, '{}_URL'.format(cls.service.upper())):
                 service_url = getattr(settings, '{}_URL'.format(cls.service.upper()))
@@ -127,13 +136,9 @@ class PPM:
             logger.debug('Path: {}'.format(path))
 
             try:
-                # Build the url.
-                url = furl.furl(cls.service_url())
-                url.path.segments.extend(path.split('/'))
-
                 # Prepare the request.
                 response = requests.head(
-                    url.url,
+                    cls._build_url(path),
                     headers=cls.headers(request),
                     params=json.dumps(data)
                 )
@@ -150,15 +155,6 @@ class PPM:
                 })
 
             return None
-
-        @classmethod
-        def _build_url(cls, path):
-
-            # Build the url.
-            url = furl.furl(cls.service_url())
-            url.path.segments.extend(path.lstrip('/').split('/'))
-
-            return url.url
 
         @classmethod
         def get(cls, request, path, data={}, raw=False):

@@ -1,6 +1,3 @@
-import requests
-import furl
-
 from django.conf import settings
 
 from ppmutils.ppm import PPM
