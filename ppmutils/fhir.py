@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 class FHIR:
 
+    # This is the system used for Patient identifiers based on email
+    EMAIL_IDENTIFIER_SYSTEM = 'http://schema.org/email'
+
     #
     # META
     #
@@ -240,39 +243,41 @@ class FHIR:
             return '--/--/----'
 
     @staticmethod
-    def _patient_query(identifier):
+    def _patient_query(identifier, key='patient'):
         """
         Accepts an identifier and builds the query for resources related to that Patient. Identifier can be
-        a FHIR ID, an email address, or a Patient object.
+        a FHIR ID, an email address, or a Patient object. Optionally specify the parameter key to be used, defaults
+        to 'patient'.
         :param identifier: object
+        :param key: str
         :return: dict
         """
         # Check types
         if type(identifier) is str and re.match(r"^\d+$", identifier):
 
             # Likely a FHIR ID
-            return {'patient': identifier}
+            return {key: identifier}
 
         # Check for an email address
         elif type(identifier) is str and re.match(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)", identifier):
 
             # An email address
-            return {'patient': 'http://schema.org/email|{}'.format(identifier)}
+            return {key: '{}|{}'.format(FHIR.EMAIL_IDENTIFIER_SYSTEM, identifier)}
 
         # Check for a resource
         elif type(identifier) is dict and identifier.get('resourceType') == 'Patient':
 
-            return {'patient': identifier['id']}
+            return {key: identifier['id']}
 
         # Check for a bundle entry
         elif type(identifier) is dict and identifier.get('resource', {}).get('resourceType') == 'Patient':
 
-            return {'patient': identifier['resource']['id']}
+            return {key: identifier['resource']['id']}
 
         # Check for a Patient object
         elif type(identifier) is Patient:
 
-            return {'patient': identifier.id}
+            return {key: identifier.id}
 
         else:
             raise ValueError('Unhandled instance of a Patient identifier: {}'.format(identifier))

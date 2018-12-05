@@ -140,7 +140,7 @@ class PPM:
                 response = requests.head(
                     cls._build_url(path),
                     headers=cls.headers(request),
-                    params=json.dumps(data)
+                    params=data
                 )
 
                 # Check response type
@@ -165,7 +165,7 @@ class PPM:
                 response = requests.get(
                     cls._build_url(path),
                     headers=cls.headers(request),
-                    params=json.dumps(data)
+                    params=data
                 )
 
                 # Check response type
