@@ -107,7 +107,20 @@ class PPM:
 
             # Build the url.
             url = furl(cls.service_url())
-            url.path.segments.extend(path.lstrip('/').split('/'))
+
+            # Clear segments and paths
+            url.path.segments.extend(path.split('/'))
+
+            # Filter empty segments (double slashes in path)
+            segments = [segment for index, segment in enumerate(url.path.segments)
+                        if segment != '' or index == len(url.path.segments) - 1]
+
+            # Log the filter
+            if len(segments) < len(url.path.segments):
+                logger.debug('Path filtered: /{} -> /{}'.format('/'.join(url.path.segments), '/'.join(segments)))
+
+            # Set it
+            url.path.segments = segments
 
             return url.url
 
@@ -132,8 +145,12 @@ class PPM:
                     'Content-Type': 'application/json'}
 
         @classmethod
-        def head(cls, request, path, data={}, raw=False):
+        def head(cls, request, path, data=None, raw=False):
             logger.debug('Path: {}'.format(path))
+
+            # Check for params
+            if not data:
+                data = {}
 
             try:
                 # Prepare the request.
@@ -157,8 +174,12 @@ class PPM:
             return None
 
         @classmethod
-        def get(cls, request, path, data={}, raw=False):
+        def get(cls, request, path, data=None, raw=False):
             logger.debug('Path: {}'.format(path))
+
+            # Check for params
+            if not data:
+                data = {}
 
             try:
                 # Prepare the request.
@@ -182,8 +203,12 @@ class PPM:
             return None
 
         @classmethod
-        def post(cls, request, path, data, raw=False):
+        def post(cls, request, path, data=None, raw=False):
             logger.debug('Path: {}'.format(path))
+
+            # Check for params
+            if not data:
+                data = {}
 
             try:
                 # Prepare the request.
@@ -207,8 +232,12 @@ class PPM:
             return None
 
         @classmethod
-        def put(cls, request, path, data, raw=False):
+        def put(cls, request, path, data=None, raw=False):
             logger.debug('Path: {}'.format(path))
+
+            # Check for params
+            if not data:
+                data = {}
 
             try:
                 # Prepare the request.
@@ -232,8 +261,12 @@ class PPM:
             return None
 
         @classmethod
-        def patch(cls, request, path, data, raw=False):
+        def patch(cls, request, path, data=None, raw=False):
             logger.debug('Path: {}'.format(path))
+
+            # Check for params
+            if not data:
+                data = {}
 
             try:
                 # Prepare the request.
@@ -255,8 +288,12 @@ class PPM:
             return False
 
         @classmethod
-        def delete(cls, request, path, data={}, raw=False):
+        def delete(cls, request, path, data=None, raw=False):
             logger.debug('Path: {}'.format(path))
+
+            # Check for params
+            if not data:
+                data = {}
 
             try:
                 # Prepare the request.
