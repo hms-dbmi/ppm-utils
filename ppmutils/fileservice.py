@@ -19,9 +19,9 @@ class Fileservice(PPM.Service):
 
         # Get token
         if not hasattr(settings, 'FILESERVICE_SERVICE_TOKEN') or not hasattr(settings, 'FILESERVICE_TOKEN'):
-            raise ValueError('FILESERVICE_SERVICE_TOKEN is not defined in settings')
+            raise ValueError('FILESERVICE_SERVICE_TOKEN or FILESERVICE_TOKEN not defined in settings')
 
-        token = getattr(settings, 'FILESERVICE_AUTH_HEADER_PREFIX', getattr(settings, 'FILESERVICE_TOKEN'))
+        token = getattr(settings, 'FILESERVICE_SERVICE_TOKEN', getattr(settings, 'FILESERVICE_TOKEN'))
 
         # Use the PPM fileservice token.
         return {
