@@ -1,3 +1,6 @@
+import requests
+import json
+
 from django.conf import settings
 
 from ppmutils.ppm import PPM
@@ -12,22 +15,37 @@ class Fileservice(PPM.Service):
     service = 'Fileservice'
 
     @classmethod
-    def headers(cls, request):
+    def headers(cls, request=None):
 
         # Check settings
         prefix = getattr(settings, 'FILESERVICE_AUTH_HEADER_PREFIX', 'Token')
 
-        # Get token
-        if not hasattr(settings, 'FILESERVICE_SERVICE_TOKEN') or not hasattr(settings, 'FILESERVICE_TOKEN'):
-            raise ValueError('FILESERVICE_SERVICE_TOKEN or FILESERVICE_TOKEN not defined in settings')
+        # Check variations of names
+        names = ['FILESERVICE_SERVICE_TOKEN', 'DBMI_FILESERVICE_TOKEN', 'FILESERVICE_TOKEN']
+        for name in names:
+            if hasattr(settings, name):
 
-        token = getattr(settings, 'FILESERVICE_SERVICE_TOKEN', getattr(settings, 'FILESERVICE_TOKEN'))
+                # Get it
+                token = getattr(settings, name)
 
-        # Use the PPM fileservice token.
-        return {
-            'Authorization': '{} {}'.format(prefix, token),
-            'Content-Type': 'application/json'
-        }
+                # Use the PPM fileservice token.
+                return {
+                    'Authorization': '{} {}'.format(prefix, token),
+                    'Content-Type': 'application/json'
+                }
+
+        else:
+
+            # Try the JWT
+            token = cls.get_jwt(request)
+            if token:
+                return {
+                    'Authorization': '{} {}'.format(cls._jwt_authorization_prefix, token),
+                    'Content-Type': 'application/json'
+                }
+
+        raise ValueError('No JWT, nor are FILESERVICE_SERVICE_TOKEN, DBMI_FILESERVICE_TOKEN or '
+                         'FILESERVICE_TOKEN not defined in settings')
 
     @classmethod
     def check_groups(cls, request, admins):
@@ -71,7 +89,7 @@ class Fileservice(PPM.Service):
         return response
 
     @classmethod
-    def create_file(cls, request, filename, metadata, tags=[]):
+    def create_file(cls, request, filename=None, metadata=None, tags=None):
 
         # Ensure groups exist.
         if not cls.check_groups(request):
@@ -87,6 +105,16 @@ class Fileservice(PPM.Service):
             'filename': filename,
             'tags': tags,
         }
+
+        # Add passed data
+        if filename:
+            data['filename'] = filename
+
+        if metadata:
+            data['metadata'] = metadata
+
+        if tags:
+            data['tags'] = tags
 
         # Make the request.
         file = cls.post(request, '/filemaster/api/file/', data)
@@ -107,6 +135,32 @@ class Fileservice(PPM.Service):
         return uuid, response
 
     @classmethod
+    def get_files(cls, request, uuids):
+
+        # Build the request.
+        params = {
+            'uuids': uuids.split(',')
+        }
+
+        # Make the request.
+        response = cls.get(request, '/filemaster/api/file/', params)
+
+        return response
+
+    @classmethod
+    def get_file(cls, request, uuid):
+
+        # Build the request.
+        params = {
+            'uuids': uuid
+        }
+
+        # Make the request.
+        response = cls.get(request, '/filemaster/api/file/', params)
+
+        return response
+
+    @classmethod
     def uploaded_file(cls, request, uuid, location_id):
 
         # Build the request.
@@ -120,12 +174,24 @@ class Fileservice(PPM.Service):
         return response is not None
 
     @classmethod
-    def download_file(cls, request, uuid):
+    def download_url(cls, request, uuid):
 
         # Prepare the request.
         response = cls.get(request, '/filemaster/api/file/{}/download/'.format(uuid))
 
         return response['url']
+
+    @classmethod
+    def download_file(cls, request, uuid):
+
+        # Get the URL
+        url = cls.download_url(request, uuid)
+
+        # Request the file from S3 and get its contents.
+        response = requests.get(url)
+
+        # Add the content to the FHIR resource as a data element and remove the URL element.
+        return response.content
 
     @classmethod
     def group_name(cls, permission):
@@ -135,4 +201,8 @@ class Fileservice(PPM.Service):
             return '{}__{}'.format(settings.FILESERVICE_GROUP, permission.upper())
 
         raise ValueError('FILESERVICE_GROUP not defined in settings')
+
+    @classmethod
+    def file_url(cls, uuid):
+        return cls._build_url('/filemaster/api/file/{}/download/'.format(uuid))
 
