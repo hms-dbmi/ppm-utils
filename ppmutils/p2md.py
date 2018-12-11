@@ -298,7 +298,22 @@ class P2MD(PPM.Service):
         :return: The user's entire dataset
         """
         # Make the request
-        response = cls.get(request, f'/sources/api/ppm/{ppm_id}/download', raw=True)
+        response = cls.get(request, f'/sources/api/ppm/{ppm_id}/download', {'format': 'raw'}, raw=True)
+        if response:
+            return response.content
+
+        return None
+
+    @classmethod
+    def download_data_archive(cls, request, ppm_id):
+        """
+        Downloads the PPM dataset for the passed user
+        :param request: The original Django request object
+        :param ppm_id: The PPM ID of the requesting user
+        :return: The user's entire dataset
+        """
+        # Make the request
+        response = cls.get(request, f'/sources/api/ppm/{ppm_id}/download', {'format': 'archive'}, raw=True)
         if response:
             return response.content
 
