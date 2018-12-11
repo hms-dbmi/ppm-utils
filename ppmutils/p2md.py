@@ -298,7 +298,7 @@ class P2MD(PPM.Service):
         :return: The user's entire dataset
         """
         # Make the request
-        response = cls.get(request, f'/sources/api/ppm/{ppm_id}/download', {'format': 'raw'}, raw=True)
+        response = cls.get(request, f'/sources/api/ppm/{ppm_id}/download', {'output': 'raw'}, raw=True)
         if response:
             return response.content
 
@@ -313,7 +313,7 @@ class P2MD(PPM.Service):
         :return: The user's entire dataset
         """
         # Make the request
-        response = cls.get(request, f'/sources/api/ppm/{ppm_id}/download', {'format': 'archive'}, raw=True)
+        response = cls.get(request, f'/sources/api/ppm/{ppm_id}/download', {'output': 'archive'}, raw=True)
         if response:
             return response.content
 
