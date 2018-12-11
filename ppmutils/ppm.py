@@ -102,6 +102,10 @@ class PPM:
         # Subclasses set this to direct requests
         service = None
 
+        # Set some JWT properties
+        _jwt_cookie_name = 'DBMI_JWT'
+        _jwt_authorization_prefix = 'JWT'
+
         @classmethod
         def _build_url(cls, path):
 
@@ -126,23 +130,44 @@ class PPM:
 
         @classmethod
         def service_url(cls):
-            if hasattr(settings, '{}_URL'.format(cls.service.upper())):
-                service_url = getattr(settings, '{}_URL'.format(cls.service.upper()))
 
-                # We want only the domain and no paths, as those should be specified in the calls
-                # so strip any included paths and queries and return
-                url = furl(service_url)
-                url.path.segments.clear()
-                url.query.params.clear()
+            # Check variations of names
+            names = ['###_URL', 'DBMI_###_URL', '###_API_URL', '###_BASE_URL']
+            for name in names:
+                if hasattr(settings, name.replace('###', cls.service.upper())):
+                    service_url = getattr(settings, name.replace('###', cls.service.upper()))
 
-                return url.url
+                    # We want only the domain and no paths, as those should be specified in the calls
+                    # so strip any included paths and queries and return
+                    url = furl(service_url)
+                    url.path.segments.clear()
+                    url.query.params.clear()
 
-            raise ValueError('{}_URL not defined in settings'.format(cls.service.upper()))
+                    return url.url
+
+            raise ValueError('Service URL not defined in settings'.format(cls.service.upper()))
 
         @classmethod
         def headers(cls, request):
             return {"Authorization": 'JWT {}'.format(request.COOKIES.get("DBMI_JWT", None)),
                     'Content-Type': 'application/json'}
+
+        @classmethod
+        def get_jwt(cls, request):
+
+            # Get the JWT token depending on request type
+            if hasattr(request, 'COOKIES') and request.COOKIES.get(cls._jwt_cookie_name):
+                return request.COOKIES.get(cls._jwt_cookie_name)
+
+            # Check if JWT in HTTP Authorization header
+            elif hasattr(request, 'META') and request.META.get('HTTP_AUTHORIZATION') \
+                    and cls._jwt_authorization_prefix in request.META.get('HTTP_AUTHORIZATION'):
+
+                # Remove prefix and return the token
+                return request.META.get('HTTP_AUTHORIZATION') \
+                    .replace('{} '.format(cls._jwt_authorization_prefix), '')
+
+            return None
 
         @classmethod
         def head(cls, request, path, data=None, raw=False):
