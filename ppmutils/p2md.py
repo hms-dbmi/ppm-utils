@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 from furl import furl
 
 from ppmutils.ppm import PPM
@@ -18,6 +19,12 @@ class P2MD(PPM.Service):
     # Set identifier systems
     p2md_identifier_system = 'https://peoplepoweredmedicine.org/fhir/p2md/operation'
     fileservice_identifier_system = 'https://peoplepoweredmedicine.org/fhir/fileservice/file'
+
+    class ExportProviders(Enum):
+        Participant = "ppm-participant"
+        i2b2 = "ppm-i2b2"
+        JSON = "ppm-json"
+        FHIR = "ppm-fhir"
 
     @classmethod
     def get_auth_link(cls, request, provider, ppm_id, return_url):
@@ -149,6 +156,21 @@ class P2MD(PPM.Service):
         return response.ok
 
     @classmethod
+    def download_twitter_data(cls, request, ppm_id):
+        """
+        Downloads the Twitter dataset for the passed user
+        :param request: The original Django request object
+        :param ppm_id: The PPM ID of the requesting user
+        :return: The requested dataset
+        """
+        # Make the request
+        response = cls.get(request, f'/sources/api/twitter/{ppm_id}/download', raw=True)
+        if response:
+            return response.content
+
+        return None
+
+    @classmethod
     def get_fitbit_data(cls, request, ppm_id):
         """
         Make a request to P2MD to fetch Fitbit data and store it in PPM.
@@ -157,6 +179,21 @@ class P2MD(PPM.Service):
 
         # Return True if no errors
         return response.ok
+
+    @classmethod
+    def download_fitbit_data(cls, request, ppm_id):
+        """
+        Downloads the Fitbit dataset for the passed user
+        :param request: The original Django request object
+        :param ppm_id: The PPM ID of the requesting user
+        :return: The requested dataset
+        """
+        # Make the request
+        response = cls.get(request, f'/sources/api/fitbit/{ppm_id}/download', raw=True)
+        if response:
+            return response.content
+
+        return None
 
     @classmethod
     def get_gencove_data(cls, request, ppm_id, gencove_id):
@@ -169,6 +206,21 @@ class P2MD(PPM.Service):
         return response.ok
 
     @classmethod
+    def download_gencove_data(cls, request, ppm_id):
+        """
+        Downloads the Gencove dataset for the passed user
+        :param request: The original Django request object
+        :param ppm_id: The PPM ID of the requesting user
+        :return: The requested dataset
+        """
+        # Make the request
+        response = cls.get(request, f'/sources/api/gencove/{ppm_id}/download', raw=True)
+        if response:
+            return response.content
+
+        return None
+
+    @classmethod
     def get_facebook_data(cls, request, ppm_id):
         """
         Make a request to P2MD to fetch Facebook data and store it in PPM.
@@ -177,6 +229,21 @@ class P2MD(PPM.Service):
 
         # Return True if no errors
         return response.ok
+
+    @classmethod
+    def download_facebook_data(cls, request, ppm_id):
+        """
+        Downloads the Facebook dataset for the passed user
+        :param request: The original Django request object
+        :param ppm_id: The PPM ID of the requesting user
+        :return: The requested dataset
+        """
+        # Make the request
+        response = cls.get(request, f'/sources/api/facebook/{ppm_id}/download', raw=True)
+        if response:
+            return response.content
+
+        return None
 
     @classmethod
     def get_smart_data(cls, request, ppm_id, provider):
@@ -189,6 +256,22 @@ class P2MD(PPM.Service):
         return response.ok
 
     @classmethod
+    def download_smart_data(cls, request, ppm_id, provider):
+        """
+        Downloads the SMART dataset for the passed user
+        :param request: The original Django request object
+        :param ppm_id: The PPM ID of the requesting user
+        :param provider: The SMART provider
+        :return: The requested entire dataset
+        """
+        # Make the request
+        response = cls.get(request, f'/sources/api/smart/{provider}/{ppm_id}/download', raw=True)
+        if response:
+            return response.content
+
+        return None
+
+    @classmethod
     def get_files(cls, request, ppm_id):
         """
         Queries P2MD for all uploaded files related to this participant.
@@ -196,7 +279,7 @@ class P2MD(PPM.Service):
         return cls.get(request, f'/sources/api/file/{ppm_id}')
 
     @classmethod
-    def create_file(cls, request, ppm_id, document_type, filename, metadata=None, tags=None):
+    def create_file(cls, request, ppm_id, document_type, filename, metadata=None, tags=None, content_type='application/octect-stream'):
         """
         Make a request to P2MD to create a file upload
         """
@@ -210,6 +293,9 @@ class P2MD(PPM.Service):
         if tags:
             data['tags'] = tags
 
+        if content_type:
+            data['content_type'] = content_type
+
         # Get the file data
         upload = cls.post(request, f'/sources/api/file/{ppm_id}', data)
 
@@ -220,12 +306,12 @@ class P2MD(PPM.Service):
         return uuid, upload
 
     @classmethod
-    def uploaded_file(cls, request, ppm_id, document_type, uuid, location):
+    def uploaded_file(cls, request, ppm_id, document_type, uuid, location, content_type='application/octect-stream'):
         """
         Make a request to P2MD to create a file upload
         """
         # Set data
-        data = {'uuid': uuid, 'location': location, 'type': document_type}
+        data = {'uuid': uuid, 'location': location, 'type': document_type, 'content_type': content_type}
 
         # Return True if no errors
         return cls.patch(request, f'/sources/api/file/{ppm_id}', data)
@@ -290,34 +376,34 @@ class P2MD(PPM.Service):
         return cls.get(request, f'/sources/api/file/type')
 
     @classmethod
-    def download_data(cls, request, ppm_id):
+    def download_data(cls, request, ppm_id, provider=ExportProviders.Participant):
         """
         Downloads the PPM dataset for the passed user
         :param request: The original Django request object
         :param ppm_id: The PPM ID of the requesting user
+        :param provider: The provider or format of the exported data
         :return: The user's entire dataset
         """
         # Make the request
-        response = cls.get(request, f'/sources/api/ppm/{ppm_id}/download', {'output': 'raw'}, raw=True)
+        response = cls.get(request, f'/sources/api/ppm/{provider.value}/{ppm_id}/download', raw=True)
         if response:
             return response.content
 
         return None
 
     @classmethod
-    def download_data_archive(cls, request, ppm_id):
+    def export_content_type(cls, provider=ExportProviders.Participant):
         """
-        Downloads the PPM dataset for the passed user
-        :param request: The original Django request object
-        :param ppm_id: The PPM ID of the requesting user
-        :return: The user's entire dataset
+        Returns the content type and extension for the passed export provider. Use this method
+        to prepare a response when passing through a Fileservice document.
+        :param provider: ExportProvider
+        :return: str, str
         """
-        # Make the request
-        response = cls.get(request, f'/sources/api/ppm/{ppm_id}/download', {'output': 'archive'}, raw=True)
-        if response:
-            return response.content
+        if provider is cls.ExportProviders.Participant:
+            return "application/zip", "zip"
 
-        return None
+        else:
+            return "application/json", "json"
 
     @classmethod
     def get_data_document_references(cls, ppm_id, provider=''):
