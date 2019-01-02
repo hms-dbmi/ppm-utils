@@ -42,4 +42,4 @@ class P2M2(PPM.Service):
 
     @classmethod
     def delete_user(cls, request, email):
-        return cls.delete(request, '/api/user', email)
+        return cls.delete(request, '/api/user', {'email': email})

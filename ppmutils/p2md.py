@@ -392,6 +392,21 @@ class P2MD(PPM.Service):
         return None
 
     @classmethod
+    def download_data_notify(cls, request, ppm_id, recipient, provider=ExportProviders.Participant):
+        """
+        Downloads the PPM dataset for the passed user
+        :param request: The original Django request object
+        :param ppm_id: The PPM ID of the requesting user
+        :param recipient: The email address to which a notification of the data's preparation should be sent
+        :param provider: The provider or format of the exported data
+        :return: The user's entire dataset
+        """
+        # Make the request
+        response = cls.post(request, f'/sources/api/ppm/{provider.value}/{ppm_id}/', {'recipient': recipient}, raw=True)
+
+        return response.ok
+
+    @classmethod
     def export_content_type(cls, provider=ExportProviders.Participant):
         """
         Returns the content type and extension for the passed export provider. Use this method
