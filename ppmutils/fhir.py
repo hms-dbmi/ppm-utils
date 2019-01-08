@@ -33,6 +33,25 @@ class FHIR:
     # META
     #
 
+    @classmethod
+    def default_url_for_env(cls, environment):
+        """
+        Give implementing classes an opportunity to list a default set of URLs based on the DBMI_ENV,
+        if specified. Otherwise, return nothing
+        :param environment: The DBMI_ENV string
+        :return: A URL, if any
+        """
+        if 'local' in environment:
+            return 'http://fhir:8008'
+        elif 'dev' in environment:
+            return 'https://fhir.ppm.aws.dbmi-dev.hms.harvard.edu'
+        elif 'prod' in environment:
+            return 'https://fhir.ppm.aws.dbmi.hms.harvard.edu'
+        else:
+            logger.error(f'Could not return a default URL for environment: {environment}')
+
+        return None
+
     @staticmethod
     def get_client(fhir_url):
 
@@ -397,6 +416,38 @@ class FHIR:
         response.raise_for_status()
 
         return response.json()
+
+    @staticmethod
+    def query_patient(email, flatten_return=False):
+
+        # Build the FHIR Consent URL.
+        url = furl(PPM.fhir_url())
+        url.path.segments.append('Patient')
+
+        # Get flags for current user
+        query = {
+            'identifier': 'http://schema.org/email|' + email
+        }
+
+        # Make the call
+        content = None
+        try:
+            # Make the FHIR request.
+            response = requests.get(url.url, params=query)
+            content = response.content
+
+            if flatten_return:
+                return FHIR.flatten_patient(response.json())
+            else:
+                return response.json()
+
+        except requests.HTTPError as e:
+            logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
+
+        except KeyError as e:
+            logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={'response': content})
+
+        return None
 
     @staticmethod
     def query_enrollment_flag(email, flatten_return=False):

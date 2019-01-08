@@ -15,6 +15,25 @@ class Fileservice(PPM.Service):
     service = 'Fileservice'
 
     @classmethod
+    def default_url_for_env(cls, environment):
+        """
+        Give implementing classes an opportunity to list a default set of URLs based on the DBMI_ENV,
+        if specified. Otherwise, return nothing
+        :param environment: The DBMI_ENV string
+        :return: A URL, if any
+        """
+        if 'local' in environment:
+            return 'http://dbmi-fileservice:8012'
+        elif 'dev' in environment:
+            return 'https://fileservice.aws.dbmi-dev.hms.harvard.edu'
+        elif 'prod' in environment:
+            return 'https://files.dbmi.hms.harvard.edu'
+        else:
+            logger.error(f'Could not return a default URL for environment: {environment}')
+
+        return None
+
+    @classmethod
     def headers(cls, request=None):
 
         # Check settings

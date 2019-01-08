@@ -27,6 +27,25 @@ class P2MD(PPM.Service):
         FHIR = "ppm-fhir"
 
     @classmethod
+    def default_url_for_env(cls, environment):
+        """
+        Give implementing classes an opportunity to list a default set of URLs based on the DBMI_ENV,
+        if specified. Otherwise, return nothing
+        :param environment: The DBMI_ENV string
+        :return: A URL, if any
+        """
+        if 'local' in environment:
+            return 'http://p2md:8020'
+        elif 'dev' in environment:
+            return 'https://p2m2.aws.dbmi-dev.hms.harvard.edu'
+        elif 'prod' in environment:
+            return 'https://p2m2.dbmi.hms.harvard.edu'
+        else:
+            logger.error(f'Could not return a default URL for environment: {environment}')
+
+        return None
+
+    @classmethod
     def get_auth_link(cls, request, provider, ppm_id, return_url):
         """
         Builds and returns the link that should be followed for the user to authorize PPM with
@@ -376,6 +395,56 @@ class P2MD(PPM.Service):
         return cls.get(request, f'/sources/api/file/type')
 
     @classmethod
+    def check_export(cls, request, ppm_id, provider=ExportProviders.Participant, age=24):
+        """
+        Checks the presence of the PPM dataset for the passed user
+        :param request: The original Django request object
+        :param ppm_id: The PPM ID of the requesting user
+        :param provider: The provider or format of the exported data
+        :param age: Set the number of hours after which the dataset should be considered expired
+        :return: The age of the current dataset in hours, if any
+        """
+        # Make the request
+        response = cls.head(request, f'/sources/api/ppm/{provider.value}/{ppm_id}/export', {'age': age}, raw=True)
+        if response:
+            return response.ok
+
+        return False
+
+    @classmethod
+    def get_export_url(cls, request, ppm_id, provider=ExportProviders.Participant):
+        """
+        Generates the URL to download the PPM dataset for the passed user
+        :param request: The original Django request object
+        :param ppm_id: The PPM ID of the requesting user
+        :param provider: The provider or format of the exported data
+        :return: The user's entire dataset
+        """
+        url = furl(cls._build_url(f'/sources/api/ppm/{provider.value}/{ppm_id}/export'))
+
+        # Patch for local
+        if os.environ.get('DBMI_ENV') == 'local':
+            url.set(host='localhost')
+
+        return url.url
+
+    @classmethod
+    def download_export(cls, request, ppm_id, provider=ExportProviders.Participant):
+        """
+        Downloads the PPM dataset for the passed user
+        :param request: The original Django request object
+        :param ppm_id: The PPM ID of the requesting user
+        :param provider: The provider or format of the exported data
+        :return: The user's entire dataset
+        """
+        # Make the request
+        response = cls.get(request, f'/sources/api/ppm/{provider.value}/{ppm_id}/export', raw=True)
+        if response:
+            return response.content
+
+        return None
+
+    @classmethod
     def download_data(cls, request, ppm_id, provider=ExportProviders.Participant):
         """
         Downloads the PPM dataset for the passed user
@@ -392,17 +461,20 @@ class P2MD(PPM.Service):
         return None
 
     @classmethod
-    def download_data_notify(cls, request, ppm_id, recipient, provider=ExportProviders.Participant):
+    def download_data_notify(cls, request, ppm_id, recipients, provider=ExportProviders.Participant):
         """
         Downloads the PPM dataset for the passed user
         :param request: The original Django request object
         :param ppm_id: The PPM ID of the requesting user
-        :param recipient: The email address to which a notification of the data's preparation should be sent
+        :param recipients: The email addresses to which a notification of the data's preparation should be sent
         :param provider: The provider or format of the exported data
         :return: The user's entire dataset
         """
         # Make the request
-        response = cls.post(request, f'/sources/api/ppm/{provider.value}/{ppm_id}/', {'recipient': recipient}, raw=True)
+        response = cls.post(request,
+                            path=f'/sources/api/ppm/{provider.value}/{ppm_id}/',
+                            data={'recipients': ','.join(recipients)},
+                            raw=True)
 
         return response.ok
 

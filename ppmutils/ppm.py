@@ -3,6 +3,7 @@ import requests
 from furl import furl
 import json
 import re
+import os
 
 from django.conf import settings
 
@@ -145,7 +146,23 @@ class PPM:
 
                     return url.url
 
+            # Check for a default
+            environment = os.environ.get('DBMI_ENV')
+            if environment and cls.default_url_for_env(environment):
+                return cls.default_url_for_env(environment)
+
             raise ValueError('Service URL not defined in settings'.format(cls.service.upper()))
+
+        @classmethod
+        def default_url_for_env(cls, environment):
+            """
+            Give implementing classes an opportunity to list a default set of URLs based on the DBMI_ENV,
+            if specified. Otherwise, return nothing
+            :param environment: The DBMI_ENV string
+            :return: A URL, if any
+            """
+            logger.warning(f'Class PPM does not return a default URL for environment: {environment}')
+            return None
 
         @classmethod
         def headers(cls, request):
