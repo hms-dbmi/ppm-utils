@@ -213,6 +213,33 @@ class Fileservice(PPM.Service):
         return response.content
 
     @classmethod
+    def proxy_download_url(cls, request, uuid):
+
+        # Prepare the request.
+        response = cls.get(request, '/filemaster/api/file/{}/proxy/'.format(uuid))
+
+        return response['url']
+
+    @classmethod
+    def proxy_download_file(cls, request, uuid):
+
+        # Request the file from S3 and get its contents.
+        response = cls.get(request, '/filemaster/api/file/{}/proxy/'.format(uuid))
+
+        # Add the content to the FHIR resource as a data element and remove the URL element.
+        return response.content
+
+    @classmethod
+    def download_archive(cls, request, uuids):
+
+        # Request the file from S3 and get its contents.
+        response = cls.get(request, '/filemaster/api/file/archive/', data={'uuids': ','.join(uuids)})
+
+        # Add the content to the FHIR resource as a data element and remove the URL element.
+        return response.content
+
+
+    @classmethod
     def group_name(cls, permission):
 
         # Check settings
@@ -224,4 +251,13 @@ class Fileservice(PPM.Service):
     @classmethod
     def file_url(cls, uuid):
         return cls._build_url('/filemaster/api/file/{}/download/'.format(uuid))
+
+    @classmethod
+    def file_md5(cls, request, uuid):
+
+        # Request the file from S3 and get its contents.
+        response = requests.get(request, '/filemaster/api/file/{}/filehash'.format(uuid))
+
+        # Add the content to the FHIR resource as a data element and remove the URL element.
+        return response.content
 

@@ -395,6 +395,42 @@ class P2MD(PPM.Service):
         return cls.get(request, f'/sources/api/file/type')
 
     @classmethod
+    def get_participant_data_url(cls, ppm_id, filename):
+        """
+        Downloads the PPM dataset for the passed user
+        :param ppm_id: The PPM ID of the requesting user
+        :param filename: What the resulting archive should be called
+        :return: The user's entire dataset
+        """
+        # Build the URL
+        url = furl(P2MD._build_url(f'/sources/api/ppm/{ppm_id}/archive/'))
+
+        # Add the return URL
+        url.query.params.add('filename', filename)
+
+        # Patch for local
+        if os.environ.get('DBMI_ENV') == 'local':
+            url.set(host='localhost')
+
+        return url.url
+
+    @classmethod
+    def download_participant_data(cls, request, ppm_id):
+        """
+        Downloads the PPM dataset for the passed user
+        :param request: The original Django request object
+        :param ppm_id: The PPM ID of the requesting user
+        :param provider: The provider or format of the exported data
+        :return: The user's entire dataset
+        """
+        # Make the request
+        response = cls.get(request, f'/sources/api/ppm/{ppm_id}/archive/', raw=True)
+        if response:
+            return response.content
+
+        return None
+
+    @classmethod
     def check_export(cls, request, ppm_id, provider=ExportProviders.Participant, age=24):
         """
         Checks the presence of the PPM dataset for the passed user
