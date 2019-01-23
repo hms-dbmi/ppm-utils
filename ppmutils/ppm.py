@@ -52,6 +52,20 @@ class PPM:
         NEER = 'neer'
         ASD = 'autism'
 
+        @staticmethod
+        def from_project(project):
+            if project.lower() == PPM.Project.NEER.value:
+                return PPM.Project.NEER
+            elif project.lower() == PPM.Project.ASD.value or project.lower() == 'asd':
+                return PPM.Project.ASD
+
+        @staticmethod
+        def title(project):
+            if project == PPM.Project.NEER or project == PPM.Project.NEER.value:
+                return 'NEER'
+            elif project == PPM.Project.ASD or project == PPM.Project.ASD.value or project.lower() == 'asd':
+                return 'Autism'
+
     # Set the appropriate participant statuses
     class Enrollment(Enum):
         Registered = 'registered'

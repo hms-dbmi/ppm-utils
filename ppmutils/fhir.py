@@ -1,7 +1,8 @@
 import collections
 import requests
 import json
-from furl import furl
+import uuid
+from furl import furl, Query
 import random
 import re
 import base64
@@ -12,10 +13,12 @@ from fhirclient.client import FHIRClient
 from fhirclient.models.fhirdate import FHIRDate
 from fhirclient.models.period import Period
 from fhirclient.models.patient import Patient
-from fhirclient.models.list import List
 from fhirclient.models.flag import Flag
 from django.utils.safestring import mark_safe
-from fhirclient.models.bundle import Bundle
+from fhirclient.models.bundle import Bundle, BundleEntry, BundleEntryRequest
+from fhirclient.models.list import List
+from fhirclient.models.researchstudy import ResearchStudy
+from fhirclient.models.researchsubject import ResearchSubject
 
 from ppmutils.ppm import PPM
 from ppmutils.p2m2 import P2M2
@@ -28,6 +31,15 @@ class FHIR:
 
     # This is the system used for Patient identifiers based on email
     EMAIL_IDENTIFIER_SYSTEM = 'http://schema.org/email'
+
+    # Set the coding types
+    patient_identifier_system = 'https://peoplepoweredmedicine.org/fhir/patient'
+
+    research_study_identifier_system = 'https://peoplepoweredmedicine.org/fhir/study'
+    research_study_coding_system = 'https://peoplepoweredmedicine.org/study'
+
+    research_subject_identifier_system = 'https://peoplepoweredmedicine.org/fhir/subject'
+    research_subject_coding_system = 'https://peoplepoweredmedicine.org/subject'
 
     #
     # META
@@ -97,6 +109,46 @@ class FHIR:
             return resource
 
         return None
+
+    @staticmethod
+    def _get_resources(bundle, resource_type, query=None):
+        """
+        Searches through a bundle for the resource matching the given resourceType
+        and query, if passed,
+        """
+        # Check type
+        if type(bundle) is Bundle:
+            bundle = bundle.as_json()
+        elif type(bundle) is not dict:
+            raise ValueError('Bundle must either be Bundle or dict')
+
+        # Collect resources
+        matches = []
+
+        # Get matching resources
+        resources = [entry['resource'] for entry in bundle['entry']
+                     if entry['resource']['resourceType'] == resource_type]
+
+        # Match
+        for resource in resources:
+
+            # Check query
+            matched = query is None
+
+            if query:
+                for key, value in query:
+                    attribute = FHIR._get_or(resource, key)
+
+                    # Compare
+                    if not attribute or attribute != value:
+                        matched = False
+                        break
+
+            # All comparisons passed
+            if matched:
+                matches.append(resource)
+
+        return matches
 
     @staticmethod
     def _get_or(item, keys, default=''):
@@ -238,6 +290,40 @@ class FHIR:
         return None
 
     @staticmethod
+    def get_study_from_research_subject(research_subject):
+        """
+        Accepts a FHIR resource representation (ResearchSubject, dict or bundle entry) and
+        parses out the identifier which contains the code of the study this belongs too.
+        This is necessary since for some reason DSTU3 does not allow searching on
+        ResearchSubject by study, ugh.
+        :param research_subject: The ResearchSubject resource
+        :type research_subject: object
+        :return: The study or None
+        :rtype: str
+        """
+
+        # Check type and convert the JSON resource
+        if type(research_subject) is ResearchSubject:
+            research_subject = research_subject.as_json()
+        elif type(research_subject) is dict and research_subject.get('resource'):
+            research_subject = research_subject.get('resource')
+        elif type(research_subject) is not dict or research_subject.get('resourceType') != 'ResearchSubject':
+            raise ValueError('Passed ResearchSubject is not a valid resource: {}'.format(research_subject))
+
+        # Parse the identifier
+        identifier = research_subject.get('identifier', {}).get('value')
+        if identifier:
+
+            # Split off the 'ppm-' prefix if needed
+            if 'ppm-' in identifier:
+                return identifier.replace('ppm-', '')
+
+            else:
+                return identifier
+
+        return None
+
+    @staticmethod
     def _format_date(date_string, date_format):
 
         try:
@@ -306,6 +392,178 @@ class FHIR:
     #
 
     @staticmethod
+    def create_research_study(project, title):
+        """
+        Creates a project list if not already created
+        """
+        research_study_data = FHIR.Resources.research_study(project, title)
+
+        # Use the FHIR client lib to validate our resource.
+        # "If-None-Exist" can be used for conditional create operations in FHIR.
+        # If there is already a Patient resource identified by the provided email
+        # address, no duplicate records will be created.
+        ResearchStudy(research_study_data)
+
+        research_study_request = BundleEntryRequest({
+            'url': 'ResearchStudy/ppm-{}'.format(project),
+            'method': 'PUT',
+            'ifNoneExist': str(Query({
+                '_id': project,
+            }))
+        })
+        research_study_entry = BundleEntry({
+            'resource': research_study_data,
+        })
+        research_study_entry.request = research_study_request
+
+        # Validate it.
+        bundle = Bundle()
+        bundle.entry = [research_study_entry]
+        bundle.type = 'transaction'
+
+        logger.debug("Creating...")
+
+        # Create the Patient and Flag on the FHIR server.
+        # If we needed the Patient resource id, we could follow the redirect
+        # returned from a successful POST operation, and get the id out of the
+        # new resource. We don't though, so we can save an HTTP request.
+        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+
+        return response.ok
+
+    @staticmethod
+    def create_research_subject(project, patient_id):
+        """
+        Creates a project list if not already created
+        """
+        # Get the study, or create it
+        study = FHIR._query_resources('ResearchStudy', query={
+            'identifier': '{}|{}'.format(FHIR.research_study_identifier_system, project)
+        })
+        if not study:
+            FHIR.create_research_study(project, PPM.Project.title(project))
+
+        # Generate resource data
+        research_subject_data = FHIR.Resources.research_subject(project, 'Patient/{}'.format(patient_id))
+
+        # Create a placeholder ID for the list.
+        research_subject_id = uuid.uuid1().urn
+
+        # Use the FHIR client lib to validate our resource.
+        # "If-None-Exist" can be used for conditional create operations in FHIR.
+        # If there is already a Patient resource identified by the provided email
+        # address, no duplicate records will be created.
+        ResearchSubject(research_subject_data)
+
+        research_subject_request = BundleEntryRequest({
+            'url': 'ResearchSubject',
+            'method': 'POST',
+        })
+        research_subject_entry = BundleEntry({
+            'resource': research_subject_data,
+            'fullUrl': research_subject_id
+        })
+        research_subject_entry.request = research_subject_request
+
+        # Validate it.
+        bundle = Bundle()
+        bundle.entry = [research_subject_entry]
+        bundle.type = 'transaction'
+
+        logger.debug("Creating...")
+
+        # Create the Patient and Flag on the FHIR server.
+        # If we needed the Patient resource id, we could follow the redirect
+        # returned from a successful POST operation, and get the id out of the
+        # new resource. We don't though, so we can save an HTTP request.
+        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+
+        return response.ok
+
+    @staticmethod
+    def create_patient(form, project):
+        """
+        Create a Patient resource in the FHIR server.
+        """
+        try:
+            # Get the study, or create it
+            study = FHIR._query_resources('ResearchStudy', query={
+                'identifier': '{}|{}'.format(FHIR.research_study_identifier_system, project)
+            })
+            if not study:
+                FHIR.create_research_study(project, PPM.Project.title(project))
+
+            # Build out patient JSON
+            patient_data = FHIR.Resources.patient(form)
+
+            # Create a placeholder ID for the patient the flag can reference.
+            patient_uuid = uuid.uuid1()
+
+            # Use the FHIR client lib to validate our resource.
+            # "If-None-Exist" can be used for conditional create operations in FHIR.
+            # If there is already a Patient resource identified by the provided email
+            # address, no duplicate records will be created.
+            Patient(patient_data)
+
+            # Add the UUID identifier
+            patient_data.get('identifier', []).append({
+                'system': FHIR.patient_identifier_system,
+                'value': str(patient_uuid)
+            })
+
+            patient_request = BundleEntryRequest({
+                'url': 'Patient',
+                'method': 'POST',
+                'ifNoneExist': str(Query({
+                    'identifier': 'http://schema.org/email|' + form.get('email'),
+                }))
+            })
+            patient_entry = BundleEntry({
+                'resource': patient_data,
+                'fullUrl': patient_uuid.urn
+            })
+            patient_entry.request = patient_request
+
+            # Build enrollment flag.
+            flag = Flag(FHIR.Resources.enrollment_flag(patient_uuid.urn, 'registered'))
+            flag_request = BundleEntryRequest({'url': 'Flag', 'method': 'POST'})
+            flag_entry = BundleEntry({'resource': flag.as_json()})
+            flag_entry.request = flag_request
+
+            # Build research subject
+            research_subject_data = FHIR.Resources.research_subject(project, patient_uuid.urn, 'candidate')
+            research_subject_request = BundleEntryRequest({'url': 'ResearchSubject', 'method': 'POST'})
+            research_subject_entry = BundleEntry({'resource': research_subject_data})
+            research_subject_entry.request = research_subject_request
+
+            # Validate it.
+            bundle = Bundle()
+            bundle.entry = [patient_entry, flag_entry, research_subject_entry]
+            bundle.type = 'transaction'
+
+            logger.debug("Creating...")
+
+            # Create the Patient and Flag on the FHIR server.
+            # If we needed the Patient resource id, we could follow the redirect
+            # returned from a successful POST operation, and get the id out of the
+            # new resource. We don't though, so we can save an HTTP request.
+            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+
+            # Parse out created identifiers
+            for result in response.json():
+
+                # Do something
+                logging.debug('Created: {}'.format(result))
+
+                pass
+
+            return response.ok
+
+        except Exception as e:
+            logger.exception(e)
+            raise
+
+    @staticmethod
     def create_patient_enrollment(patient_id, status='registered'):
         """
         Create a Flag resource in the FHIR server to indicate a user's enrollment.
@@ -316,7 +574,7 @@ class FHIR:
         logger.debug("Patient: {}".format(patient_id))
 
         # Use the FHIR client lib to validate our resource.
-        flag = Flag(FHIR.Resources.enrollment_flag(patient_id, status))
+        flag = Flag(FHIR.Resources.enrollment_flag('Patient/{}'.format(patient_id), status))
 
         # Set a date if enrolled.
         if status == 'accepted':
@@ -361,7 +619,12 @@ class FHIR:
         # probably ignoring it.
         url_builder.query.params.add('_count', 1000)
         if query is not None:
-            url_builder.query.params.update(query)
+            for key, value in query.items():
+                if type(value) is str:
+                    url_builder.query.params.add(key, value)
+                elif type(value) is list:
+                    for _value in value:
+                        url_builder.query.params.add(key, _value)
 
         # Prepare the final URL
         url = url_builder.url
@@ -392,6 +655,64 @@ class FHIR:
                     url = link['url']
 
         return total_bundle.get('entry', []) if total_bundle else []
+
+    @staticmethod
+    def _query_bundle(resource_type, query=None):
+        """
+        This method will fetch all resources for a given type, including paged results.
+        :param resource_type: FHIR resource type
+        :type resource_type: str
+        :param query: A dict of key value pairs for searching resources
+        :type query: dict
+        :return: A Bundle of FHIR resources
+        :rtype: Bundle
+        """
+        logger.debug('Query resource: {} : {}'.format(resource_type, query))
+
+        # Build the URL.
+        url_builder = furl(PPM.fhir_url())
+        url_builder.path.add(resource_type)
+
+        # Add query if passed and set a return count to a high number, despite the server
+        # probably ignoring it.
+        url_builder.query.params.add('_count', 1000)
+        if query is not None:
+            for key, value in query.items():
+                if type(value) is str:
+                    url_builder.query.params.add(key, value)
+                elif type(value) is list:
+                    for _value in value:
+                        url_builder.query.params.add(key, _value)
+
+        # Prepare the final URL
+        url = url_builder.url
+
+        # Collect them.
+        total_bundle = None
+
+        # The url will be set to none on the second iteration if all resources
+        # were returned, or it will be set to the next page of resources if more exist.
+        while url is not None:
+
+            # Make the request.
+            response = requests.get(url)
+            response.raise_for_status()
+
+            # Parse the JSON.
+            bundle = response.json()
+            if total_bundle is None:
+                total_bundle = bundle
+            elif bundle.get('total', 0) > 0:
+                total_bundle['entry'].extend(bundle.get('entry'))
+
+            # Check for a page.
+            url = None
+
+            for link in bundle.get('link', []):
+                if link['relation'] == 'next':
+                    url = link['url']
+
+        return Bundle(total_bundle)
 
     @staticmethod
     def _query_resource(resource_type, _id):
@@ -525,8 +846,12 @@ class FHIR:
     @staticmethod
     def query_research_studies(bundle):
 
-        # Find Research subjects
-        subjects = [entry['resource'] for entry in bundle['entry'] if entry['resource']['resourceType'] == 'ResearchSubject']
+        # Find Research subjects (without identifiers, so as to exclude PPM resources)
+        subjects = [entry['resource'] for entry in bundle['entry']
+                    if entry['resource']['resourceType'] == 'ResearchSubject'
+                    and entry['resource'].get('study', {}).get('reference', None)
+                    not in ['ResearchStudy/ppm-{}'.format(study.value) for study in PPM.Project]]
+
         if not subjects:
             logger.debug('No Research Subjects, no Research Studies')
             return None
@@ -548,6 +873,90 @@ class FHIR:
         # Return the titles
         return [research_study['resource']['title'] for research_study in research_studies]
 
+    @classmethod
+    def query_patients(cls, study=None, enrollment=None, active=True):
+        logger.debug('Getting patients - enrollment: {}, study: {}'.format(enrollment, study))
+
+        # Build the query
+        query = {
+            'active': active,
+            '_revinclude': ['ResearchSubject:individual', 'Flag:subject']
+        }
+
+        # Peel out patients
+        bundle = FHIR._query_bundle('Patient', query)
+
+        # Check for empty query set
+        if not bundle.entry:
+            return []
+
+        # Process them
+        enrollments = {entry.resource.subject.reference.split('/')[1]: entry.resource.code.coding[0].code
+                       for entry in bundle.entry if entry.resource.resource_type == 'Flag'}
+
+        # Process them
+        studies = {entry.resource.individual.reference.split('/')[1]:
+                       {'study': FHIR.get_study_from_research_subject(entry.resource),
+                        'date_registered': entry.resource.period.start.origval}
+                       for entry in bundle.entry if entry.resource.resource_type == 'ResearchSubject' and
+                   entry.resource.study.reference in ['ResearchStudy/ppm-{}'.format(study.value) for study in PPM.Project]}
+
+        # Process patients
+        patients = []
+        for patient in [entry.resource for entry in bundle.entry if entry.resource.resource_type == 'Patient']:
+            try:
+                # Get values and compare to filters
+                patient_enrollment = enrollments.get(patient.id)
+                patient_study = studies.get(patient.id)
+
+                if enrollment and enrollment.lower() != patient_enrollment.lower():
+                    continue
+
+                if study and study.lower() != patient_study.get('study').lower():
+                    continue
+
+                # Format date registered
+                date_registered = FHIR._format_date(patient_study.get('date_registered'), '%m/%d/%Y')
+
+                # Build the dict
+                patient_dict = {
+                    'email': patient.identifier[0].value,
+                    'fhir_id': patient.id,
+                    'ppm_id': patient.id,
+                    'enrollment': patient_enrollment,
+                    'status': enrollment,
+                    'study': patient_study.get('study'),
+                    'project': patient_study.get('study'),
+                    'date_registered': date_registered,
+                }
+
+                # Check names
+                try:
+                    patient_dict['firstname'] = patient.name[0].given[0]
+                except Exception:
+                    patient_dict['firstname'] = "---"
+                    logger.warning('No firstname for Patient/{}'.format(patient.id))
+                try:
+                    patient_dict['lastname'] = patient.name[0].family
+                except Exception:
+                    patient_dict['lastname'] = "---"
+                    logger.warning('No lastname for Patient/{}'.format(patient.id))
+
+                # Add twitter handle
+                try:
+                    for telecom in patient.telecom:
+                        if telecom.system == "other" and telecom.value.startswith("https://twitter.com"):
+                            patient_dict['twitter_handle'] = telecom.value
+                except Exception:
+                    pass
+
+                # Add it
+                patients.append(patient_dict)
+
+            except Exception as e:
+                logger.exception('Resources malformed for Patient/{}: {}'.format(patient.id, e))
+
+        return patients
     #
     # UPDATE
     #
@@ -641,6 +1050,7 @@ class FHIR:
             'subject': 'Patient/{}'.format(patient_id),
         }
 
+        content = None
         try:
             # Fetch the flag.
             response = requests.get(url.url, params=query)
@@ -648,10 +1058,11 @@ class FHIR:
 
             # Check for nothing.
             if flag_entries.total == 0:
-                logger.debug('Creating enrollment flag for patient')
+                logger.error('FHIR Error: Flag does not already exist for Patient/{}'.format(patient_id),
+                               extra={'status': status})
 
                 # Create it.
-                return FHIR.create_patient_enrollment('Patient/{}'.format(patient_id), status)
+                return FHIR.create_patient_enrollment(patient_id, status)
 
             else:
                 logger.debug('Existing enrollment flag found')
@@ -700,7 +1111,7 @@ class FHIR:
                     flag.period = None
 
                 else:
-                    logger.warning('Unhandled flag update: {} -> {}'.format(code.code, status))
+                    logger.debug('Unhandled flag update: {} -> {}'.format(code.code, status))
 
                 # Set the code.
                 code.code = status
@@ -715,14 +1126,18 @@ class FHIR:
 
                 # Post it.
                 response = requests.put(flag_url.url, json=flag.as_json())
-                logger.debug('Response: {}'.format(response.status_code))
+                content = response.content
+                response.raise_for_status()
 
                 return flag
 
+        except requests.HTTPError as e:
+            logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True,
+                             extra={'response': content, 'url': url.url, 'ppm_id': patient_id, 'status': status})
+            raise
+
         except Exception as e:
-            logger.exception('FHIR enrollment update error: {}'.format(e), exc_info=True, extra={
-                'ppm_id': patient_id, 'status': status,
-            })
+            logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={'ppm_id': patient_id})
             raise
 
     @staticmethod
@@ -789,6 +1204,104 @@ class FHIR:
     #
     # DELETE
     #
+
+    @staticmethod
+    def delete_resources(source_resource_type, source_resource_id, target_resource_types=[]):
+        """
+        Removes a source resource and all of its related resources. Delete is done in a transaction
+        so if an error occurs, the system will revert to its original state (in theory). This
+        seems to bypass dependency issues and will just delete everything with impunity so
+        use with caution.
+        :param source_resource_type: The FHIR resource type of the source resource (e.g. Patient)
+        :type source_resource_type: String
+        :param source_resource_id: The FHIR id of the source resource
+        :type source_resource_id: String
+        :param target_resource_types: The resource types which should all be deleted if related to the source
+        resource
+        :type target_resource_types: [String]
+        :return: Whether the delete succeeded or not
+        :rtype: Bool
+        """
+        logger.debug("Target resource: {}/{}".format(source_resource_type, source_resource_id))
+        logger.debug('Target related resources: {}'.format(target_resource_types))
+
+        source_url = furl(PPM.fhir_url())
+        source_url.path.add(source_resource_type)
+        source_url.query.params.add('_id', source_resource_id)
+        source_url.query.params.add('_include', '*')
+        source_url.query.params.add('_revinclude', '*')
+
+        # Make the request.
+        source_response = requests.get(source_url.url)
+        source_response.raise_for_status()
+
+        # Build the initial delete transaction bundle.
+        transaction = {
+            'resourceType': 'Bundle',
+            'type': 'transaction',
+            'entry': []
+        }
+
+        # Fetch IDs
+        entries = source_response.json().get('entry', [])
+        for resource in [entry['resource'] for entry in entries
+                         if entry.get('resource') is not None
+                            and entry['resource']['resourceType'] in target_resource_types]:
+            # Get the ID and resource type
+            _id = resource.get('id')
+            resource_type = resource.get('resourceType')
+
+            # Form the resource ID/URL
+            resource_id = '{}/{}'.format(resource_type, _id)
+
+            # Add it.
+            logger.debug('Add: {}'.format(resource_id))
+            transaction['entry'].append({
+                'request': {
+                    'url': resource_id,
+                    'method': 'DELETE'
+                }
+            })
+
+        logger.debug('Delete request: {}'.format(json.dumps(transaction)))
+
+        # Do the delete.
+        response = requests.post(PPM.fhir_url(), headers={'content-type': 'application/json'},
+                                 data=json.dumps(transaction))
+        response.raise_for_status()
+
+        # Log it.
+        logger.debug('Delete response: {}'.format(response.content))
+        logger.debug('Successfully deleted all for resource: {}/{}'.format(source_resource_type, source_resource_id))
+
+        return response
+
+    @staticmethod
+    def delete_patient(patient_id, full=True):
+        """
+        Deletes the patient resource and if 'full', all owned/linked resources are purged as well
+        :param patient_id: The identifier of the patient
+        :param full: Whether to purge everything or not
+        :return: bool
+        """
+        # Set the resource types we want to remove.
+        target_resources = []
+        if full:
+            target_resources = [
+                'Patient',
+                'QuestionnaireResponse',
+                'Flag',
+                'Consent',
+                'Contract',
+                'RelatedPerson',
+                'Composition',
+                'List',
+                'DocumentReference',
+                'ResearchSubject',
+            ]
+
+        # Attempt to delete the patient and all related resources.
+        FHIR.delete_resources('Patient', patient_id, target_resources)
 
     @staticmethod
     def delete_consent(patient_id, project):
@@ -941,36 +1454,15 @@ class FHIR:
         return ' '.join(names)
 
     @staticmethod
-    def flatten_participant(request, fhir_id=None, email=None, project=None, date_registered=None):
+    def flatten_participant(bundle):
 
-        # Set the url
-        patient_url = furl(PPM.fhir_url())
-        patient_url.path.segments.append('Patient')
-
-        # Check what to query on
-        if fhir_id:
-            patient_url.query.params.add('_id', fhir_id)
-        elif email:
-            patient_url.query.params.add('identifier', 'http://schema.org/email|' + email)
-        else:
-            logger.error('Must pass FHIR ID or email!')
-            return None
-
-        patient_url.query.params.add('_include', '*')
-        patient_url.query.params.add('_revinclude', '*')
+        # Set aside common properties
+        ppm_id = None
+        email = None
 
         try:
-            # Get it
-            response = requests.get(patient_url.url)
-            response.raise_for_status()
-
             # Get the list of entries
-            patient_bundle = response.json()
-
-            # Ensure a patient exists
-            if not patient_bundle or not patient_bundle.get('total') or not patient_bundle.get('entry'):
-                logger.debug('No resources returned for patient query: {}'.format(fhir_id))
-                return {}
+            patient_bundle = bundle.as_json()
 
             # Get included resources
             patient_entries = patient_bundle['entry']
@@ -978,22 +1470,24 @@ class FHIR:
             # Flatten patient profile
             participant = FHIR.flatten_patient(patient_bundle)
 
-            # Fetch details from p2m2
-            if not project or not date_registered:
-                p2m2_participant = P2M2.get_participant(request, participant['email'])
+            # Get props
+            ppm_id = participant['fhir_id']
+            email = participant['email']
 
-                if not project:
-                    # Get the project and the registered date.
-                    participant['project'] = p2m2_participant['project']
+            # Get the Flag resource
+            subject = next(resource['resource'] for resource in patient_entries
+                           if resource['resource']['resourceType'] == 'ResearchSubject' and
+                           resource['resource']['study']['reference'] in
+                           ['ResearchStudy/ppm-{}'.format(study.value) for study in PPM.Project])
 
-                if not date_registered:
-                    # Convert the date
-                    participant['date_registered'] = FHIR._format_date(p2m2_participant['date_registered'], '%m/%d/%Y')
+            # Check for accepted and a start date
+            participant['project'] = FHIR.get_study_from_research_subject(subject)
+            participant['date_registered'] = FHIR._format_date(subject['period']['start'], '%m/%d/%Y')
 
         except Exception as e:
             logger.exception('FHIR error: {}'.format(e), exc_info=True,
-                             extra={'ppm_id': fhir_id, 'email': email})
-            return None
+                             extra={'ppm_id': ppm_id, 'email': email})
+            return {}
 
         try:
             # Get the Flag resource
@@ -1013,7 +1507,7 @@ class FHIR:
 
         except Exception as e:
             logger.exception('FHIR enrollment flag error: {}'.format(e), exc_info=True,
-                             extra={'ppm_id': fhir_id, 'email': email})
+                             extra={'ppm_id': ppm_id, 'email': email})
 
         try:
             participant['composition'] = FHIR.flatten_consent_composition(patient_bundle)
@@ -1264,6 +1758,8 @@ class FHIR:
         # Get email and FHIR ID
         patient["email"] = FHIR._get_or(resource, ['identifier', 0, 'value'])
         patient["fhir_id"] = resource['id']
+        patient["ppm_id"] = resource['id']
+
         if not patient['email']:
             logger.error('Patient email could not be found: {}'.format(resource['id']))
             return {}
@@ -1295,6 +1791,21 @@ class FHIR:
                                                     if 'uses-twitter' in extension.get('url')), True)
 
         return patient
+
+    @staticmethod
+    def flatten_research_subject(resource):
+
+        # Get the resource.
+        record = dict()
+
+        # Try and get the values
+        record['start'] = FHIR._get_or(resource, ['period', 'start'])
+        record['end'] = FHIR._get_or(resource, ['period', 'end'])
+
+        # Get the study ID
+        record['study'] = FHIR.get_study_from_research_subject(resource)
+
+        return record
 
     @staticmethod
     def flatten_enrollment_flag(resource):
@@ -1585,11 +2096,10 @@ class FHIR:
 
         return reference
 
-
     class Resources:
 
         @staticmethod
-        def enrollment_flag(patient_id, status='proposed', start=None, end=None):
+        def enrollment_flag(patient_ref, status='proposed', start=None, end=None):
 
             data = {
                 'resourceType': 'Flag',
@@ -1611,7 +2121,7 @@ class FHIR:
                     'text': status.title(),
                 },
                 "subject": {
-                    "reference": patient_id
+                    "reference": patient_ref
                 }
             }
 
@@ -1624,3 +2134,112 @@ class FHIR:
                     data['period']['end'] = end.isoformat()
 
             return data
+
+        @staticmethod
+        def research_study(project, title):
+
+            data = {
+                'resourceType': 'ResearchStudy',
+                'id': project,
+                'identifier': [{
+                    'system': FHIR.research_study_identifier_system,
+                    'value': project
+                }],
+                'status': 'in-progress',
+                'title': title,
+            }
+
+            # Hard code dates
+            if 'neer' in project:
+                data['period'] = {'start': '2018-05-01T00:00:00Z'}
+
+            elif 'autism' in project:
+                data['period'] = {'start': '2017-07-01T00:00:00Z'}
+
+            return data
+
+        @staticmethod
+        def research_subject(project, patient_ref, status='candidate', consent=None):
+
+            data = {
+                'resourceType': 'ResearchSubject',
+                'identifier': {
+                    'system': FHIR.research_subject_identifier_system,
+                    'value': 'ppm-{}'.format(project)
+                },
+                'period': {'start': datetime.now().isoformat()},
+                'status': status,
+                'study': {'reference': 'ResearchStudy/ppm-{}'.format(project)},
+                'individual': {'reference': patient_ref},
+            }
+
+            # Hard code dates
+            if consent:
+                data['consent'] = {'reference': 'Consent/{}'.format(consent)}
+
+            return data
+
+        @staticmethod
+        def patient(form):
+
+            # Build a FHIR-structured Patient resource.
+            patient_data = {
+                'resourceType': 'Patient',
+                'active': True,
+                'identifier': [
+                    {
+                        'system': 'http://schema.org/email',
+                        'value': form.get('email'),
+                    },
+                ],
+                'name': [
+                    {
+                        'use': 'official',
+                        'family': form.get('lastname'),
+                        'given': [form.get('firstname')],
+                    },
+                ],
+                'address': [
+                    {
+                        'line': [
+                            form.get('street_address1'),
+                            form.get('street_address2'),
+                        ],
+                        'city': form.get('city'),
+                        'postalCode': form.get('zip'),
+                        'state': form.get('state'),
+                    }
+                ],
+                'telecom': [
+                    {
+                        'system': 'phone',
+                        'value': form.get('phone'),
+                    },
+                ],
+            }
+
+            if form.get('contact_email'):
+                logger.debug('Adding contact email')
+                patient_data['telecom'].append({
+                    'system': 'email',
+                    'value': form.get('contact_email'),
+                })
+
+            if form.get('how_did_you_hear_about_us'):
+                logger.debug('Adding "How did you hear about is"')
+                patient_data['extension'] = [
+                    {
+                        "url": "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/how-did-you-hear-about-us",
+                        "valueString": form.get('how_did_you_hear_about_us')
+                    }
+                ]
+
+            # Convert the twitter handle to a URL
+            if form.get('twitter_handle'):
+                logger.debug('Adding Twitter handle')
+                patient_data['telecom'].append({
+                    'system': 'other',
+                    'value': 'https://twitter.com/' + form['twitter_handle'],
+                })
+
+            return patient_data
