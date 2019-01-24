@@ -771,6 +771,73 @@ class FHIR:
         return None
 
     @staticmethod
+    def query_ppm_research_subjects(email, flatten_return=False):
+
+        # Build the FHIR Consent URL.
+        url = furl(PPM.fhir_url())
+        url.path.segments.append('ResearchSubject')
+
+        # Get flags for current user
+        query = {
+            'patient:individual.identifier': 'http://schema.org/email|' + email,
+            'identifier': '{}|'.format(FHIR.research_subject_identifier_system),
+        }
+
+        # Make the call
+        content = None
+        try:
+            # Make the FHIR request.
+            response = requests.get(url.url, params=query)
+            content = response.content
+
+            if flatten_return:
+                return [FHIR.flatten_research_subject(resource['resource']) for
+                        resource in response.json().get('entry', [])]
+            else:
+                return response.json().get('entry', [])
+
+        except requests.HTTPError as e:
+            logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
+
+        except KeyError as e:
+            logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={'response': content})
+
+        return None
+
+    @staticmethod
+    def query_research_subjects(email, flatten_return=False):
+
+        # Build the FHIR Consent URL.
+        url = furl(PPM.fhir_url())
+        url.path.segments.append('ResearchSubject')
+
+        # Get flags for current user
+        query = {
+            'patient:individual.identifier': 'http://schema.org/email|' + email
+        }
+
+        # Make the call
+        content = None
+        try:
+            # Make the FHIR request.
+            response = requests.get(url.url, params=query)
+            content = response.content
+
+            if flatten_return:
+                return [FHIR.flatten_research_subject(resource['resource'])
+                        for resource in response.json().get('entry', [])]
+            else:
+                return response.json().get('entry', [])
+
+        except requests.HTTPError as e:
+            logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
+
+        except KeyError as e:
+            logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={'response': content})
+
+        return None
+
+    @staticmethod
     def query_enrollment_flag(email, flatten_return=False):
 
         # Build the FHIR Consent URL.
