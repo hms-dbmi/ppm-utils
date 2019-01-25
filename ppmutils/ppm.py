@@ -33,13 +33,17 @@ class PPM:
         :param email: The user's email address
         :return: bool
         '''
-        if hasattr(settings, 'TEST_EMAIL_PATTERNS'):
+        if hasattr(settings, 'TEST_EMAIL_PATTERNS') and type(getattr(settings, 'TEST_EMAIL_PATTERNS')) is str:
             testers = settings.TEST_EMAIL_PATTERNS.split(',')
+        elif hasattr(settings, 'TEST_EMAIL_PATTERNS') and type(getattr(settings, 'TEST_EMAIL_PATTERNS')) is list:
+            testers = settings.TEST_EMAIL_PATTERNS
         else:
-            testers = ['(b32147|bryan.n.larson)\+[a-zA-Z0-9_.+-]*@gmail.com',
-                       'b32147@gmail.com',
-                       'bryan.n.larson@gmail.com',
-                       'bryan_larson@hms.harvard.edu']
+            testers = [
+                '(b32147|bryan.n.larson)\+[a-zA-Z0-9_.+-]*@gmail.com',
+                'b32147@gmail.com',
+                'bryan.n.larson@gmail.com',
+                'bryan_larson@hms.harvard.edu'
+            ]
 
         # Iterate through all patterns
         for pattern in testers:
@@ -91,19 +95,19 @@ class PPM:
 
         @staticmethod
         def questionnaire_for_project(project):
-            if project == PPM.Project.ASD:
-                return PPM.Questionnaire.ASDQuestionnaire
+            if project == PPM.Project.ASD or project == PPM.Project.ASD.value:
+                return PPM.Questionnaire.ASDQuestionnaire.value
 
-            elif project == PPM.Project.NEER:
-                return PPM.Questionnaire.NEERQuestionnaire
+            elif project == PPM.Project.NEER or project == PPM.Project.NEER.value:
+                return PPM.Questionnaire.NEERQuestionnaire.value
 
         @staticmethod
         def questionnaire_for_consent(composition):
             if composition.get('type', '').lower() == 'guardian':
-                return PPM.Questionnaire.ASDGuardianConsentQuestionnaire
+                return PPM.Questionnaire.ASDGuardianConsentQuestionnaire.value
 
             else:
-                return PPM.Questionnaire.ASDIndividualConsentQuestionnaire
+                return PPM.Questionnaire.ASDIndividualConsentQuestionnaire.value
 
     class Provider(Enum):
         Fitbit = 'fitbit'
