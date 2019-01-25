@@ -1096,7 +1096,7 @@ class FHIR:
         return None
 
     @staticmethod
-    def query_ppm_research_subjects(email, flatten_return=False):
+    def query_ppm_research_subjects(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
         url = furl(PPM.fhir_url())
@@ -1104,9 +1104,11 @@ class FHIR:
 
         # Get flags for current user
         query = {
-            'patient:individual.identifier': 'http://schema.org/email|' + email,
             'identifier': '{}|'.format(FHIR.research_subject_identifier_system),
         }
+
+        # Update for the patient query
+        query.update(FHIR._patient_resource_query(patient))
 
         # Make the call
         content = None
@@ -1119,7 +1121,7 @@ class FHIR:
                 return [FHIR.flatten_research_subject(resource['resource']) for
                         resource in response.json().get('entry', [])]
             else:
-                return response.json().get('entry', [])
+                return [entry['resource'] for entry in response.json().get('entry', [])]
 
         except requests.HTTPError as e:
             logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
@@ -1130,16 +1132,14 @@ class FHIR:
         return None
 
     @staticmethod
-    def query_research_subjects(email, flatten_return=False):
+    def query_research_subjects(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
         url = furl(PPM.fhir_url())
         url.path.segments.append('ResearchSubject')
 
         # Get flags for current user
-        query = {
-            'patient:individual.identifier': 'http://schema.org/email|' + email
-        }
+        query = FHIR._patient_resource_query(patient)
 
         # Make the call
         content = None
@@ -1149,12 +1149,12 @@ class FHIR:
             content = response.content
 
             # Filter out PPM subjects
-            research_subjects = [entry for entry in response.json().get('entry', [])
+            research_subjects = [entry['resource'] for entry in response.json().get('entry', [])
                                  if entry['resource'].get('study', {}).get('reference', None) not in
                                     ['ResearchStudy/ppm-{}'.format(study.value) for study in PPM.Project]]
 
             if flatten_return:
-                return [FHIR.flatten_research_subject(resource['resource'])
+                return [FHIR.flatten_research_subject(resource)
                         for resource in research_subjects]
             else:
                 return research_subjects
@@ -1168,16 +1168,14 @@ class FHIR:
         return None
 
     @staticmethod
-    def query_enrollment_flag(email, flatten_return=False):
+    def query_enrollment_flag(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
         url = furl(PPM.fhir_url())
         url.path.segments.append('Flag')
 
         # Get flags for current user
-        query = {
-            'subject:Patient.identifier': 'http://schema.org/email|' + email
-        }
+        query = FHIR._patient_resource_query(patient, 'subject')
 
         # Make the call
         content = None
@@ -1284,7 +1282,7 @@ class FHIR:
             return None
 
         # Get study IDs
-        research_study_ids = [subject['resource']['study']['reference'].split('/')[1] for subject in research_subjects]
+        research_study_ids = [subject['study']['reference'].split('/')[1] for subject in research_subjects]
 
         # Make the query
         research_study_url = furl(PPM.fhir_url())
@@ -1299,9 +1297,9 @@ class FHIR:
 
         # Return the titles
         if flatten_return:
-            return [research_study['resource']['title'] for research_study in research_studies]
+            return [research_study['title'] for research_study in research_studies]
         else:
-            return [research_study['resource'] for research_study in research_studies]
+            return [research_study for research_study in research_studies]
 
     @staticmethod
     def query_research_studies(email, flatten_return=True):
@@ -1314,7 +1312,7 @@ class FHIR:
             return None
 
         # Get study IDs
-        research_study_ids = [subject['resource']['study']['reference'].split('/')[1] for subject in research_subjects]
+        research_study_ids = [subject['study']['reference'].split('/')[1] for subject in research_subjects]
 
         # Make the query
         research_study_url = furl(PPM.fhir_url())
@@ -1329,9 +1327,9 @@ class FHIR:
 
         # Return the titles
         if flatten_return:
-            return [research_study['resource']['title'] for research_study in research_studies]
+            return [research_study['title'] for research_study in research_studies]
         else:
-            return [research_study['resource'] for research_study in research_studies]
+            return [research_study for research_study in research_studies]
 
     @staticmethod
     def get_point_of_care_list(patient, flatten_return=False):
@@ -1747,6 +1745,23 @@ class FHIR:
         FHIR._delete_resource('Patient', patient_id)
 
     @staticmethod
+    def delete_research_subjects(patient_id):
+        """
+        Deletes the patient's points of care list
+        :param patient_id: The identifier of the patient
+        :return: bool
+        """
+        # Find it
+        research_subjects = FHIR.query_research_subjects(patient_id, flatten_return=False)
+        for research_subject in research_subjects:
+
+            # Attempt to delete the patient and all related resources.
+            FHIR._delete_resource('ResearchSubject', research_subject['id'])
+
+        else:
+            logger.warning('Cannot delete')
+
+    @staticmethod
     def delete_point_of_care_list(patient_id):
         """
         Deletes the patient's points of care list
@@ -1946,9 +1961,9 @@ class FHIR:
 
         if flatten_result:
             # Return the titles
-            return [FHIR.flatten_research_subject(resource['resource']) for resource in research_subjects]
+            return [FHIR.flatten_research_subject(resource) for resource in research_subjects]
         else:
-            return [resource['resource'] for resource in research_subjects]
+            return [resource for resource in research_subjects]
 
     @staticmethod
     def get_research_subjects(bundle, flatten_result=True):
@@ -1961,9 +1976,9 @@ class FHIR:
 
         if flatten_result:
             # Return the titles
-            return [FHIR.flatten_research_subject(resource['resource']) for resource in research_subjects]
+            return [FHIR.flatten_research_subject(resource) for resource in research_subjects]
         else:
-            return [resource['resource'] for resource in research_subjects]
+            return [resource for resource in research_subjects]
 
     #
     # OUTPUT
@@ -1996,20 +2011,20 @@ class FHIR:
         names = []
 
         # Check official names
-        for name in [name for name in patient.name if name.use == 'official']:
-            if name.given:
-                names.extend(name.given)
+        for name in [name for name in patient['name'] if name.get('use') == 'official']:
+            if name.get('given'):
+                names.extend(name['given'])
 
             # Add family if full name
-            if name.family and (full or not names):
-                names.append(name.family)
+            if name.get('family') and (full or not names):
+                names.append(name['family'])
 
         if not names:
             logger.error('Could not find name for {}'.format(patient.id))
 
             # Default to their email address
-            email = next((identifier.value for identifier in patient.identifier if
-                          identifier.system == 'http://schema.org/email'), None)
+            email = next((identifier['value'] for identifier in patient['identifier'] if
+                          identifier.get('system') == 'http://schema.org/email'), None)
 
             if email:
                 names.append(email)
