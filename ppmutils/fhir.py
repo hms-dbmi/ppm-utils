@@ -994,10 +994,13 @@ class FHIR:
             response = requests.get(url.url, params=query)
             content = response.content
 
+            # Ensure we have a resource
+            bundle = response.json()
+
             if flatten_return:
-                return FHIR.flatten_patient(response.json())
+                return FHIR.flatten_patient(bundle)
             else:
-                return response.json()
+                return [entry['resource'] for entry in bundle.get('entry', [])]
 
         except requests.HTTPError as e:
             logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
@@ -2333,8 +2336,13 @@ class FHIR:
     def flatten_patient(bundle_dict):
 
         # Get the patient
-        resource = next(resource['resource'] for resource in bundle_dict['entry']
-                        if resource['resource']['resourceType'] == 'Patient')
+        resource = next(entry['resource'] for entry in bundle_dict.get('entry', [])
+                        if entry['resource']['resourceType'] == 'Patient')
+
+        # Check for a resource
+        if not resource:
+            logger.warning('Cannot flatten patient, one did not exist in bundle')
+            return None
 
         # Collect properties
         patient = dict()
