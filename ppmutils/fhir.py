@@ -1668,6 +1668,11 @@ class FHIR:
         response = requests.get(organization_url.url)
         response.raise_for_status()
 
+        # Start a bundle request
+        bundle = Bundle()
+        bundle.entry = []
+        bundle.type = 'transaction'
+
         results = response.json()
         if results['total'] >= 1:
             logger.debug('Found existing organization!')
@@ -1683,6 +1688,9 @@ class FHIR:
             organization = Organization()
             organization.name = point_of_care
 
+            # Create placeholder ID
+            organization_id = uuid.uuid1().urn
+
             # Add Organization objects to bundle.
             organization_request = BundleEntryRequest()
             organization_request.method = "POST"
@@ -1691,30 +1699,29 @@ class FHIR:
             # Create the organization entry
             organization_entry = BundleEntry({'resource': organization.as_json()})
             organization_entry.request = organization_request
+            organization_entry.fullUrl = organization_id
 
-            # Validate it.
-            bundle = Bundle()
-            bundle.entry = [organization_entry]
-            bundle.type = 'transaction'
-
-            # Create the organization
-            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
-            response.raise_for_status()
-
-            organization_location = response.json()['entry'][0]['response']['location']
-            parts = organization_location.split('/')
-            organization_id = '{}/{}'.format(parts[0], parts[1])
+            # Add it
+            bundle.entry.append(organization_entry)
 
         # Add it to the list
         point_of_care_list = FHIR.get_point_of_care_list(patient, flatten_return=False)
         point_of_care_list['entry'].append({'item': {'reference': organization_id}})
 
-        # Patch it
-        url = furl(PPM.fhir_url())
-        url.path.add('List')
-        url.path.add(point_of_care_list['id'])
+        # Add List objects to bundle.
+        list_request = BundleEntryRequest()
+        list_request.method = "PUT"
+        list_request.url = "List/{}".format(point_of_care_list['id'])
 
-        response = requests.put(url, data=json.dumps(point_of_care_list))
+        # Create the organization entry
+        list_entry = BundleEntry({'resource': point_of_care_list})
+        list_entry.request = list_request
+
+        # Add it
+        bundle.entry.append(list_entry)
+
+        # Post the transaction
+        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
         response.raise_for_status()
 
         # Return the flattened list with the new organization
