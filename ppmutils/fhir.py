@@ -857,7 +857,7 @@ class FHIR:
 
         # Build the query
         query = {
-            'active': active,
+            'active': 'false' if not active else 'true',
             '_revinclude': ['ResearchSubject:individual', 'Flag:subject']
         }
 
@@ -1066,7 +1066,7 @@ class FHIR:
             if flatten_return:
                 return FHIR.flatten_patient(response.json())
             else:
-                return next(entry['resource'] for entry in response.json().get('entry', []))
+                return next((entry['resource'] for entry in response.json().get('entry', [])), None)
 
         except requests.HTTPError as e:
             logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
@@ -1223,7 +1223,7 @@ class FHIR:
             if flatten_return:
                 return FHIR.flatten_questionnaire_response(response.json(), questionnaire_id)
             else:
-                return next(entry['resource'] for entry in response.json().get('entry', []))
+                return next((entry['resource'] for entry in response.json().get('entry', [])), None)
 
         except requests.HTTPError as e:
             logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
@@ -2336,8 +2336,8 @@ class FHIR:
     def flatten_patient(bundle_dict):
 
         # Get the patient
-        resource = next(entry['resource'] for entry in bundle_dict.get('entry', [])
-                        if entry['resource']['resourceType'] == 'Patient')
+        resource = next((entry['resource'] for entry in bundle_dict.get('entry', [])
+                        if entry['resource']['resourceType'] == 'Patient'), None)
 
         # Check for a resource
         if not resource:
