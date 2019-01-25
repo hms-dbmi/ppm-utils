@@ -1041,7 +1041,7 @@ class FHIR:
         return None
 
     @staticmethod
-    def get_patient(email=None, fhir_id=None, flatten_return=False):
+    def get_patient(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
         url = furl(PPM.fhir_url())
@@ -1049,13 +1049,9 @@ class FHIR:
         url.query.params.add('_include', '*')
         url.query.params.add('_revinclude', '*')
 
-        # Check search type
-        if email:
-            url.query.params.add('identifier', 'http://schema.org/email|{}'.format(email))
-        elif fhir_id:
-            url.query.params.add('_id', fhir_id)
-        else:
-            raise ValueError('Either FHIR ID or email are required')
+        # Add query for patient
+        for key, value in FHIR._patient_query(patient).items():
+            url.query.params.add(key, value)
 
         # Make the call
         content = None
@@ -1067,7 +1063,7 @@ class FHIR:
             if flatten_return:
                 return FHIR.flatten_patient(response.json())
             else:
-                return next(response.json().get('entry', []))
+                return next(entry['resource'] for entry in response.json().get('entry', []))
 
         except requests.HTTPError as e:
             logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
