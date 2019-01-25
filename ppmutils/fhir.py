@@ -42,6 +42,9 @@ class FHIR:
     research_subject_identifier_system = 'https://peoplepoweredmedicine.org/fhir/subject'
     research_subject_coding_system = 'https://peoplepoweredmedicine.org/subject'
 
+    SNOMED_LOCATION_CODE = "SNOMED:43741000"
+    SNOMED_VERSION_URI = "http://snomed.info/sct/900000000000207008"
+
     #
     # META
     #
@@ -349,7 +352,47 @@ class FHIR:
             return '--/--/----'
 
     @staticmethod
-    def _patient_query(identifier, key='patient'):
+    def _patient_query(identifier):
+        """
+        Accepts an identifier and builds the query for resources related to that Patient. Identifier can be
+        a FHIR ID, an email address, or a Patient object. Optionally specify the parameter key to be used, defaults
+        to 'patient'.
+        :param identifier: object
+        :param key: str
+        :return: dict
+        """
+        # Check types
+        if type(identifier) is str and re.match(r"^\d+$", identifier):
+
+            # Likely a FHIR ID
+            return {'_id': identifier}
+
+        # Check for an email address
+        elif type(identifier) is str and re.match(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)", identifier):
+
+            # An email address
+            return {'identifier': '{}|{}'.format(FHIR.EMAIL_IDENTIFIER_SYSTEM, identifier)}
+
+        # Check for a resource
+        elif type(identifier) is dict and identifier.get('resourceType') == 'Patient':
+
+            return {'_id': identifier['id']}
+
+        # Check for a bundle entry
+        elif type(identifier) is dict and identifier.get('resource', {}).get('resourceType') == 'Patient':
+
+            return {'_id': identifier['resource']['id']}
+
+        # Check for a Patient object
+        elif type(identifier) is Patient:
+
+            return {'_id': identifier.id}
+
+        else:
+            raise ValueError('Unhandled instance of a Patient identifier: {}'.format(identifier))
+
+    @staticmethod
+    def _patient_resource_query(identifier, key='patient'):
         """
         Accepts an identifier and builds the query for resources related to that Patient. Identifier can be
         a FHIR ID, an email address, or a Patient object. Optionally specify the parameter key to be used, defaults
@@ -368,7 +411,7 @@ class FHIR:
         elif type(identifier) is str and re.match(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)", identifier):
 
             # An email address
-            return {key: '{}|{}'.format(FHIR.EMAIL_IDENTIFIER_SYSTEM, identifier)}
+            return {'{}:patient.identifier'.format(key): '{}|{}'.format(FHIR.EMAIL_IDENTIFIER_SYSTEM, identifier)}
 
         # Check for a resource
         elif type(identifier) is dict and identifier.get('resourceType') == 'Patient':
@@ -808,8 +851,8 @@ class FHIR:
 
         return response.json()
 
-    @classmethod
-    def query_patients(cls, study=None, enrollment=None, active=True, testing=False):
+    @staticmethod
+    def query_patients(study=None, enrollment=None, active=True, testing=False):
         logger.debug('Getting patients - enrollment: {}, study: {}'.format(enrollment, study))
 
         # Build the query
@@ -902,14 +945,17 @@ class FHIR:
         return patients
 
     @staticmethod
-    def query_participant(email, flatten_return=False):
+    def query_participant(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
         url = furl(PPM.fhir_url())
         url.path.segments.append('Patient')
-        url.query.params.add('identifier', 'http://schema.org/email|' + email)
         url.query.params.add('_include', '*')
         url.query.params.add('_revinclude', '*')
+
+        # Add patient query
+        for key, value in FHIR._patient_query(patient).items():
+            url.query.params.add(key, value)
 
         # Make the call
         content = None
@@ -932,16 +978,14 @@ class FHIR:
         return None
 
     @staticmethod
-    def query_patient(email, flatten_return=False):
+    def query_patient(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
         url = furl(PPM.fhir_url())
         url.path.segments.append('Patient')
 
         # Get flags for current user
-        query = {
-            'identifier': 'http://schema.org/email|' + email
-        }
+        query = FHIR._patient_query(patient)
 
         # Make the call
         content = None
@@ -964,14 +1008,17 @@ class FHIR:
         return None
 
     @staticmethod
-    def get_participant(patient_id, flatten_return=False):
+    def get_participant(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
         url = furl(PPM.fhir_url())
         url.path.segments.append('Patient')
-        url.query.params.add('_id', patient_id)
         url.query.params.add('_include', '*')
         url.query.params.add('_revinclude', '*')
+
+        # Add patient query
+        for key, value in FHIR._patient_query(patient).items():
+            url.query.params.add(key, value)
 
         # Make the call
         content = None
@@ -983,7 +1030,7 @@ class FHIR:
             if flatten_return:
                 return FHIR.flatten_participant(response.json())
             else:
-                return response.json()
+                return next(response.json().get('entry', []))
 
         except requests.HTTPError as e:
             logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
@@ -994,14 +1041,21 @@ class FHIR:
         return None
 
     @staticmethod
-    def get_patient(patient_id, flatten_return=False):
+    def get_patient(email=None, fhir_id=None, flatten_return=False):
 
         # Build the FHIR Consent URL.
         url = furl(PPM.fhir_url())
         url.path.segments.append('Patient')
-        url.query.params.add('_id', patient_id)
         url.query.params.add('_include', '*')
         url.query.params.add('_revinclude', '*')
+
+        # Check search type
+        if email:
+            url.query.params.add('identifier', 'http://schema.org/email|{}'.format(email))
+        elif fhir_id:
+            url.query.params.add('_id', fhir_id)
+        else:
+            raise ValueError('Either FHIR ID or email are required')
 
         # Make the call
         content = None
@@ -1013,7 +1067,7 @@ class FHIR:
             if flatten_return:
                 return FHIR.flatten_patient(response.json())
             else:
-                return response.json()
+                return next(response.json().get('entry', []))
 
         except requests.HTTPError as e:
             logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
@@ -1150,13 +1204,15 @@ class FHIR:
         return None
 
     @staticmethod
-    def query_questionnaire_response(patient_id, questionnaire_id, flatten_return=False):
+    def get_questionnaire_response(patient, questionnaire_id, flatten_return=False):
 
         # Build the FHIR Consent URL.
         url = furl(PPM.fhir_url())
         url.path.segments.append('QuestionnaireResponse')
-        url.query.params.add('source', 'Patient/{}'.format(patient_id))
         url.query.params.add('questionnaire', 'Questionnaire/{}'.format(questionnaire_id))
+
+        for key, value in FHIR._patient_resource_query(patient, 'source').items():
+            url.query.params.add(key, value)
 
         # Make the call
         content = None
@@ -1165,10 +1221,12 @@ class FHIR:
             response = requests.get(url.url)
             content = response.content
 
+            logger.debug(content)
+
             if flatten_return:
                 return FHIR.flatten_questionnaire_response(response.json(), questionnaire_id)
             else:
-                return response.json()
+                return next(entry['resource'] for entry in response.json().get('entry', []))
 
         except requests.HTTPError as e:
             logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
@@ -1186,7 +1244,7 @@ class FHIR:
         :rtype: list
         """
         # Build the query
-        _query = FHIR._patient_query(patient)
+        _query = FHIR._patient_resource_query(patient)
         _query.update(query)
 
         return FHIR._query_resources('DocumentReference', query=_query)
@@ -1278,6 +1336,28 @@ class FHIR:
             return [research_study['resource']['title'] for research_study in research_studies]
         else:
             return [research_study['resource'] for research_study in research_studies]
+
+    @staticmethod
+    def get_point_of_care_list(patient, flatten_return=False):
+        """
+        Query the list object which has a patient and a snomed code. If it exists we'll need the URL to update the object later.
+        """
+        # Build the query for their point of care list
+        query = {
+            'code': FHIR.SNOMED_VERSION_URI + "|" + FHIR.SNOMED_LOCATION_CODE,
+            '_include': "List:item"
+        }
+
+        # Add patient query
+        query.update(FHIR._patient_resource_query(patient))
+
+        # Find matching resource(s)
+        lists = FHIR._query_resources('List', query=query)
+
+        if flatten_return:
+            return FHIR.flatten_list(lists, 'Organization')
+        else:
+            return next(entry['resource'] for entry in lists)
 
     #
     # UPDATE
@@ -1671,6 +1751,23 @@ class FHIR:
         FHIR._delete_resource('Patient', patient_id)
 
     @staticmethod
+    def delete_point_of_care_list(patient_id):
+        """
+        Deletes the patient's points of care list
+        :param patient_id: The identifier of the patient
+        :return: bool
+        """
+        # Find it
+        point_of_care_list = FHIR.get_point_of_care_list(patient_id, flatten_return=False)
+        if point_of_care_list:
+
+            # Attempt to delete the patient and all related resources.
+            FHIR._delete_resource('List', point_of_care_list['id'])
+
+        else:
+            logger.warning('Cannot delete')
+
+    @staticmethod
     def delete_questionnaire_response(patient_id, project):
         logger.debug('Deleting questionnaire response: Patient/{} - {}'.format(patient_id, project))
 
@@ -1678,7 +1775,7 @@ class FHIR:
         questionnaire_id = FHIR.questionnaire_id(project)
 
         # Find it
-        questionnaire_response = FHIR.query_questionnaire_response(patient_id, questionnaire_id)
+        questionnaire_response = FHIR.get_questionnaire_response(patient_id, questionnaire_id)
         if questionnaire_response:
 
             # Delete it
