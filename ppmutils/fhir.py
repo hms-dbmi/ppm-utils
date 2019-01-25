@@ -16,10 +16,13 @@ from fhirclient.models.patient import Patient
 from fhirclient.models.flag import Flag
 from django.utils.safestring import mark_safe
 from fhirclient.models.bundle import Bundle, BundleEntry, BundleEntryRequest
-from fhirclient.models.list import List
+from fhirclient.models.list import List, ListEntry
+from fhirclient.models.organization import Organization
 from fhirclient.models.researchstudy import ResearchStudy
 from fhirclient.models.researchsubject import ResearchSubject
 from fhirclient.models.fhirreference import FHIRReference
+from fhirclient.models.codeableconcept import CodeableConcept
+from fhirclient.models.coding import Coding
 
 from ppmutils.ppm import PPM
 from ppmutils.p2m2 import P2M2
@@ -707,6 +710,100 @@ class FHIR:
             })
 
         return None
+
+    @staticmethod
+    def create_point_of_care_list(patient_id, point_of_care_list):
+        """
+        Replace current point of care list with submitted list.
+        """
+
+        # This is a FHIR resources that allows references between resources.
+        # Create one for referencing patients.
+        patient_reference = FHIRReference()
+        patient_reference.reference = "Patient/" + patient_id
+
+        # The list will hold Organization resources representing where patients have received care.
+        data_list = List()
+
+        data_list.subject = patient_reference
+        data_list.status = "current"
+        data_list.mode = "working"
+
+        # We use the SNOMED code for location to define the context of items added to the list.
+        coding = Coding()
+        coding.system = FHIR.SNOMED_VERSION_URI
+        coding.code = FHIR.SNOMED_LOCATION_CODE
+
+        codeable = CodeableConcept()
+        codeable.coding = [coding]
+
+        # Add it
+        data_list.code = codeable
+
+        # Start building the bundle. Bundles are used to submit multiple related resources.
+        bundle_entries = []
+
+        # Add Organization objects to bundle.
+        list_entries = []
+        for point_of_care in point_of_care_list:
+
+            # Create the organization
+            organization = Organization()
+            organization.name = point_of_care
+            organization_id = uuid.uuid1().urn
+
+            bundle_item_org_request = BundleEntryRequest()
+            bundle_item_org_request.method = "POST"
+            bundle_item_org_request.url = "Organization"
+
+            # Don't recreate Organizations if we can find them by the exact name. No fuzzy matching.
+            bundle_item_org_request.ifNoneExist = str(Query({'name:exact': organization.name}))
+
+            bundle_item_org = BundleEntry()
+            bundle_item_org.resource = organization
+            bundle_item_org.fullUrl = organization_id
+            bundle_item_org.request = bundle_item_org_request
+
+            bundle_entries.append(bundle_item_org)
+
+            # Set the reference
+            reference = FHIRReference()
+            reference.reference = organization_id
+
+            # Add it
+            list_entry = ListEntry()
+            list_entry.item = reference
+            list_entries.append(list_entry)
+
+        # Set it on the list
+        data_list.entry = list_entries
+
+        bundle_item_list_request = BundleEntryRequest()
+        bundle_item_list_request.url = "List"
+        bundle_item_list_request.method = "POST"
+        bundle_item_list_request.ifNoneExist = str(
+            Query({
+                'patient:Patient.identifier': 'http://schema.org/email|' + email,
+                'code': FHIR.SNOMED_VERSION_URI + "|" + FHIR.SNOMED_LOCATION_CODE,
+                'status': 'current'
+            })
+        )
+
+        bundle_item_list = BundleEntry()
+        bundle_item_list.resource = data_list
+        bundle_item_list.request = bundle_item_list_request
+
+        bundle_entries.append(bundle_item_list)
+
+        # Create and send the full bundle.
+        full_bundle = Bundle()
+        full_bundle.entry = bundle_entries
+        full_bundle.type = "transaction"
+
+        response = requests.post(url=PPM.fhir_url(), json=full_bundle.as_json())
+
+        return response.ok
+
     #
     # READ
     #
@@ -733,11 +830,11 @@ class FHIR:
         url_builder.query.params.add('_count', 1000)
         if query is not None:
             for key, value in query.items():
-                if type(value) is str:
-                    url_builder.query.params.add(key, value)
-                elif type(value) is list:
+                if type(value) is list:
                     for _value in value:
                         url_builder.query.params.add(key, _value)
+                else:
+                    url_builder.query.params.add(key, value)
 
         # Prepare the final URL
         url = url_builder.url
@@ -791,11 +888,11 @@ class FHIR:
         url_builder.query.params.add('_count', 1000)
         if query is not None:
             for key, value in query.items():
-                if type(value) is str:
-                    url_builder.query.params.add(key, value)
-                elif type(value) is list:
+                if type(value) is list:
                     for _value in value:
                         url_builder.query.params.add(key, _value)
+                else:
+                    url_builder.query.params.add(key, value)
 
         # Prepare the final URL
         url = url_builder.url
@@ -1330,9 +1427,9 @@ class FHIR:
 
         # Return the titles
         if flatten_return:
-            return [research_study['title'] for research_study in research_studies]
+            return [research_study['resource']['title'] for research_study in research_studies]
         else:
-            return [research_study for research_study in research_studies]
+            return [research_study['resource'] for research_study in research_studies]
 
     @staticmethod
     def get_point_of_care_list(patient, flatten_return=False):
@@ -1349,12 +1446,12 @@ class FHIR:
         query.update(FHIR._patient_resource_query(patient))
 
         # Find matching resource(s)
-        lists = FHIR._query_resources('List', query=query)
+        bundle = FHIR._query_bundle('List', query=query)
 
         if flatten_return:
-            return FHIR.flatten_list(lists, 'Organization')
+            return FHIR.flatten_list(bundle, 'Organization')
         else:
-            return next(entry['resource'] for entry in lists)
+            return next((entry['resource'] for entry in bundle.as_json().get('entry', [])), None)
 
     #
     # UPDATE
@@ -1538,6 +1635,92 @@ class FHIR:
         except Exception as e:
             logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={'ppm_id': patient_id})
             raise
+
+    @staticmethod
+    def update_point_of_care_list(patient, point_of_care):
+        """
+        Adds a point of care to a Participant's existing list and returns the flattened
+        updated list of points of care (just a list with the name of the Organization).
+        Will return the existing list if the point of care is already in the list. Will
+        look for an existing Organization before creating.
+        :param patient: The participant's email address
+        :param point_of_care: The name of the point of care
+        :return: [str]
+        """
+        logger.debug("Add point of care: {}".format(point_of_care))
+
+        # Get the flattened list
+        points_of_care = FHIR.get_point_of_care_list(patient, flatten_return=True)
+
+        # Check if the name exists in the list already
+        for organization in points_of_care:
+            if organization == point_of_care:
+                logger.debug('Organization is already in List!')
+
+                # Just return the list as is
+                return points_of_care
+
+        # Look for it
+        organization_url = furl(PPM.fhir_url())
+        organization_url.path.add('Organization')
+        organization_url.query.params.add('name', point_of_care)
+
+        response = requests.get(organization_url.url)
+        response.raise_for_status()
+
+        results = response.json()
+        if results['total'] >= 1:
+            logger.debug('Found existing organization!')
+
+            # Get the ID
+            organization_id = 'Organization/{}'.format(results['entry'][0]['resource']['id'])
+            logger.debug('Existing organization: {}'.format(organization_id))
+
+        else:
+            logger.debug('No existing organization, creating...')
+
+            # Create the organization
+            organization = Organization()
+            organization.name = point_of_care
+
+            # Add Organization objects to bundle.
+            organization_request = BundleEntryRequest()
+            organization_request.method = "POST"
+            organization_request.url = "Organization"
+
+            # Create the organization entry
+            organization_entry = BundleEntry({'resource': organization.as_json()})
+            organization_entry.request = organization_request
+
+            # Validate it.
+            bundle = Bundle()
+            bundle.entry = [organization_entry]
+            bundle.type = 'transaction'
+
+            # Create the organization
+            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+            response.raise_for_status()
+
+            organization_location = response.json()['entry'][0]['response']['location']
+            parts = organization_location.split('/')
+            organization_id = '{}/{}'.format(parts[0], parts[1])
+
+        # Add it to the list
+        point_of_care_list = FHIR.get_point_of_care_list(patient, flatten_return=False)
+        point_of_care_list['entry'].append({'item': {'reference': organization_id}})
+
+        # Patch it
+        url = furl(PPM.fhir_url())
+        url.path.add('List')
+        url.path.add(point_of_care_list['id'])
+
+        response = requests.put(url, data=json.dumps(point_of_care_list))
+        response.raise_for_status()
+
+        # Return the flattened list with the new organization
+        points_of_care.append(point_of_care)
+
+        return points_of_care
 
     @staticmethod
     def update_twitter(email, handle=None):
@@ -2652,10 +2835,10 @@ class FHIR:
         if type(bundle) is dict:
             bundle = Bundle(bundle)
 
-        list = FHIR._get_list(bundle, resource_type)
+        resource = FHIR._get_list(bundle, resource_type)
 
         # Get the references
-        references = [entry.item.reference for entry in list.entry if entry.item.reference]
+        references = [entry.item.reference for entry in resource.entry if entry.item.reference]
 
         # Find it in the bundle
         resources = [entry.resource for entry in bundle.entry if '{}/{}'.format(resource_type, entry.resource.id)
@@ -2928,3 +3111,12 @@ class FHIR:
                 })
 
             return patient_data
+
+        @staticmethod
+        def coding(system, code):
+            """
+            Returns a coding resource
+            """
+            return {'coding':[
+                {'system': system, 'code': code}
+            ]}
