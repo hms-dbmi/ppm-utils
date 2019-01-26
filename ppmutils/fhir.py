@@ -783,7 +783,7 @@ class FHIR:
         bundle_item_list_request.method = "POST"
         bundle_item_list_request.ifNoneExist = str(
             Query({
-                'patient:Patient.identifier': 'http://schema.org/email|' + email,
+                'patient': patient_id,
                 'code': FHIR.SNOMED_VERSION_URI + "|" + FHIR.SNOMED_LOCATION_CODE,
                 'status': 'current'
             })
@@ -1164,6 +1164,40 @@ class FHIR:
                 return FHIR.flatten_patient(response.json())
             else:
                 return next((entry['resource'] for entry in response.json().get('entry', [])), None)
+
+        except requests.HTTPError as e:
+            logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
+
+        except KeyError as e:
+            logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={'response': content})
+
+        return None
+
+    @staticmethod
+    def get_composition(patient, flatten_return=False):
+
+        # Build the FHIR Consent URL.
+        url = furl(PPM.fhir_url())
+        url.path.segments.append('Composition')
+        url.query.params.add('_include', '*')
+        url.query.params.add('_revinclude', '*')
+
+        # Add query for patient
+        for key, value in FHIR._patient_query(patient).items():
+            url.query.params.add(key, value)
+
+        # Make the call
+        content = None
+        try:
+            # Make the FHIR request.
+            response = requests.get(url.url)
+            content = response.content
+            response.raise_for_status()
+
+            if flatten_return:
+                return FHIR.flatten_consent_composition(response.json())
+            else:
+                return response.json()
 
         except requests.HTTPError as e:
             logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
