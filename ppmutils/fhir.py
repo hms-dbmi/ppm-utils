@@ -1126,11 +1126,17 @@ class FHIR:
             # Make the FHIR request.
             response = requests.get(url.url)
             content = response.content
+            response.raise_for_status()
+
+            # Check for entries
+            bundle = response.json()
+            if not bundle.get('entry') or not FHIR._find_resources(bundle, 'Patient'):
+                return {}
 
             if flatten_return:
                 return FHIR.flatten_participant(response.json())
             else:
-                return next(response.json().get('entry', []))
+                return [entry['resource'] for entry in bundle.get('entry')]
 
         except requests.HTTPError as e:
             logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
@@ -2120,6 +2126,22 @@ class FHIR:
     #
 
     @staticmethod
+    def _find_resources(bundle, resource_type):
+        """
+        Extracts resources for the given type from the Bundle
+        :return: list
+        """
+        # Collect resources
+        resources = []
+
+        # Check entries
+        for entry in bundle.get('entry', []):
+            if entry.get('resource', {}).get('resourceType') == resource_type:
+                resources.append(entry['resource'])
+
+        return resources
+
+    @staticmethod
     def get_ppm_research_studies(bundle, flatten_result=True):
 
         # Find Research subjects (without identifiers, so as to exclude PPM resources)
@@ -2272,11 +2294,13 @@ class FHIR:
         email = None
 
         try:
-            # Get included resources
-            patient_entries = bundle['entry']
-
             # Flatten patient profile
             participant = FHIR.flatten_patient(bundle)
+            if not participant:
+                return {}
+
+            # Get included resources
+            patient_entries = bundle['entry']
 
             # Get props
             ppm_id = participant['fhir_id']
@@ -2565,19 +2589,20 @@ class FHIR:
 
         # Check for a resource
         if not resource:
-            logger.warning('Cannot flatten patient, one did not exist in bundle')
+            logger.debug('Cannot flatten Patient, one did not exist in bundle')
             return None
 
         # Collect properties
         patient = dict()
 
-        # Get email and FHIR ID
-        patient["email"] = FHIR._get_or(resource, ['identifier', 0, 'value'])
-        patient["fhir_id"] = resource['id']
-        patient["ppm_id"] = resource['id']
+        # Get FHIR IDs
+        patient["fhir_id"] = patient["ppm_id"] = resource['id']
 
-        if not patient['email']:
-            logger.error('Patient email could not be found: {}'.format(resource['id']))
+        # Parse out email
+        patient['email'] = next((identifier['value'] for identifier in resource.get('identifier', [])
+                                 if identifier.get('system') == FHIR.EMAIL_IDENTIFIER_SYSTEM))
+        if not patient.get('email'):
+            logger.error('Could not parse email from Patient/{}! This should not be possible'.format(resource['id']))
             return {}
 
         # Get the remaining optional properties

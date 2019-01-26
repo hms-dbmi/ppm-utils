@@ -52,23 +52,31 @@ class PPM:
 
         return False
 
-    class Project(Enum):
+    class Study(Enum):
         NEER = 'neer'
         ASD = 'autism'
 
         @staticmethod
-        def from_project(project):
-            if project.lower() == PPM.Project.NEER.value:
+        def from_value(study):
+            if study.lower() == PPM.Study.NEER.value:
                 return PPM.Project.NEER
-            elif project.lower() == PPM.Project.ASD.value or project.lower() == 'asd':
+            elif study.lower() == PPM.Study.ASD.value or study.lower() == 'asd':
                 return PPM.Project.ASD
 
         @staticmethod
-        def title(project):
-            if project == PPM.Project.NEER or project == PPM.Project.NEER.value:
+        def title(study):
+            if study == PPM.Study.NEER or study == PPM.Study.NEER.value:
                 return 'NEER'
-            elif project == PPM.Project.ASD or project == PPM.Project.ASD.value or project.lower() == 'asd':
+            elif study == PPM.Study.ASD or study == PPM.Study.ASD.value or study.lower() == 'asd':
                 return 'Autism'
+
+        CHOICES = (
+            (NEER, 'NEER'),
+            (ASD, 'Autism'),
+        )
+
+    # Alias Project as Study until we migrate all usages to Study
+    Project = Study
 
     # Set the appropriate participant statuses
     class Enrollment(Enum):
@@ -79,7 +87,7 @@ class PPM:
         Pending = 'pending'
         Ineligible = 'ineligible'
 
-        ENROLLMENTS = (
+        CHOICES = (
             (Registered, 'Registered'),
             (Consented, 'Consented'),
             (Proposed, 'Proposed'),
