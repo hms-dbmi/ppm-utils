@@ -1507,51 +1507,57 @@ class FHIR:
         content = None
         try:
             # Check form data and make updates where necessary
-            first_name = form.pop('firstname')
+            first_name = form.get('firstname')
             if first_name:
                 patient['name'][0]['given'][0] = first_name
 
-            last_name = form.pop('lastname')
+            last_name = form.get('lastname')
             if last_name:
                 patient['name'][0]['family'] = last_name
 
-            street_address1 = form.pop('street_address1')
+            street_address1 = form.get('street_address1')
             if street_address1:
                 patient['address'][0]['line'][0] = street_address1
 
-            street_address2 = form.pop('street_address2')
+            street_address2 = form.get('street_address2')
             if street_address2:
                 patient['address'][0]['line'][1] = street_address2
 
-            city = form.pop('city')
+            city = form.get('city')
             if city:
                 patient['address'][0]['city'] = city
 
-            state = form.pop('state')
+            state = form.get('state')
             if state:
                 patient['address'][0]['state'] = state
 
-            zip_code = form.pop('zip')
+            zip_code = form.get('zip')
             if zip_code:
                 patient['address'][0]['postalCode'] = zip_code
 
-            phone = form.pop('phone')
+            phone = form.get('phone')
             if phone:
                 for telecom in patient['telecom']:
                     if telecom['system'] == 'phone':
                         telecom['value'] = phone
+                        break
                 else:
                     # Add it
                     patient['telecom'].append({'system': 'phone', 'value': phone})
 
-            email = form.pop('contact_email')
+            email = form.get('contact_email')
             if email:
                 for telecom in patient['telecom']:
                     if telecom['system'] == 'email':
                         telecom['value'] = email
+                        break
                 else:
                     # Add it
                     patient['telecom'].append({'system': 'email', 'value': email})
+
+            active = form.get('active')
+            if active is not None:
+                patient['active'] = False if active in ['false', False] else True
 
             # Build the URL
             url = furl(PPM.fhir_url())
@@ -1571,6 +1577,40 @@ class FHIR:
 
         except Exception as e:
             logger.error('FHIR Error: {}'.format(e), exc_info=True, extra={'ppm_id': fhir_id})
+
+        return False
+
+    @staticmethod
+    def update_patient_active(patient_id, active):
+
+        # Make the updates
+        content = None
+        try:
+            # Build the update
+            patch = [{
+                'op': 'replace',
+                'path': '/active',
+                'value': True if active else False
+            }]
+
+            # Build the URL
+            url = furl(PPM.fhir_url())
+            url.path.segments.append('Patient')
+            url.path.segments.append(patient_id)
+
+            # Put it
+            response = requests.patch(url.url, json=patch, headers={'content-type': 'application/json-patch+json'})
+            content = response.content
+            response.raise_for_status()
+
+            return response.ok
+
+        except requests.HTTPError as e:
+            logger.error('FHIR Request Error: {}'.format(e), exc_info=True,
+                         extra={'ppm_id': patient_id, 'response': content})
+
+        except Exception as e:
+            logger.error('FHIR Error: {}'.format(e), exc_info=True, extra={'ppm_id': patient_id})
 
         return False
 
@@ -2354,8 +2394,9 @@ class FHIR:
                 # Sort it.
                 participant['consent_quiz'] = FHIR.flatten_questionnaire_response(bundle, quiz_id)
 
-                # Set the correct answers
-                participant['consent_quiz_answers'] = FHIR.questionnaire_answers(bundle, quiz_id)
+                # Set the correct answers if the user has a quiz
+                if participant.get('consent_quiz'):
+                    participant['consent_quiz_answers'] = FHIR.questionnaire_answers(bundle, quiz_id)
 
             except Exception:
                 participant['consent_quiz'] = None
@@ -2472,7 +2513,7 @@ class FHIR:
             answer = answers.get(linkId)
             if not answer:
                 answer = [mark_safe('<span class="label label-info">N/A</span>')]
-                logger.warning(f'FHIR Error: No answer found for {linkId}',
+                logger.debug(f'FHIR Questionnaire: No answer found for {linkId}',
                                extra={'questionnaire': questionnaire_id, 'link_id': linkId,
                                       'ppm_id': questionnaire_response.source})
 
@@ -2604,6 +2645,9 @@ class FHIR:
         if not patient.get('email'):
             logger.error('Could not parse email from Patient/{}! This should not be possible'.format(resource['id']))
             return {}
+
+        # Get status
+        patient['active'] = FHIR._get_or(resource, ['active'], '')
 
         # Get the remaining optional properties
         patient["firstname"] = FHIR._get_or(resource, ['name', 0, 'given', 0], '')
@@ -2852,7 +2896,7 @@ class FHIR:
                                             question_object['yes'] = item.text
                                             question_object['no'] = 'I was not able to explain this study to my child or ' \
                                                                     'individual in my care who will be participating'
-                                            question_object['answer'] = response.answer[0].valueString is 'yes'
+                                            question_object['answer'] = response.answer[0].valueString.lower() == 'yes'
 
                             # Add it.
                             questionnaire_object['questions'].append(question_object)
@@ -2982,7 +3026,7 @@ class FHIR:
 
         # Ensure resources exist
         if not questionnaire:
-            logger.error('Missing Questionnaire: {}'.format(questionnaire_id))
+            logger.debug('Missing Questionnaire: {}'.format(questionnaire_id))
             return []
 
         # Return the correct answers

@@ -86,6 +86,7 @@ class PPM:
         Accepted = 'accepted'
         Pending = 'pending'
         Ineligible = 'ineligible'
+        Terminated = 'terminated'
 
         CHOICES = (
             (Registered, 'Registered'),
@@ -93,6 +94,7 @@ class PPM:
             (Proposed, 'Proposed'),
             (Accepted, 'Accepted'),
             (Ineligible, 'Ineligible'),
+            (Terminated, 'Terminated'),
         )
 
     class Questionnaire(Enum):
