@@ -57,7 +57,34 @@ class PPM:
         ASD = 'autism'
 
         @staticmethod
+        def identifiers():
+            """
+            Return a list of all PPM study identifiers to be used in FHIR resources
+            :return: A list of PPM study identifiers
+            :rtype: list
+            """
+            return ['ppm-{}'.format(study.value) for study in PPM.Study]
+
+        @staticmethod
+        def is_ppm(identifier):
+            """
+            Returns whether a study identifier is a PPM one or not
+            :param identifier: The study identifier
+            :type identifier: str
+            :return: Whether it's a PPM study or not
+            :rtype: bool
+            """
+            return identifier.lower() in PPM.Study.identifiers()
+
+        @staticmethod
         def from_value(study):
+            """
+            Returns an instance of the Study enum for the given study value
+            :param study: The study value string
+            :type study: str
+            :return: The instance of PPM Study enum
+            :rtype: PPM.Study
+            """
             if study.lower() == PPM.Study.NEER.value:
                 return PPM.Project.NEER
             elif study.lower() == PPM.Study.ASD.value or study.lower() == 'asd':
@@ -65,9 +92,18 @@ class PPM:
 
         @staticmethod
         def title(study):
-            if study == PPM.Study.NEER or study == PPM.Study.NEER.value:
+            """
+            Returns the title to be used for the given study.
+            :param study: The study identifier or value
+            :type study: str
+            :return: The title for the study
+            :rtype: str
+            """
+            if study is PPM.Study.NEER or study.lower() in \
+                    [PPM.Study.NEER.value, f'ppm-{PPM.Study.NEER.value}']:
                 return 'NEER'
-            elif study == PPM.Study.ASD or study == PPM.Study.ASD.value or study.lower() == 'asd':
+            elif study is PPM.Study.ASD or study.lower() in \
+                    [PPM.Study.ASD.value, f'ppm-{PPM.Study.ASD.value}', 'asd']:
                 return 'Autism'
 
         CHOICES = (
@@ -94,7 +130,7 @@ class PPM:
             (Proposed, 'Proposed'),
             (Accepted, 'Accepted'),
             (Ineligible, 'Ineligible'),
-            (Terminated, 'Terminated'),
+            (Terminated, 'Finished'),
         )
 
     class Questionnaire(Enum):

@@ -25,7 +25,6 @@ from fhirclient.models.codeableconcept import CodeableConcept
 from fhirclient.models.coding import Coding
 
 from ppmutils.ppm import PPM
-from ppmutils.p2m2 import P2M2
 
 import logging
 logger = logging.getLogger(__name__)
@@ -33,11 +32,19 @@ logger = logging.getLogger(__name__)
 
 class FHIR:
 
+    #
+    # CONSTANTS
+    #
+
     # This is the system used for Patient identifiers based on email
-    EMAIL_IDENTIFIER_SYSTEM = 'http://schema.org/email'
+    patient_email_identifier_system = 'http://schema.org/email'
+    patient_email_telecom_system = 'email'
+    patient_phone_telecom_system = 'phone'
+    patient_twitter_telecom_system = 'other'
 
     # Set the coding types
     patient_identifier_system = 'https://peoplepoweredmedicine.org/fhir/patient'
+    enrollment_flag_coding_system = 'https://peoplepoweredmedicine.org/enrollment-status'
 
     research_study_identifier_system = 'https://peoplepoweredmedicine.org/fhir/study'
     research_study_coding_system = 'https://peoplepoweredmedicine.org/study'
@@ -45,6 +52,7 @@ class FHIR:
     research_subject_identifier_system = 'https://peoplepoweredmedicine.org/fhir/subject'
     research_subject_coding_system = 'https://peoplepoweredmedicine.org/subject'
 
+    # Point of care codes
     SNOMED_LOCATION_CODE = "SNOMED:43741000"
     SNOMED_VERSION_URI = "http://snomed.info/sct/900000000000207008"
 
@@ -297,6 +305,35 @@ class FHIR:
         return None
 
     @staticmethod
+    def is_ppm_research_subject(research_subject):
+        """
+        Accepts a FHIR ResearchSubject resource and returns whether it's related to a PPM study or not
+        """
+        if research_subject.get('identifier', {}).get('system') == FHIR.research_subject_identifier_system and \
+            research_subject.get('identifier', {}).get('value') in PPM.Study.identifiers():
+
+            return True
+
+        return False
+
+    @staticmethod
+    def is_ppm_research_study(research_study):
+        """
+        Accepts a FHIR ResearchStudy resource and returns whether it's related to a PPM study or not
+        """
+        for identifier in research_study.get('identifier', []):
+            if identifier.get('system') == FHIR.research_study_identifier_system and \
+                    identifier.get('value') in PPM.Study.identifiers():
+
+                return True
+
+        # Compare id
+        if research_study['id'] in PPM.Study.identifiers():
+            return True
+
+        return False
+
+    @staticmethod
     def get_study_from_research_subject(research_subject):
         """
         Accepts a FHIR resource representation (ResearchSubject, dict or bundle entry) and
@@ -374,7 +411,7 @@ class FHIR:
         elif type(identifier) is str and re.match(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)", identifier):
 
             # An email address
-            return {'identifier': '{}|{}'.format(FHIR.EMAIL_IDENTIFIER_SYSTEM, identifier)}
+            return {'identifier': '{}|{}'.format(FHIR.patient_email_identifier_system, identifier)}
 
         # Check for a resource
         elif type(identifier) is dict and identifier.get('resourceType') == 'Patient':
@@ -414,7 +451,7 @@ class FHIR:
         elif type(identifier) is str and re.match(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)", identifier):
 
             # An email address
-            return {'{}:patient.identifier'.format(key): '{}|{}'.format(FHIR.EMAIL_IDENTIFIER_SYSTEM, identifier)}
+            return {'{}:patient.identifier'.format(key): '{}|{}'.format(FHIR.patient_email_identifier_system, identifier)}
 
         # Check for a resource
         elif type(identifier) is dict and identifier.get('resourceType') == 'Patient':
@@ -974,15 +1011,15 @@ class FHIR:
                        {'study': FHIR.get_study_from_research_subject(entry.resource),
                         'date_registered': entry.resource.period.start.origval}
                    for entry in bundle.entry if entry.resource.resource_type == 'ResearchSubject' and
-                   entry.resource.study.reference in ['ResearchStudy/ppm-{}'.format(study.value) for study in
-                                                      PPM.Project]}
+                   FHIR.is_ppm_research_subject(entry.resource.as_json())}
 
         # Process patients
         patients = []
         for patient in [entry.resource for entry in bundle.entry if entry.resource.resource_type == 'Patient']:
             try:
                 # Fetch their email
-                email = next(identifier.value for identifier in patient.identifier if identifier.system == 'http://schema.org/email')
+                email = next(identifier.value for identifier in patient.identifier
+                             if identifier.system == FHIR.patient_email_identifier_system)
 
                 # Check if tester
                 if not testing and PPM.is_tester(email):
@@ -1538,22 +1575,22 @@ class FHIR:
             phone = form.get('phone')
             if phone:
                 for telecom in patient['telecom']:
-                    if telecom['system'] == 'phone':
+                    if telecom['system'] == FHIR.patient_phone_telecom_system:
                         telecom['value'] = phone
                         break
                 else:
                     # Add it
-                    patient['telecom'].append({'system': 'phone', 'value': phone})
+                    patient['telecom'].append({'system': FHIR.patient_phone_telecom_system, 'value': phone})
 
             email = form.get('contact_email')
             if email:
                 for telecom in patient['telecom']:
-                    if telecom['system'] == 'email':
+                    if telecom['system'] == FHIR.patient_email_telecom_system:
                         telecom['value'] = email
                         break
                 else:
                     # Add it
-                    patient['telecom'].append({'system': 'email', 'value': email})
+                    patient['telecom'].append({'system': FHIR.patient_email_telecom_system, 'value': email})
 
             active = form.get('active')
             if active is not None:
@@ -1826,7 +1863,7 @@ class FHIR:
             if handle:
 
                 # Set the value
-                twitter = {'system': 'other', 'value': 'https://twitter.com/' + handle}
+                twitter = {'system': FHIR.patient_twitter_telecom_system, 'value': 'https://twitter.com/' + handle}
 
                 # Add it to their contact points
                 patient.setdefault('telecom', []).append(twitter)
@@ -2313,7 +2350,7 @@ class FHIR:
 
             # Default to their email address
             email = next((identifier['value'] for identifier in patient['identifier'] if
-                          identifier.get('system') == 'http://schema.org/email'), None)
+                          identifier.get('system') == FHIR.patient_email_identifier_system), None)
 
             if email:
                 names.append(email)
@@ -2329,6 +2366,9 @@ class FHIR:
     @staticmethod
     def flatten_participant(bundle):
 
+        # Build a dictionary
+        participant = {}
+
         # Set aside common properties
         ppm_id = None
         email = None
@@ -2337,57 +2377,54 @@ class FHIR:
             # Flatten patient profile
             participant = FHIR.flatten_patient(bundle)
             if not participant:
+                logger.debug('No Patient in bundle')
                 return {}
-
-            # Get included resources
-            patient_entries = bundle['entry']
 
             # Get props
             ppm_id = participant['fhir_id']
             email = participant['email']
 
-            # Get the Flag resource
-            subject = next(resource['resource'] for resource in patient_entries
-                           if resource['resource']['resourceType'] == 'ResearchSubject' and
-                           resource['resource']['study']['reference'] in
-                           ['ResearchStudy/ppm-{}'.format(study.value) for study in PPM.Project])
+            # Get the PPM study/project resources
+            studies = FHIR.flatten_ppm_studies(bundle)
+            if len(studies) > 1:
+                logger.warning('Patient/{} has more than one PPM study: {}'.format(ppm_id, studies))
 
             # Check for accepted and a start date
-            participant['project'] = FHIR.get_study_from_research_subject(subject)
-            participant['date_registered'] = FHIR._format_date(subject['period']['start'], '%m/%d/%Y')
+            participant['project'] = participant['study'] = studies[0]['study']
+            participant['date_registered'] = FHIR._format_date(studies[0]['start'], '%m/%d/%Y')
 
-        except Exception as e:
-            logger.exception('FHIR error: {}'.format(e), exc_info=True,
-                             extra={'ppm_id': ppm_id, 'email': email})
-            return {}
+            # Get the enrollment properties
+            enrollment = FHIR.flatten_enrollment(bundle)
 
-        try:
-            # Get the Flag resource
-            flag = next(
-                resource['resource'] for resource in patient_entries if resource['resource']['resourceType'] == 'Flag')
-            enrollment = FHIR.flatten_enrollment_flag(flag)
+            # Set status and dates
             participant['enrollment'] = enrollment['enrollment']
-
-            # Check for accepted and a start date
-            if participant['enrollment'] == 'accepted' and enrollment['start']:
+            if enrollment['enrollment'] == PPM.Enrollment.Accepted.value and enrollment.get('start'):
 
                 # Convert time zone to assumed ET
                 participant['enrollment_accepted_date'] = FHIR._format_date(enrollment['start'], '%-m/%-d/%Y')
 
             else:
-                participant['enrollment_accepted_date'] = ""
+                participant['enrollment_accepted_date'] = ''
 
-        except Exception as e:
-            logger.exception('FHIR enrollment flag error: {}'.format(e), exc_info=True,
-                             extra={'ppm_id': ppm_id, 'email': email})
-
-        try:
+            # Flatten consent composition
             participant['composition'] = FHIR.flatten_consent_composition(bundle)
-        except KeyError:
-            participant['composition'] = None
 
-        if participant['project'] == 'autism':
-            try:
+            # Get the project
+            _questionnaire_id = FHIR.questionnaire_id(participant['project'])
+
+            # Parse out the responses
+            participant['questionnaire'] = FHIR.flatten_questionnaire_response(bundle, _questionnaire_id)
+
+            # Flatten points of care
+            participant['points_of_care'] = FHIR.flatten_list(bundle, 'Organization')
+
+            if participant['project'] == PPM.Study.NEER.value:
+
+                # Flatten research studies
+                participant['research_studies'] = FHIR.get_research_studies(bundle)
+
+            elif participant['project'] == PPM.Study.ASD.value:
+
                 # Get the questionnaire ID
                 quiz_id = FHIR.consent_questionnaire_id(participant)
 
@@ -2398,31 +2435,9 @@ class FHIR:
                 if participant.get('consent_quiz'):
                     participant['consent_quiz_answers'] = FHIR.questionnaire_answers(bundle, quiz_id)
 
-            except Exception:
-                participant['consent_quiz'] = None
-
-        try:
-            # Get the project
-            _questionnaire_id = FHIR.questionnaire_id(participant['project'])
-
-            # Parse out the responses
-            participant['questionnaire'] = FHIR.flatten_questionnaire_response(bundle, _questionnaire_id)
-
-        except Exception:
-            participant['questionnaire'] = None
-
-        try:
-            participant['points_of_care'] = FHIR.flatten_list(bundle, 'Organization')
-        except Exception:
-            participant['points_of_care'] = None
-
-        if participant['project'] == 'neer':
-
-            try:
-                participant['research_studies'] = FHIR.get_research_studies(bundle)
-
-            except Exception:
-                participant['research_studies'] = None
+        except Exception as e:
+            logger.exception('FHIR error: {}'.format(e), exc_info=True,
+                             extra={'ppm_id': ppm_id, 'email': email})
 
         return participant
 
@@ -2641,7 +2656,7 @@ class FHIR:
 
         # Parse out email
         patient['email'] = next((identifier['value'] for identifier in resource.get('identifier', [])
-                                 if identifier.get('system') == FHIR.EMAIL_IDENTIFIER_SYSTEM))
+                                 if identifier.get('system') == FHIR.patient_email_identifier_system))
         if not patient.get('email'):
             logger.error('Could not parse email from Patient/{}! This should not be possible'.format(resource['id']))
             return {}
@@ -2661,11 +2676,11 @@ class FHIR:
 
         # Parse telecom properties
         patient['phone'] = next((telecom['value'] for telecom in resource.get('telecom', [])
-                                 if telecom.get('system') == 'phone'), '')
+                                 if telecom.get('system') == FHIR.patient_phone_telecom_system), '')
         patient['twitter_handle'] = next((telecom['value'] for telecom in resource.get('telecom', [])
-                                         if telecom.get('system') == 'other'), '')
+                                         if telecom.get('system') == FHIR.patient_twitter_telecom_system), '')
         patient['contact_email'] = next((telecom['value'] for telecom in resource.get('telecom', [])
-                                        if telecom.get('system') == 'email'), '')
+                                        if telecom.get('system') == FHIR.patient_email_telecom_system), '')
 
         # Get how they heard about PPM
         patient['how_did_you_hear_about_us'] = next((extension['valueString'] for extension in resource.get('extension', [])
@@ -2708,6 +2723,44 @@ class FHIR:
             record['identifier'] = FHIR._get_or(resource, ['identifier', 0, 'value'])
 
         return record
+
+    @staticmethod
+    def flatten_ppm_studies(bundle):
+        """
+        Find and returns the flattened PPM research studies
+        """
+        # Collect them
+        research_subjects = []
+        for research_subject in FHIR._find_resources(bundle, 'ResearchSubject'):
+
+            # Ensure it's the PPM kind
+            if FHIR.is_ppm_research_subject(research_subject):
+
+                # Flatten it and add it
+                research_subjects.append(FHIR.flatten_research_subject(research_subject))
+
+        if not research_subjects:
+            logger.debug('No ResearchSubjects found in bundle')
+
+        return research_subjects
+
+    @staticmethod
+    def flatten_enrollment(bundle):
+        """
+        Find and returns the flattened enrollment Flag used to track PPM enrollment status
+        """
+        for flag in FHIR._find_resources(bundle, 'Flag'):
+
+            # Ensure it's the enrollment flag
+            if FHIR.enrollment_flag_coding_system == FHIR._get_or(flag, ['code', 'coding', 0, 'system']):
+
+                # Flatten and return it
+                return FHIR.flatten_enrollment_flag(flag)
+
+            logger.error('No Flag with coding: {} found'.format(FHIR.enrollment_flag_coding_system))
+
+        logger.debug('No Flags found in bundle')
+        return None
 
     @staticmethod
     def flatten_enrollment_flag(resource):
@@ -2946,6 +2999,9 @@ class FHIR:
             bundle = Bundle(bundle)
 
         resource = FHIR._get_list(bundle, resource_type)
+        if not resource:
+            logger.debug('No List for resource {} found'.format(resource_type))
+            return None
 
         # Get the references
         references = [entry.item.reference for entry in resource.entry if entry.item.reference]
@@ -3121,7 +3177,7 @@ class FHIR:
                 'id': project,
                 'identifier': [{
                     'system': FHIR.research_study_identifier_system,
-                    'value': project
+                    'value': f'ppm-{project}'
                 }],
                 'status': 'in-progress',
                 'title': 'People-Powered Medicine - {}'.format(title),
@@ -3166,7 +3222,7 @@ class FHIR:
                 'active': True,
                 'identifier': [
                     {
-                        'system': 'http://schema.org/email',
+                        'system': FHIR.patient_email_identifier_system,
                         'value': form.get('email'),
                     },
                 ],
@@ -3190,7 +3246,7 @@ class FHIR:
                 ],
                 'telecom': [
                     {
-                        'system': 'phone',
+                        'system': FHIR.patient_phone_telecom_system,
                         'value': form.get('phone'),
                     },
                 ],
@@ -3199,7 +3255,7 @@ class FHIR:
             if form.get('contact_email'):
                 logger.debug('Adding contact email')
                 patient_data['telecom'].append({
-                    'system': 'email',
+                    'system': FHIR.patient_email_telecom_system,
                     'value': form.get('contact_email'),
                 })
 
@@ -3216,7 +3272,7 @@ class FHIR:
             if form.get('twitter_handle'):
                 logger.debug('Adding Twitter handle')
                 patient_data['telecom'].append({
-                    'system': 'other',
+                    'system': FHIR.patient_twitter_telecom_system,
                     'value': 'https://twitter.com/' + form['twitter_handle'],
                 })
 
