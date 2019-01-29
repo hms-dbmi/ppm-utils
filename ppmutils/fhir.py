@@ -1002,11 +1002,11 @@ class FHIR:
         if not bundle.entry:
             return []
 
-        # Process them
+        # Build a dictionary keyed by FHIR IDs containing enrollment status
         enrollments = {entry.resource.subject.reference.split('/')[1]: entry.resource.code.coding[0].code
                        for entry in bundle.entry if entry.resource.resource_type == 'Flag'}
 
-        # Process them
+        # Build a dictionary keyed by FHIR IDs containing flattened study objects
         studies = {entry.resource.individual.reference.split('/')[1]:
                        {'study': FHIR.get_study_from_research_subject(entry.resource),
                         'date_registered': entry.resource.period.start.origval}
