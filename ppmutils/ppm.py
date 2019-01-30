@@ -132,6 +132,7 @@ class PPM:
                 (PPM.Enrollment.Registered.value, 'Registered'),
                 (PPM.Enrollment.Consented.value, 'Consented'),
                 (PPM.Enrollment.Proposed.value, 'Proposed'),
+                (PPM.Enrollment.Pending.value, 'Pending'),
                 (PPM.Enrollment.Accepted.value, 'Accepted'),
                 (PPM.Enrollment.Ineligible.value, 'Ineligible'),
                 (PPM.Enrollment.Terminated.value, 'Finished'),
