@@ -2675,11 +2675,11 @@ class FHIR:
         patient["phone"] = FHIR._get_or(resource, ['telecom', 0, 'postalCode'], '')
 
         # Parse telecom properties
-        patient['phone'] = next((telecom['value'] for telecom in resource.get('telecom', [])
+        patient['phone'] = next((telecom.get('value', '') for telecom in resource.get('telecom', [])
                                  if telecom.get('system') == FHIR.patient_phone_telecom_system), '')
-        patient['twitter_handle'] = next((telecom['value'] for telecom in resource.get('telecom', [])
+        patient['twitter_handle'] = next((telecom.get('value', '') for telecom in resource.get('telecom', [])
                                          if telecom.get('system') == FHIR.patient_twitter_telecom_system), '')
-        patient['contact_email'] = next((telecom['value'] for telecom in resource.get('telecom', [])
+        patient['contact_email'] = next((telecom.get('value', '') for telecom in resource.get('telecom', [])
                                         if telecom.get('system') == FHIR.patient_email_telecom_system), '')
 
         # Get how they heard about PPM
