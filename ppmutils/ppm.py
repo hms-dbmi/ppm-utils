@@ -106,10 +106,12 @@ class PPM:
                     [PPM.Study.ASD.value, f'ppm-{PPM.Study.ASD.value}', 'asd']:
                 return 'Autism'
 
-        CHOICES = (
-            (NEER, 'NEER'),
-            (ASD, 'Autism'),
-        )
+        @staticmethod
+        def choices():
+            return (
+                (PPM.Study.NEER.value, PPM.Study.title(PPM.Study.NEER.value)),
+                (PPM.Study.ASD.value, PPM.Study.title(PPM.Study.ASD.value)),
+            )
 
     # Alias Project as Study until we migrate all usages to Study
     Project = Study
@@ -124,14 +126,16 @@ class PPM:
         Ineligible = 'ineligible'
         Terminated = 'terminated'
 
-        CHOICES = (
-            (Registered, 'Registered'),
-            (Consented, 'Consented'),
-            (Proposed, 'Proposed'),
-            (Accepted, 'Accepted'),
-            (Ineligible, 'Ineligible'),
-            (Terminated, 'Finished'),
-        )
+        @staticmethod
+        def choices():
+            return (
+                (PPM.Enrollment.Registered.value, 'Registered'),
+                (PPM.Enrollment.Consented.value, 'Consented'),
+                (PPM.Enrollment.Proposed.value, 'Proposed'),
+                (PPM.Enrollment.Accepted.value, 'Accepted'),
+                (PPM.Enrollment.Ineligible.value, 'Ineligible'),
+                (PPM.Enrollment.Terminated.value, 'Finished'),
+            )
 
     class Questionnaire(Enum):
         ASDGuardianConsentQuestionnaire = 'ppm-asd-consent-guardian-quiz'
