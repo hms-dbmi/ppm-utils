@@ -379,6 +379,11 @@ class FHIR:
             to_zone = tz.gettz('America/New_York')
             utc = date.replace(tzinfo=from_zone)
 
+            # If UTC time was 00:00:00, assume a time was missing and return the date as is so
+            # the ET conversion does not change the date.
+            if utc.hour == 0 and utc.minute == 0 and utc.second == 0:
+                return utc.strftime(date_format)
+
             # Convert time zone to assumed ET
             et = utc.astimezone(to_zone)
 
@@ -2401,7 +2406,7 @@ class FHIR:
             if enrollment['enrollment'] == PPM.Enrollment.Accepted.value and enrollment.get('start'):
 
                 # Convert time zone to assumed ET
-                participant['enrollment_accepted_date'] = FHIR._format_date(enrollment['start'], '%-m/%-d/%Y')
+                participant['enrollment_accepted_date'] = FHIR._format_date(enrollment['start'], '%m/%d/%Y')
 
             else:
                 participant['enrollment_accepted_date'] = ''
@@ -2538,7 +2543,14 @@ class FHIR:
             # Add the answer
             response[text] = answer
 
-        return response
+        # Add the date that the questionnaire was completed
+        authored_date = questionnaire_response.authored.origval
+        formatted_authored_date = FHIR._format_date(authored_date, '%m/%d/%Y')
+
+        return {
+            'authored': formatted_authored_date,
+            'responses': response
+        }
 
     @staticmethod
     def _questions(items):
@@ -2805,7 +2817,7 @@ class FHIR:
                     date_time = signed_consent.dateTime.origval
 
                     # Format it
-                    consent_object["date_signed"] = FHIR._format_date(date_time, '%Y-%m-%d')
+                    consent_object["date_signed"] = FHIR._format_date(date_time, '%m/%d/%Y')
 
                     # Exceptions are for when they refuse part of the consent.
                     if signed_consent.except_fhir:
@@ -3032,7 +3044,7 @@ class FHIR:
         # Get dates
         reference['timestamp'] = FHIR._get_or(resource, ['indexed'])
         if reference.get('timestamp'):
-            reference['date'] = FHIR._format_date(reference['timestamp'], '%m-%d-%Y')
+            reference['date'] = FHIR._format_date(reference['timestamp'], '%m/%d/%Y')
 
         # Get data provider
         reference['code'] = FHIR._get_or(resource, ['type', 'coding', 0, 'code'])
