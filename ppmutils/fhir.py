@@ -1096,25 +1096,10 @@ class FHIR:
                     'date_registered': date_registered,
                 }
 
-                # Check names
-                try:
-                    patient_dict['firstname'] = patient.name[0].given[0]
-                except Exception:
-                    patient_dict['firstname'] = "---"
-                    logger.warning('No firstname for Patient/{}'.format(patient.id))
-                try:
-                    patient_dict['lastname'] = patient.name[0].family
-                except Exception:
-                    patient_dict['lastname'] = "---"
-                    logger.warning('No lastname for Patient/{}'.format(patient.id))
-
-                # Add twitter handle
-                try:
-                    for telecom in patient.telecom:
-                        if telecom.system == "other" and telecom.value.startswith("https://twitter.com"):
-                            patient_dict['twitter_handle'] = telecom.value
-                except Exception:
-                    pass
+                # Wrap the patient resource in a fake bundle and flatten them
+                flattened_patient = FHIR.flatten_patient({'entry': [{'resource': patient.as_json()}]})
+                if flattened_patient:
+                    patient_dict.update(flattened_patient)
 
                 # Add it
                 patients.append(patient_dict)
