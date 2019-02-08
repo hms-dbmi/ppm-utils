@@ -2618,10 +2618,7 @@ class FHIR:
         authored_date = questionnaire_response.authored.origval
         formatted_authored_date = FHIR._format_date(authored_date, '%m/%d/%Y')
 
-        return {
-            'authored': formatted_authored_date,
-            'responses': response
-        }
+        return response
 
     @staticmethod
     def _questions(items):
