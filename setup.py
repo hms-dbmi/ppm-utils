@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 from io import open
 
 from setuptools import find_packages, setup
@@ -33,6 +34,9 @@ setup(
         'requests',
         'furl',
     ],
+    test_requires=[
+        'nose',
+    ],
     include_package_data=True,
     classifiers=[
         'Environment :: Web Environment',
@@ -53,3 +57,9 @@ setup(
         'Topic :: Internet :: WWW/HTTP :: Dynamic Content',
     ],
 )
+
+try:
+    from semantic_release import setup_hook
+    setup_hook(sys.argv)
+except ImportError:
+    pass

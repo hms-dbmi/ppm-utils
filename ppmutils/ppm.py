@@ -138,6 +138,9 @@ class PPM:
                 (PPM.Enrollment.Terminated.value, 'Finished'),
             )
 
+    class Communication(Enum):
+        PicnicHealthRegistration = 'picnichealth-registration'
+
     class Questionnaire(Enum):
         ASDGuardianConsentQuestionnaire = 'ppm-asd-consent-guardian-quiz'
         ASDIndividualConsentQuestionnaire = 'ppm-asd-consent-individual-quiz'

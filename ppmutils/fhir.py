@@ -23,6 +23,7 @@ from fhirclient.models.researchsubject import ResearchSubject
 from fhirclient.models.fhirreference import FHIRReference
 from fhirclient.models.codeableconcept import CodeableConcept
 from fhirclient.models.coding import Coding
+from fhirclient.models.communication import Communication
 
 from ppmutils.ppm import PPM
 
@@ -52,9 +53,15 @@ class FHIR:
     research_subject_identifier_system = 'https://peoplepoweredmedicine.org/fhir/subject'
     research_subject_coding_system = 'https://peoplepoweredmedicine.org/subject'
 
+    data_document_reference_identifier_system = 'https://peoplepoweredmedicine.org/document-type'
+
     # Point of care codes
     SNOMED_LOCATION_CODE = "SNOMED:43741000"
     SNOMED_VERSION_URI = "http://snomed.info/sct/900000000000207008"
+
+    # PicnicHealth notification flags
+    ppm_comm_identifier_system = 'https://peoplepoweredmedicine.org/fhir/communication'
+    ppm_comm_coding_system = 'https://peoplepoweredmedicine.org/ppm-notification'
 
     #
     # META
@@ -291,6 +298,10 @@ class FHIR:
         # Check the bundle type
         if type(bundle) is dict:
             bundle = Bundle(bundle)
+
+        # Quit early for an empty bundle
+        if not bundle.entry:
+            return None
 
         for list in [entry.resource for entry in bundle.entry if entry.resource.resource_type == 'List']:
 
@@ -674,6 +685,36 @@ class FHIR:
         logger.debug('Creating flag at: {}'.format(url.url))
 
         response = requests.post(url.url, json=flag.as_json())
+        logger.debug('Response: {}'.format(response.status_code))
+
+        return response
+
+    @staticmethod
+    def create_communication(patient_id, content, identifier):
+        """
+        Create a record of a communication to a participant
+        :param patient_id:
+        :param content: The content of the email
+        :param identifier: The identifier of the communication
+        :return:
+        """
+        logger.debug("Patient: {}".format(patient_id))
+
+        # Use the FHIR client lib to validate our resource.
+        communication = Communication(FHIR.Resources.communication(
+            patient_ref='Patient/{}'.format(patient_id),
+            identifier=identifier,
+            content=content,
+            sent=datetime.now().isoformat(),
+        ))
+
+        # Build the FHIR Communication destination URL.
+        url = furl(PPM.fhir_url())
+        url.path.segments.append('Communication')
+
+        logger.debug('Creating communication at: {}'.format(url.url))
+
+        response = requests.post(url.url, json=communication.as_json())
         logger.debug('Response: {}'.format(response.status_code))
 
         return response
@@ -1416,9 +1457,29 @@ class FHIR:
         """
         # Build the query
         _query = FHIR._patient_resource_query(patient)
-        _query.update(query)
+
+        if query:
+            _query.update(query)
 
         return FHIR._query_resources('DocumentReference', query=_query)
+
+    @staticmethod
+    def query_data_document_references(patient, provider=None):
+        """
+        Queries the current user's FHIR record for any DocumentReferences related to this type
+        :return: A list of DocumentReference resources
+        :rtype: list
+        """
+        # Build the query
+        query = FHIR._patient_resource_query(patient)
+
+        # Set the provider, if passed
+        if provider:
+            query['type'] = f'{FHIR.data_document_reference_identifier_system}|{provider}'
+        else:
+            query['type'] = f'{FHIR.data_document_reference_identifier_system}|'
+
+        return FHIR._query_resources('DocumentReference', query=query)
 
     @staticmethod
     def query_enrollment_status(email):
@@ -1529,6 +1590,31 @@ class FHIR:
             return FHIR.flatten_list(bundle, 'Organization')
         else:
             return next((entry['resource'] for entry in bundle.as_json().get('entry', [])), None)
+
+    @staticmethod
+    def query_ppm_communications(patient=None, identifier=None):
+        """
+        Find all Communications filtered by patient, study and/or identifier
+        :param patient: The patient to query on (FHIR ID, email, Patient object)
+        :type patient: str
+        :param identifier: The identifier of the Communications
+        :type identifier: str
+        :return: The FHIR bundle
+        :rtype: dict
+        """
+
+        # Build the query
+        query = {}
+        if patient:
+            query.update(FHIR._patient_resource_query(patient, 'recipient'))
+
+        if identifier:
+            query['identifier'] = f'{FHIR.ppm_comm_identifier_system}|{identifier}'
+
+        # Find all resources
+        resources = FHIR._query_resources('Communication', query=query)
+
+        return resources
 
     #
     # UPDATE
@@ -3210,6 +3296,29 @@ class FHIR:
             # Hard code dates
             if consent:
                 data['consent'] = {'reference': 'Consent/{}'.format(consent)}
+
+            return data
+
+        @staticmethod
+        def communication(patient_ref, identifier, content=None,
+                          status='completed', sent=datetime.now().isoformat()):
+
+            data = {
+                'resourceType': 'Communication',
+                'identifier': [{
+                    'system': FHIR.ppm_comm_identifier_system,
+                    'value': identifier,
+                }],
+                'sent': sent,
+                'recipient': [{'reference': patient_ref}],
+                'status': status,
+            }
+
+            # Hard code dates
+            if content:
+                data['payload'] = [{
+                    'contentString': content
+                }]
 
             return data
 
