@@ -2489,7 +2489,9 @@ class FHIR:
             _questionnaire_id = FHIR.questionnaire_id(participant['project'])
 
             # Parse out the responses
-            participant['questionnaire'] = FHIR.flatten_questionnaire_response(bundle, _questionnaire_id)
+            questionnaire_responses, questionnaire_authored_date = FHIR.flatten_questionnaire_response(bundle, _questionnaire_id)
+            participant['questionnaire'] = questionnaire_responses
+            participant['questionnaire_authored'] = questionnaire_authored_date
 
             # Flatten points of care
             participant['points_of_care'] = FHIR.flatten_list(bundle, 'Organization')
@@ -2618,7 +2620,7 @@ class FHIR:
         authored_date = questionnaire_response.authored.origval
         formatted_authored_date = FHIR._format_date(authored_date, '%m/%d/%Y')
 
-        return response
+        return response, formatted_authored_date
 
     @staticmethod
     def _questions(items):
