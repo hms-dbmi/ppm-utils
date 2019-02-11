@@ -1033,7 +1033,9 @@ class FHIR:
 
     @staticmethod
     def query_patients(study=None, enrollment=None, active=True, testing=False):
-        logger.debug('Getting patients - enrollment: {}, study: {}'.format(enrollment, study))
+        logger.debug('Getting patients - enrollment: {}, study: {}, active: {}, testing: {}'.format(
+            enrollment, study, active, testing)
+        )
 
         # Build the query
         query = {
@@ -2115,6 +2117,7 @@ class FHIR:
             'List',
             'DocumentReference',
             'ResearchSubject',
+            'Communication',
         ]
 
         # Do the delete
