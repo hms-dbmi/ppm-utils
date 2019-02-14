@@ -185,10 +185,10 @@ class PPM:
         @staticmethod
         def choices():
             return (
-                (PPM.TrackedItem.Fitbit, 'FitBit'),
-                (PPM.TrackedItem.Spitkit, 'Saliva Kit'),
-                (PPM.TrackedItem.uBiomeFecalSampleKit, 'uBiome'),
-                (PPM.TrackedItem.BloodSampleKit, 'Blood Sample'),
+                (PPM.TrackedItem.Fitbit.value, 'FitBit'),
+                (PPM.TrackedItem.SalivaSampleKit.value, 'Saliva Kit'),
+                (PPM.TrackedItem.uBiomeFecalSampleKit.value, 'uBiome'),
+                (PPM.TrackedItem.BloodSampleKit.value, 'Blood Sample'),
             )
 
     class Service(object):
