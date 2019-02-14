@@ -141,6 +141,12 @@ class PPM:
     class Communication(Enum):
         PicnicHealthRegistration = 'picnichealth-registration'
 
+        @staticmethod
+        def choices():
+            return (
+                (PPM.Communication.PicnicHealthRegistration.value, 'PicnicHealth Registration'),
+            )
+
     class Questionnaire(Enum):
         ASDGuardianConsentQuestionnaire = 'ppm-asd-consent-guardian-quiz'
         ASDIndividualConsentQuestionnaire = 'ppm-asd-consent-individual-quiz'
@@ -169,6 +175,21 @@ class PPM:
         Facebook = 'facebook'
         Gencove = 'gencove'
         uBiome = 'ubiome'
+
+    class TrackedItem(Enum):
+        Fitbit = 'fitbit'
+        SalivaSampleKit = 'spitkit'
+        uBiomeFecalSampleKit = 'ubiome'
+        BloodSampleKit = 'blood'
+
+        @staticmethod
+        def choices():
+            return (
+                (PPM.TrackedItem.Fitbit, 'FitBit'),
+                (PPM.TrackedItem.Spitkit, 'Saliva Kit'),
+                (PPM.TrackedItem.uBiomeFecalSampleKit, 'uBiome'),
+                (PPM.TrackedItem.BloodSampleKit, 'Blood Sample'),
+            )
 
     class Service(object):
 
