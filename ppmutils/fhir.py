@@ -1730,6 +1730,46 @@ class FHIR:
         return False
 
     @staticmethod
+    def update_patient_deceased(patient_id, date=None):
+
+        # Make the updates
+        content = None
+        try:
+            # Build the update
+            if date:
+                patch = [{
+                    'op': 'replace',
+                    'path': '/deceasedDateTime',
+                    'value': date.isoformat()
+                }]
+            else:
+                patch = [{
+                    'op': 'remove',
+                    'path': '/deceasedDateTime'
+                }]
+
+            # Build the URL
+            url = furl(PPM.fhir_url())
+            url.path.segments.append('Patient')
+            url.path.segments.append(patient_id)
+
+            # Put it
+            response = requests.patch(url.url, json=patch, headers={'content-type': 'application/json-patch+json'})
+            content = response.content
+            response.raise_for_status()
+
+            return response.ok
+
+        except requests.HTTPError as e:
+            logger.error('FHIR Request Error: {}'.format(e), exc_info=True,
+                         extra={'ppm_id': patient_id, 'response': content})
+
+        except Exception as e:
+            logger.error('FHIR Error: {}'.format(e), exc_info=True, extra={'ppm_id': patient_id})
+
+        return False
+
+    @staticmethod
     def update_patient_enrollment(patient_id, status):
         logger.debug("Patient: {}, Status: {}".format(patient_id, status))
 
@@ -2759,6 +2799,10 @@ class FHIR:
         patient["state"] = FHIR._get_or(resource, ['address', 0, 'state'], '')
         patient["zip"] = FHIR._get_or(resource, ['address', 0, 'postalCode'], '')
         patient["phone"] = FHIR._get_or(resource, ['telecom', 0, 'postalCode'], '')
+
+        # Check for deceased
+        if FHIR._get_or(resource, ['deceasedDateTime'], None):
+            patient['deceased'] = FHIR._format_date(resource['deceasedDateTime'], '%m/%d/%Y')
 
         # Parse telecom properties
         patient['phone'] = next((telecom.get('value', '') for telecom in resource.get('telecom', [])
