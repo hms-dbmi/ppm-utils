@@ -2692,6 +2692,9 @@ class FHIR:
             # Flatten points of care
             participant['points_of_care'] = FHIR.flatten_list(bundle, 'Organization')
 
+            # Flatten consent composition
+            participant['devices'] = FHIR.flatten_ppm_devices(bundle)
+
             if participant['project'] == PPM.Study.NEER.value:
 
                 # Flatten research studies
@@ -3030,18 +3033,59 @@ class FHIR:
         return research_subjects
 
     @staticmethod
+    def flatten_ppm_devices(bundle):
+        """
+        Find and returns the flattened Devices used to track PPM items/devices/kits
+        """
+        # Collect flattened items
+        devices = []
+
+        # Iterate all Device resources in the bundle
+        for device in FHIR._find_resources(bundle, 'Device'):
+
+            # Ensure it's a PPM device
+            for identifier in device.get('identifier', []):
+                if identifier.get('system') == FHIR.device_identifier_system:
+
+                    # Flatten it
+                    devices.append(FHIR.flatten_ppm_device(device))
+
+        return devices
+
+    @staticmethod
     def flatten_ppm_device(resource):
 
         # Get the resource.
         record = dict()
 
         # Try and get the values
-        record['type'] = FHIR._get_or(resource, ['type', 0, 'coding'])
-        record['identifier'] = FHIR._get_or(resource, ['identifier', 0, 'value'])
         record['status'] = FHIR._get_or(resource, ['status'])
-        record['name'] = FHIR._get_or(resource, ['deviceName', 'name'])
         record['shipped'] = FHIR._get_or(resource, ['manufactureDate'])
         record['returned'] = FHIR._get_or(resource, ['expirationDate'])
+
+        # Get the proper identifier
+        for identifier in resource.get('identifier', []):
+            if identifier.get('system') == FHIR.device_identifier_system:
+
+                # Set properties
+                record['identifier'] = identifier['value']
+                break
+
+        else:
+            record['identifier'] = ''
+
+        # Get the proper coding
+        for coding in FHIR._get_or(resource, ['type', 'coding'], []):
+            if coding.get('system') == FHIR.device_coding_system:
+
+                # Set properties
+                record['type'] = coding['code']
+                record['name'] = coding['display']
+                break
+
+        else:
+            record['type'] = ''
+            record['name'] = ''
 
         return record
 
