@@ -24,6 +24,7 @@ from fhirclient.models.fhirreference import FHIRReference
 from fhirclient.models.codeableconcept import CodeableConcept
 from fhirclient.models.coding import Coding
 from fhirclient.models.communication import Communication
+from fhirclient.models.device import Device
 
 from ppmutils.ppm import PPM
 
@@ -52,6 +53,9 @@ class FHIR:
 
     research_subject_identifier_system = 'https://peoplepoweredmedicine.org/fhir/subject'
     research_subject_coding_system = 'https://peoplepoweredmedicine.org/subject'
+
+    device_identifier_system = 'https://peoplepoweredmedicine.org/fhir/device'
+    device_coding_system = 'https://peoplepoweredmedicine.org/device'
 
     data_document_reference_identifier_system = 'https://peoplepoweredmedicine.org/document-type'
 
@@ -573,6 +577,46 @@ class FHIR:
         logger.debug("Creating...")
 
         # Create the Patient and Flag on the FHIR server.
+        # If we needed the Patient resource id, we could follow the redirect
+        # returned from a successful POST operation, and get the id out of the
+        # new resource. We don't though, so we can save an HTTP request.
+        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+
+        return response.ok
+
+    @staticmethod
+    def create_ppm_device(item, patient_id, identifier, shipped=None, returned=None):
+        """
+        Creates a project list if not already created
+        """
+        device_data = FHIR.Resources.ppm_device(
+            item=item,
+            patient_ref='Patient/{}'.format(patient_id),
+            identifier=identifier,
+            shipped=shipped,
+            returned=returned,
+        )
+
+        # Use the FHIR client lib to validate our resource.
+        Device(device_data)
+
+        device_request = BundleEntryRequest({
+            'url': 'Device',
+            'method': 'POST',
+        })
+        device_entry = BundleEntry({
+            'resource': device_data,
+        })
+        device_entry.request = device_request
+
+        # Validate it.
+        bundle = Bundle()
+        bundle.entry = [device_entry]
+        bundle.type = 'transaction'
+
+        logger.debug("Creating...")
+
+        # Create the Device on the FHIR server.
         # If we needed the Patient resource id, we could follow the redirect
         # returned from a successful POST operation, and get the id out of the
         # new resource. We don't though, so we can save an HTTP request.
@@ -1306,6 +1350,68 @@ class FHIR:
         return None
 
     @staticmethod
+    def query_ppm_devices(patient, item=None, identifier=None, flatten_return=False):
+        """
+        Queries the participants FHIR record for any PPM-related Device
+        resources. These are used to track kits, etc that
+        are sent to participants for collecting samples and other information/data.
+        :param patient: The patient identifier/ID/object
+        :type patient: object
+        :param item: The PPM item type
+        :type item: str
+        :param identifier: The device identifier
+        :type identifier: str
+        :param flatten_return: Whether to flatten the resource or not
+        :type flatten_return: bool
+        :return: A list of resources
+        :rtype: list
+        """
+
+        # Build the FHIR Consent URL.
+        url = furl(PPM.fhir_url())
+        url.path.segments.append('Device')
+
+        # Check item type
+        if item:
+            query = {
+                'type': '{}|{}'.format(FHIR.device_coding_system, item),
+            }
+        else:
+
+            query = {
+                'type': '{}|'.format(FHIR.device_coding_system),
+            }
+
+        # Check for an identifier
+        if identifier:
+            query['identifier'] = '{}|{}'.format(FHIR.device_identifier_system, identifier)
+
+        # Update for the patient query
+        query.update(FHIR._patient_resource_query(patient))
+
+        # Make the call
+        content = None
+        try:
+            # Make the FHIR request.
+            response = requests.get(url.url, params=query)
+            content = response.content
+
+            if flatten_return:
+                return [FHIR.flatten_ppm_device(resource['resource']) for
+                        resource in response.json().get('entry', [])]
+            else:
+                return [entry['resource'] for entry in response.json().get('entry', [])]
+
+        except requests.HTTPError as e:
+            logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
+
+        except KeyError as e:
+            logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={'response': content})
+
+        return None
+
+
+    @staticmethod
     def query_ppm_research_subjects(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
@@ -1728,6 +1834,55 @@ class FHIR:
             logger.error('FHIR Error: {}'.format(e), exc_info=True, extra={'ppm_id': patient_id})
 
         return False
+
+    @staticmethod
+    def update_ppm_device(patient_id, item, identifier, shipped=None, returned=None):
+
+        # Make the updates
+        content = None
+        try:
+            # Get the device
+            device = next(iter(FHIR.query_ppm_devices(patient_id, item=item, identifier=identifier)), None)
+            if not device:
+                logger.error(f'No PPM device could be found for {patient_id}/{item}/{identifier}')
+                return False
+
+            # Update the resource
+            for identifier_dict in device['identifier']:
+                if identifier_dict['system'] == FHIR.device_identifier_system \
+                        and identifier_dict['value'].lower() != identifier.lower():
+
+                    # Update identifier
+                    identifier_dict['value'] = identifier.lower()
+
+            # Check dates
+            if shipped:
+                device['manufactureDate'] = shipped.isoformat()
+
+            if returned:
+                device['expirationDate'] = returned.isoformat()
+
+            # Build the URL
+            url = furl(PPM.fhir_url())
+            url.path.segments.append('Device')
+            url.path.segments.append(device['id'])
+
+            # Put it
+            response = requests.put(url.url, json=device)
+            content = response.content
+            response.raise_for_status()
+
+            return response.ok
+
+        except requests.HTTPError as e:
+            logger.error('FHIR Request Error: {}'.format(e), exc_info=True,
+                         extra={'ppm_id': patient_id, 'response': content})
+
+        except Exception as e:
+            logger.error('FHIR Error: {}'.format(e), exc_info=True, extra={'ppm_id': patient_id})
+
+        return False
+
 
     @staticmethod
     def update_patient_deceased(patient_id, date=None):
@@ -2875,6 +3030,22 @@ class FHIR:
         return research_subjects
 
     @staticmethod
+    def flatten_ppm_device(resource):
+
+        # Get the resource.
+        record = dict()
+
+        # Try and get the values
+        record['type'] = FHIR._get_or(resource, ['type', 0, 'coding'])
+        record['identifier'] = FHIR._get_or(resource, ['identifier', 0, 'value'])
+        record['status'] = FHIR._get_or(resource, ['status'])
+        record['name'] = FHIR._get_or(resource, ['deviceName', 'name'])
+        record['shipped'] = FHIR._get_or(resource, ['manufactureDate'])
+        record['returned'] = FHIR._get_or(resource, ['expirationDate'])
+
+        return record
+
+    @staticmethod
     def flatten_enrollment(bundle):
         """
         Find and returns the flattened enrollment Flag used to track PPM enrollment status
@@ -3340,6 +3511,46 @@ class FHIR:
             # Hard code dates
             if consent:
                 data['consent'] = {'reference': 'Consent/{}'.format(consent)}
+
+            return data
+
+        @staticmethod
+        def ppm_device(item, patient_ref, identifier, shipped=None, returned=None, status='active'):
+
+            data = {
+                'resourceType': 'Device',
+                'identifier': [{
+                    'system': FHIR.device_identifier_system,
+                    'value': identifier
+                }],
+                'type': {
+                    'coding': [{
+                        'system': FHIR.device_coding_system,
+                        'code': item,
+                        'display': dict(PPM.TrackedItem.choices())[item],
+                    }],
+                    'text': dict(PPM.TrackedItem.choices())[item],
+                },
+                'status': status,
+                'patient': {'reference': patient_ref},
+            }
+
+            # Prefill some details based on the item type
+            if item is PPM.TrackedItem.BloodSampleKit:
+                pass
+            elif item is PPM.TrackedItem.SalivaSampleKit:
+                pass
+            elif item is PPM.TrackedItem.uBiomeFecalSampleKit:
+                pass
+            elif item is PPM.TrackedItem.Fitbit:
+                pass
+
+            # Check dates
+            if shipped:
+                data['manufactureDate'] = shipped.isoformat()
+
+            if returned:
+                data['expirationDate'] = returned.isoformat()
 
             return data
 
