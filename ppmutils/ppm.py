@@ -23,7 +23,17 @@ class PPM:
         if hasattr(settings, 'FHIR_URL'):
             return settings.FHIR_URL
 
-        raise ValueError('FHIR_URL not defined in settings')
+        elif os.environ.get('FHIR_URL'):
+            return os.environ.get('FHIR_URL')
+
+        # Search environment
+        for key, value in os.environ.items():
+            if '_FHIR_URL' in key:
+                logger.debug('Found FHIR_URL in key: {}'.format(key))
+
+                return value
+
+        raise ValueError('FHIR_URL not defined in settings or in environment')
 
     @staticmethod
     def is_tester(email):
