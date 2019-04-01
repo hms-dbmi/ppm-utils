@@ -206,9 +206,10 @@ class PPM:
         # Subclasses set this to direct requests
         service = None
 
-        # Set some JWT properties
-        _jwt_cookie_name = 'DBMI_JWT'
-        _jwt_authorization_prefix = 'JWT'
+        # Set some auth header properties
+        jwt_cookie_name = 'DBMI_JWT'
+        jwt_authorization_prefix = 'JWT'
+        token_authorization_prefix = 'Token'
 
         @classmethod
         def _build_url(cls, path):
@@ -268,29 +269,63 @@ class PPM:
             return None
 
         @classmethod
-        def headers(cls, request):
-            return {"Authorization": 'JWT {}'.format(request.COOKIES.get("DBMI_JWT", None)),
-                    'Content-Type': 'application/json'}
+        def headers(cls, request=None, content_type='application/json'):
+            """
+            Builds request headers. If no request is passed, service is assumed to use a pre-defined
+            token in settings as `[SERVICE_NAME]_AUTH_TOKEN`
+            :param request: The current request, if any
+            :param content_type: The request content type, defaults to JSON
+            :return: dict
+            """
+            if request and cls.get_jwt(request):
+
+                # Use JWT
+                return {"Authorization": '{} {}'.format(cls.jwt_authorization_prefix, cls.get_jwt(request)),
+                        'Content-Type': content_type}
+
+            elif hasattr(settings, '{}_AUTH_TOKEN'.format(cls.service.upper())):
+
+                # Get token
+                token = getattr(settings, '{}_AUTH_TOKEN'.format(cls.service.upper()))
+
+                # Check for specified prefix
+                prefix = getattr(settings, '{}_AUTH_PREFIX'.format(cls.service.upper()), cls.token_authorization_prefix)
+
+                # Use token
+                return {"Authorization": '{} {}'.format(prefix, token),
+                        'Content-Type': content_type}
+
+            raise SystemError('No request with JWT, or no token specified for service "{}", '
+                              'cannot build request headers'.format(cls.service))
 
         @classmethod
         def get_jwt(cls, request):
 
             # Get the JWT token depending on request type
-            if hasattr(request, 'COOKIES') and request.COOKIES.get(cls._jwt_cookie_name):
-                return request.COOKIES.get(cls._jwt_cookie_name)
+            if hasattr(request, 'COOKIES') and request.COOKIES.get(cls.jwt_cookie_name):
+                return request.COOKIES.get(cls.jwt_cookie_name)
 
             # Check if JWT in HTTP Authorization header
             elif hasattr(request, 'META') and request.META.get('HTTP_AUTHORIZATION') \
-                    and cls._jwt_authorization_prefix in request.META.get('HTTP_AUTHORIZATION'):
+                    and cls.jwt_authorization_prefix in request.META.get('HTTP_AUTHORIZATION'):
 
                 # Remove prefix and return the token
                 return request.META.get('HTTP_AUTHORIZATION') \
-                    .replace('{} '.format(cls._jwt_authorization_prefix), '')
+                    .replace('{} '.format(cls.jwt_authorization_prefix), '')
 
             return None
 
         @classmethod
-        def head(cls, request, path, data=None, raw=False):
+        def head(cls, request=None, path='/', data=None, raw=False):
+            """
+            Runs the appropriate REST operation. Request is required for JWT auth,
+            not required for token auth.
+            :param request: The current Django request
+            :param path: The path of the request
+            :param data: Request data or params
+            :param raw: How the response should be returned
+            :return: object
+            """
             logger.debug('Path: {}'.format(path))
 
             # Check for params
@@ -319,7 +354,16 @@ class PPM:
             return None
 
         @classmethod
-        def get(cls, request, path, data=None, raw=False):
+        def get(cls, request=None, path='/', data=None, raw=False):
+            """
+            Runs the appropriate REST operation. Request is required for JWT auth,
+            not required for token auth.
+            :param request: The current Django request
+            :param path: The path of the request
+            :param data: Request data or params
+            :param raw: How the response should be returned
+            :return: object
+            """
             logger.debug('Path: {}'.format(path))
 
             # Check for params
@@ -348,7 +392,16 @@ class PPM:
             return None
 
         @classmethod
-        def post(cls, request, path, data=None, raw=False):
+        def post(cls, request=None, path='/', data=None, raw=False):
+            """
+            Runs the appropriate REST operation. Request is required for JWT auth,
+            not required for token auth.
+            :param request: The current Django request
+            :param path: The path of the request
+            :param data: Request data or params
+            :param raw: How the response should be returned
+            :return: object
+            """
             logger.debug('Path: {}'.format(path))
 
             # Check for params
@@ -377,7 +430,16 @@ class PPM:
             return None
 
         @classmethod
-        def put(cls, request, path, data=None, raw=False):
+        def put(cls, request=None, path='/', data=None, raw=False):
+            """
+            Runs the appropriate REST operation. Request is required for JWT auth,
+            not required for token auth.
+            :param request: The current Django request
+            :param path: The path of the request
+            :param data: Request data or params
+            :param raw: How the response should be returned
+            :return: object
+            """
             logger.debug('Path: {}'.format(path))
 
             # Check for params
@@ -406,7 +468,16 @@ class PPM:
             return None
 
         @classmethod
-        def patch(cls, request, path, data=None, raw=False):
+        def patch(cls, request=None, path='/', data=None, raw=False):
+            """
+            Runs the appropriate REST operation. Request is required for JWT auth,
+            not required for token auth.
+            :param request: The current Django request
+            :param path: The path of the request
+            :param data: Request data or params
+            :param raw: How the response should be returned
+            :return: object
+            """
             logger.debug('Path: {}'.format(path))
 
             # Check for params
@@ -433,7 +504,16 @@ class PPM:
             return False
 
         @classmethod
-        def delete(cls, request, path, data=None, raw=False):
+        def delete(cls, request=None, path='/', data=None, raw=False):
+            """
+            Runs the appropriate REST operation. Request is required for JWT auth,
+            not required for token auth.
+            :param request: The current Django request
+            :param path: The path of the request
+            :param data: Request data or params
+            :param raw: How the response should be returned
+            :return: object
+            """
             logger.debug('Path: {}'.format(path))
 
             # Check for params
