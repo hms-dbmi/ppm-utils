@@ -585,7 +585,7 @@ class FHIR:
         return response.ok
 
     @staticmethod
-    def create_ppm_device(item, patient_id, identifier, shipped=None, returned=None):
+    def create_ppm_device(patient_id, item, identifier=None, shipped=None, returned=None):
         """
         Creates a project list if not already created
         """
@@ -1350,7 +1350,7 @@ class FHIR:
         return None
 
     @staticmethod
-    def query_ppm_devices(patient, item=None, identifier=None, flatten_return=False):
+    def query_ppm_devices(patient=None, item=None, identifier=None, flatten_return=False):
         """
         Queries the participants FHIR record for any PPM-related Device
         resources. These are used to track kits, etc that
@@ -1387,7 +1387,8 @@ class FHIR:
             query['identifier'] = '{}|{}'.format(FHIR.device_identifier_system, identifier)
 
         # Update for the patient query
-        query.update(FHIR._patient_resource_query(patient))
+        if patient:
+            query.update(FHIR._patient_resource_query(patient))
 
         # Make the call
         content = None
@@ -1409,7 +1410,6 @@ class FHIR:
             logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={'response': content})
 
         return None
-
 
     @staticmethod
     def query_ppm_research_subjects(patient, flatten_return=False):
@@ -1836,24 +1836,36 @@ class FHIR:
         return False
 
     @staticmethod
-    def update_ppm_device(patient_id, item, identifier, shipped=None, returned=None):
+    def update_ppm_device(patient_id, item, identifier=None, shipped=None, returned=None):
 
         # Make the updates
         content = None
         try:
             # Get the device
-            device = next(iter(FHIR.query_ppm_devices(patient_id, item=item, identifier=identifier)), None)
+            device = next(iter(FHIR.query_ppm_devices(patient=patient_id, item=item)), None)
             if not device:
                 logger.error(f'No PPM device could be found for {patient_id}/{item}/{identifier}')
                 return False
 
-            # Update the resource
-            for identifier_dict in device['identifier']:
-                if identifier_dict['system'] == FHIR.device_identifier_system \
-                        and identifier_dict['value'].lower() != identifier.lower():
+            # Update the resource identifier
+            if identifier:
 
-                    # Update identifier
-                    identifier_dict['value'] = identifier.lower()
+                # Get the PPM identifier dictionary
+                identifiers = device.get('identifier', [])
+                ppm_identifier = next((_id for _id in identifiers
+                                      if _id.get('system') == FHIR.device_identifier_system), None)
+                if ppm_identifier:
+
+                    # Update it
+                    ppm_identifier['value'] = identifier.lower()
+
+                else:
+
+                    # Add a new one
+                    identifiers.append({'system': FHIR.device_identifier_system, 'value': identifier.lower()})
+
+                # Set it
+                device['identifier'] = identifiers
 
             # Check dates
             if shipped:
@@ -3559,14 +3571,10 @@ class FHIR:
             return data
 
         @staticmethod
-        def ppm_device(item, patient_ref, identifier, shipped=None, returned=None, status='active'):
+        def ppm_device(item, patient_ref, identifier=None, shipped=None, returned=None, status='active'):
 
             data = {
                 'resourceType': 'Device',
-                'identifier': [{
-                    'system': FHIR.device_identifier_system,
-                    'value': identifier
-                }],
                 'type': {
                     'coding': [{
                         'system': FHIR.device_coding_system,
@@ -3588,6 +3596,13 @@ class FHIR:
                 pass
             elif item is PPM.TrackedItem.Fitbit:
                 pass
+
+            # Add identifier
+            if identifier:
+                data['identifier'] = [{
+                    'system': FHIR.device_identifier_system,
+                    'value': identifier
+                }],
 
             # Check dates
             if shipped:
