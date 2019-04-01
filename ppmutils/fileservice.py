@@ -34,43 +34,10 @@ class Fileservice(PPM.Service):
         return None
 
     @classmethod
-    def headers(cls, request=None):
-
-        # Check settings
-        prefix = getattr(settings, 'FILESERVICE_AUTH_HEADER_PREFIX', 'Token')
-
-        # Check variations of names
-        names = ['FILESERVICE_SERVICE_TOKEN', 'DBMI_FILESERVICE_TOKEN', 'FILESERVICE_TOKEN']
-        for name in names:
-            if hasattr(settings, name):
-
-                # Get it
-                token = getattr(settings, name)
-
-                # Use the PPM fileservice token.
-                return {
-                    'Authorization': '{} {}'.format(prefix, token),
-                    'Content-Type': 'application/json'
-                }
-
-        else:
-
-            # Try the JWT
-            token = cls.get_jwt(request)
-            if token:
-                return {
-                    'Authorization': '{} {}'.format(cls._jwt_authorization_prefix, token),
-                    'Content-Type': 'application/json'
-                }
-
-        raise ValueError('No JWT, nor are FILESERVICE_SERVICE_TOKEN, DBMI_FILESERVICE_TOKEN or '
-                         'FILESERVICE_TOKEN not defined in settings')
-
-    @classmethod
-    def check_groups(cls, request, admins):
+    def check_groups(cls, admins=None):
 
         # Get current groups.
-        groups = cls.get(request, 'groups')
+        groups = cls.get(path='/filemaster/groups/')
         if groups is None:
             logger.error('Getting groups failed')
             return False
@@ -80,14 +47,24 @@ class Fileservice(PPM.Service):
             if cls.group_name('uploaders') == group['name']:
                 return True
 
+        # Get admins
+        if not admins and hasattr(settings, 'FILESERVICE_GROUP_ADMINS'):
+            admins = settings.FILESERVICE_GROUP_ADMINS
+
         # Group was not found, create it.
         data = {
             'name': settings.FILESERVICE_GROUP,
-            'users': [{'email': email} for email in admins],
         }
 
+        # Add admins
+        if admins:
+            data['users'] = [{'email': email} for email in admins],
+        else:
+            logger.warning('No group admins passed or specified, '
+                           'group "{}" has no users!'.format(settings.FILESERVICE_GROUP))
+
         # Make the request.
-        response = cls.post(request, 'groups', data)
+        response = cls.post(path='/filemaster/groups/', data=data)
         if response is None:
             logger.error('Failed to create groups: {}'.format(response.content))
             return False
@@ -103,15 +80,43 @@ class Fileservice(PPM.Service):
         }
 
         # Make the request.
-        response = cls.put(request, '/groups/{}/'.format(upload_group_id), bucket_data)
+        response = cls.put(path='/filemaster/groups/{}/'.format(upload_group_id), data=bucket_data)
 
         return response
 
     @classmethod
-    def create_file(cls, request, filename=None, metadata=None, tags=None):
+    def create_file_record(cls, filename=None, metadata=None, tags=None):
+
+        # Build the request.
+        data = {
+            'permissions': [
+                settings.FILESERVICE_GROUP
+            ],
+            'metadata': metadata,
+            'filename': filename,
+            'tags': tags,
+        }
+
+        # Add passed data
+        if filename:
+            data['filename'] = filename
+
+        if metadata:
+            data['metadata'] = metadata
+
+        if tags:
+            data['tags'] = tags
+
+        # Make the request.
+        file = cls.post(path='/filemaster/api/file/', data=data)
+
+        return file
+
+    @classmethod
+    def create_file(cls, filename=None, metadata=None, tags=None):
 
         # Ensure groups exist.
-        if not cls.check_groups(request):
+        if not cls.check_groups():
             logger.error('Groups do not exist or failed to create')
             return None
 
@@ -136,7 +141,7 @@ class Fileservice(PPM.Service):
             data['tags'] = tags
 
         # Make the request.
-        file = cls.post(request, '/filemaster/api/file/', data)
+        file = cls.post(path='/filemaster/api/file/', data=data)
 
         # Get the UUID.
         uuid = file['uuid']
@@ -149,25 +154,35 @@ class Fileservice(PPM.Service):
         }
 
         # Make the request for an s3 presigned post.
-        response = cls.get(request, '/filemaster/api/file/{}/post/'.format(uuid), params)
+        response = cls.get(path='/filemaster/api/file/{}/post/'.format(uuid), data=params)
 
         return uuid, response
 
     @classmethod
-    def get_files(cls, request, uuids):
+    def get_files(cls, uuids=None):
 
         # Build the request.
-        params = {
-            'uuids': uuids.split(',')
-        }
+        if uuids:
+            params = {
+                'uuids': uuids.split(',')
+            }
+        else:
+            params = {}
 
         # Make the request.
-        response = cls.get(request, '/filemaster/api/file/', params)
+        response = cls.get(path='/filemaster/api/file/', data=params, raw=True)
 
-        return response
+        # No files will return a 403, handle this gracefully
+        if response.status_code == 403:
+            logger.debug('Fileservice returned 403, assuming empty file list: {}'.format(response.content))
+            return []
+        elif response.ok:
+            return response.json()
+        else:
+            return None
 
     @classmethod
-    def get_file(cls, request, uuid):
+    def get_file(cls, uuid):
 
         # Build the request.
         params = {
@@ -175,12 +190,12 @@ class Fileservice(PPM.Service):
         }
 
         # Make the request.
-        response = cls.get(request, '/filemaster/api/file/', params)
+        response = cls.get(path='/filemaster/api/file/', data=params)
 
         return response
 
     @classmethod
-    def uploaded_file(cls, request, uuid, location_id):
+    def uploaded_file(cls, uuid, location_id):
 
         # Build the request.
         params = {
@@ -188,23 +203,23 @@ class Fileservice(PPM.Service):
         }
 
         # Make the request.
-        response = cls.get(request, '/filemaster/api/file/{}/uploadcomplete/'.format(uuid), params)
+        response = cls.get(path='/filemaster/api/file/{}/uploadcomplete/'.format(uuid), data=params, raw=True)
 
-        return response is not None
+        return response.ok
 
     @classmethod
-    def download_url(cls, request, uuid):
+    def download_url(cls, uuid):
 
         # Prepare the request.
-        response = cls.get(request, '/filemaster/api/file/{}/download/'.format(uuid))
+        response = cls.get(path='/filemaster/api/file/{}/download/'.format(uuid))
 
         return response['url']
 
     @classmethod
-    def download_file(cls, request, uuid):
+    def download_file(cls, uuid):
 
         # Get the URL
-        url = cls.download_url(request, uuid)
+        url = cls.download_url(uuid)
 
         # Request the file from S3 and get its contents.
         response = requests.get(url)
@@ -213,27 +228,27 @@ class Fileservice(PPM.Service):
         return response.content
 
     @classmethod
-    def proxy_download_url(cls, request, uuid):
+    def proxy_download_url(cls, uuid):
 
         # Prepare the request.
-        response = cls.get(request, '/filemaster/api/file/{}/proxy/'.format(uuid))
+        response = cls.get(path='/filemaster/api/file/{}/proxy/'.format(uuid))
 
         return response['url']
 
     @classmethod
-    def proxy_download_file(cls, request, uuid):
+    def proxy_download_file(cls, uuid):
 
         # Request the file from S3 and get its contents.
-        response = cls.get(request, '/filemaster/api/file/{}/proxy/'.format(uuid))
+        response = cls.get(path='/filemaster/api/file/{}/proxy/'.format(uuid))
 
         # Add the content to the FHIR resource as a data element and remove the URL element.
         return response.content
 
     @classmethod
-    def download_archive(cls, request, uuids):
+    def download_archive(cls, uuids):
 
         # Request the file from S3 and get its contents.
-        response = cls.get(request, '/filemaster/api/file/archive/', data={'uuids': ','.join(uuids)})
+        response = cls.get(path='/filemaster/api/file/archive/', data={'uuids': ','.join(uuids)})
 
         # Add the content to the FHIR resource as a data element and remove the URL element.
         return response.content
@@ -253,10 +268,10 @@ class Fileservice(PPM.Service):
         return cls._build_url('/filemaster/api/file/{}/download/'.format(uuid))
 
     @classmethod
-    def file_md5(cls, request, uuid):
+    def file_md5(cls, uuid):
 
         # Request the file from S3 and get its contents.
-        response = requests.get(request, '/filemaster/api/file/{}/filehash'.format(uuid))
+        response = cls.get(path='/filemaster/api/file/{}/filehash/'.format(uuid))
 
         # Add the content to the FHIR resource as a data element and remove the URL element.
         return response.content
