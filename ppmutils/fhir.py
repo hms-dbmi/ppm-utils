@@ -67,6 +67,10 @@ class FHIR:
     ppm_comm_identifier_system = 'https://peoplepoweredmedicine.org/fhir/communication'
     ppm_comm_coding_system = 'https://peoplepoweredmedicine.org/ppm-notification'
 
+    # Patient extension flags
+    twitter_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-twitter'
+    picnichealth_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/registered-picnichealth'
+
     #
     # META
     #
@@ -2170,7 +2174,7 @@ class FHIR:
             else:
                 # Add an extension indicating their use of Twitter
                 uses_twitter = {
-                        'url': 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-twitter',
+                        'url': FHIR.twitter_extension_url,
                         'valueBoolean': True if handle else False
                     }
 
@@ -2189,6 +2193,50 @@ class FHIR:
 
         except Exception as e:
             logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={'ppm_id': email})
+
+        return False
+
+    @staticmethod
+    def update_picnichealth(patient_id, registered=True):
+        logger.debug('Picnichealth registration: {} -> {}'.format(patient_id, registered))
+
+        try:
+            # Fetch the Patient.
+            url = furl(PPM.fhir_url())
+            url.path.segments.extend(['Patient'])
+            url.query.params.update(FHIR._patient_query(patient_id))
+            response = requests.get(url.url)
+            response.raise_for_status()
+            patient = response.json().get('entry')[0]['resource']
+
+            # Check for an existing Twitter status extension
+            extension = next((extension for extension in patient.get('extension', [])
+                              if FHIR.picnichealth_extension_url in extension.get('url')), None)
+            if extension:
+
+                # Update the flag
+                extension['valueBoolean'] = True if registered else False
+
+            else:
+                # Add an extension indicating their use of Twitter
+                extension = {
+                        'url': FHIR.picnichealth_extension_url,
+                        'valueBoolean': True if registered else False
+                    }
+
+                # Add it to their extensions
+                patient.setdefault('extension', []).append(extension)
+
+            # Save
+            url.query.params.clear()
+            url.path.segments.append(patient['id'])
+            response = requests.put(url.url, data=json.dumps(patient))
+            response.raise_for_status()
+
+            return response.ok
+
+        except Exception as e:
+            logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={'ppm_id': patient_id})
 
         return False
 
@@ -2989,6 +3037,10 @@ class FHIR:
         # Get if they are not using Twitter
         patient['uses_twitter'] = next((extension['valueBoolean'] for extension in resource.get('extension', [])
                                                     if 'uses-twitter' in extension.get('url')), True)
+
+        # Get if they are registered with Picnichealth
+        patient['picnichealth'] = next((extension['valueBoolean'] for extension in resource.get('extension', [])
+                                        if FHIR.picnichealth_extension_url in extension.get('url')), False)
 
         return patient
 
