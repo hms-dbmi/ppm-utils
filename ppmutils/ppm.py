@@ -538,3 +538,53 @@ class PPM:
                 })
 
             return False
+
+        @classmethod
+        def request(cls, verb, request=None, path='/', data=None, check=True):
+            """
+            Runs the appropriate REST operation. Request is required for JWT auth,
+            not required for token auth.
+            :param verb: The RESTful operation to be performed
+            :param request: The current Django request
+            :param path: The path of the request
+            :param data: Request data or params
+            :param check: Check the response and raise exception if faulty
+            :return: object
+            """
+            logger.debug('{} -> Path: {}'.format(verb.upper(), path))
+
+            # Check for params
+            if not data:
+                data = {}
+
+            # Track response for error reporting
+            response = None
+            try:
+                # Build arguments
+                args = [cls._build_url(path)]
+                kwargs = {'headers': cls.headers(request)}
+
+                # Check how data should be passed
+                if verb.lower() in ['get', 'head']:
+                    # Pass dict along
+                    kwargs['params'] = data
+                else:
+                    # Format as JSON string
+                    kwargs['data'] = json.dumps(data)
+
+                # Prepare the request.
+                response = getattr(requests, verb)(*args, **kwargs)
+
+                # See if we should check the response
+                if check:
+                    response.raise_for_status()
+
+                # Return
+                return response
+
+            except Exception as e:
+                logger.exception('{} {} error: {}'.format(cls.service, verb.upper(), e), exc_info=True, extra={
+                    'path': path, 'verb': verb, 'data': data, 'response': response
+                })
+
+            return False
