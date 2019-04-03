@@ -3654,7 +3654,7 @@ class FHIR:
                 data['identifier'] = [{
                     'system': FHIR.device_identifier_system,
                     'value': identifier
-                }],
+                }]
 
             # Check dates
             if shipped:
