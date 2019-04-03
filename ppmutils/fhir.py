@@ -1874,9 +1874,13 @@ class FHIR:
             # Check dates
             if shipped:
                 device['manufactureDate'] = shipped.isoformat()
+            elif device.get('manufactureDate'):
+                del device['manufactureDate']
 
             if returned:
                 device['expirationDate'] = returned.isoformat()
+            elif device.get('expirationDate'):
+                del device['expirationDate']
 
             # Build the URL
             url = furl(PPM.fhir_url())
@@ -2373,6 +2377,7 @@ class FHIR:
             'DocumentReference',
             'ResearchSubject',
             'Communication',
+            'Device',
         ]
 
         # Do the delete
