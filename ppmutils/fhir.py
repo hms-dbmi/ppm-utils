@@ -1848,7 +1848,7 @@ class FHIR:
             # Get the device
             device = next(iter(FHIR.query_ppm_devices(patient=patient_id, item=item)), None)
             if not device:
-                logger.error(f'No PPM device could be found for {patient_id}/{item}/{identifier}')
+                logger.debug(f'No PPM device could be found for {patient_id}/{item}/{identifier}')
                 return False
 
             # Update the resource identifier
