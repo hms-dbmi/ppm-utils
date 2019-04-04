@@ -202,6 +202,17 @@ class PPM:
             )
 
         @staticmethod
+        def title(tracked_item):
+            """
+            Returns the title for the given tracked item/device
+            :param tracked_item: The item code/ID
+            :type tracked_item: str
+            :return: The item's title
+            :rtype: str
+            """
+            return dict(PPM.TrackedItem.choices())[tracked_item]
+
+        @staticmethod
         def devices(study=None):
             """
             Returns the device item codes for every project in PPM
