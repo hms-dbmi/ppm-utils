@@ -201,6 +201,39 @@ class PPM:
                 (PPM.TrackedItem.BloodSampleKit.value, 'Blood Sample'),
             )
 
+        @staticmethod
+        def title(tracked_item):
+            """
+            Returns the title for the given tracked item/device
+            :param tracked_item: The item code/ID
+            :type tracked_item: str
+            :return: The item's title
+            :rtype: str
+            """
+            return dict(PPM.TrackedItem.choices())[tracked_item]
+
+        @staticmethod
+        def devices(study=None):
+            """
+            Returns the device item codes for every project in PPM
+            :param study: The study for which the devices should be returned
+            :return: A list of device codes
+            :rtype: list
+            """
+            devices = {
+                PPM.Study.NEER.value: [PPM.TrackedItem.Fitbit.value,
+                                       PPM.TrackedItem.uBiomeFecalSampleKit.value,
+                                       PPM.TrackedItem.BloodSampleKit.value],
+
+                PPM.Study.ASD.value: [PPM.TrackedItem.Fitbit.value,
+                                      PPM.TrackedItem.SalivaSampleKit.value]
+            }
+
+            return devices[study] if study else devices
+
+    # Alias Device to TrackedItem
+    Device = TrackedItem
+
     class Service(object):
 
         # Subclasses set this to direct requests
