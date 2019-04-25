@@ -185,6 +185,31 @@ class PPM:
         Facebook = 'facebook'
         Gencove = 'gencove'
         uBiome = 'ubiome'
+        PicnicHealth = 'picnichealth'
+        Broad = 'broad-genomics'
+
+        @staticmethod
+        def choices():
+            return (
+                (PPM.Provider.Fitbit.value, 'Fitbit'),
+                (PPM.Provider.Twitter.value, 'Twitter'),
+                (PPM.Provider.Facebook.value, 'Facebook'),
+                (PPM.Provider.Gencove.value, 'Gencove'),
+                (PPM.Provider.uBiome.value, 'uBiome'),
+                (PPM.Provider.Broad.value, 'Broad'),
+                (PPM.Provider.PicnicHealth.value, 'PicnicHealth'),
+            )
+
+        @staticmethod
+        def title(provider):
+            """
+            Returns the title for the given provider
+            :param provider: The item code/ID
+            :type provider: str
+            :return: The provider's title
+            :rtype: str
+            """
+            return dict(PPM.Provider.choices())[provider]
 
     class TrackedItem(Enum):
         Fitbit = 'fitbit'
@@ -247,11 +272,8 @@ class PPM:
         @classmethod
         def _build_url(cls, path):
 
-            # Build the url.
-            url = furl(cls.service_url())
-
-            # Clear segments and paths
-            url.path.segments.extend(path.split('/'))
+            # Build the url, chancing on doubling up a slash or two.
+            url = furl(cls.service_url() + '/' + path)
 
             # Filter empty segments (double slashes in path)
             segments = [segment for index, segment in enumerate(url.path.segments)
