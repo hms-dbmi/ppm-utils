@@ -29,7 +29,8 @@ setup(
     packages=find_packages(exclude=['tests*']),
     license='Creative Commons Attribution-Noncommercial-Share Alike license',
     install_requires=[
-        'django>=1.11.0',
+        'django>=1.11,<3.0',
+        'python-dateutil',
         'fhirclient',
         'requests',
         'furl',

@@ -1,5 +1,4 @@
 import requests
-import json
 
 from django.conf import settings
 
@@ -114,6 +113,14 @@ class Fileservice(PPM.Service):
 
     @classmethod
     def create_file(cls, filename=None, metadata=None, tags=None):
+        """
+        Create a file and generate the presigned S3 POST for sending the file to S3. Allows for specification
+        of additional parameters for the upload.
+        :param filename: The filename of the file
+        :param metadata: A dictionary of metadata
+        :param tags: A list of tags
+        :return:
+        """
 
         # Ensure groups exist.
         if not cls.check_groups():
@@ -193,6 +200,81 @@ class Fileservice(PPM.Service):
         response = cls.get(path='/filemaster/api/file/', data=params)
 
         return response
+
+    @classmethod
+    def update_file(cls, uuid, file):
+
+        # Make the request.
+        response = cls.patch(path=f'/filemaster/api/file/{uuid}/', data=file, raw=True)
+
+        # Check response
+        if response.ok:
+            return response.json()
+        else:
+            return None
+
+    @classmethod
+    def copy_file(cls, uuid, bucket):
+        """
+        Copy the requested file to the new bucket
+        :param uuid: The file's Fileservice UUID
+        :param bucket: The destination S3 bucket
+        :return: The result of the operation
+        """
+        # Build path
+        path = f'/filemaster/api/file/{uuid}/copy/?to={bucket}'
+
+        # Make the request.
+        response = cls.post(path=path, raw=True)
+
+        # Check response
+        if response.ok:
+            return response.json()
+        else:
+            return None
+
+    @classmethod
+    def move_file(cls, uuid, bucket):
+        """
+        Move the requested file to the new bucket
+        :param uuid: The file's Fileservice UUID
+        :param bucket: The destination S3 bucket
+        :return: The result of the operation
+        """
+        # Build path
+        path = f'/filemaster/api/file/{uuid}/move/?to={bucket}'
+
+        # Make the request.
+        response = cls.post(path=path, raw=True)
+
+        # Check response
+        if response.ok:
+            return response.json()
+        else:
+            return None
+
+    @classmethod
+    def delete_file(cls, uuid, location=None):
+        """
+        Delete the requested file from the passed location
+        :param uuid: The file's Fileservice UUID
+        :param location: The file's location to delete (if in multiple locations)
+        :return: The result of the operation
+        """
+        # Build the path
+        if location:
+            path = f'/filemaster/api/file/{uuid}/?location={location}'
+        else:
+            path = f'/filemaster/api/file/{uuid}/'
+
+        # Make the request.
+        response = cls.delete(path=path, raw=True)
+
+        # Check response
+        if response.ok:
+            return response.json()
+        else:
+            return None
 
     @classmethod
     def uploaded_file(cls, uuid, location_id):
