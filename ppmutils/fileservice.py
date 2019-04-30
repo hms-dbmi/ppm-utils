@@ -1,4 +1,6 @@
 import requests
+import json
+import base64
 
 from django.conf import settings
 
@@ -112,13 +114,14 @@ class Fileservice(PPM.Service):
         return file
 
     @classmethod
-    def create_file(cls, filename=None, metadata=None, tags=None):
+    def create_file(cls, filename=None, metadata=None, tags=None, conditions=None):
         """
         Create a file and generate the presigned S3 POST for sending the file to S3. Allows for specification
         of additional parameters for the upload.
         :param filename: The filename of the file
         :param metadata: A dictionary of metadata
         :param tags: A list of tags
+        :param conditions: A list of S3 conditions to pass along when creating the signature for the post
         :return:
         """
 
@@ -159,6 +162,10 @@ class Fileservice(PPM.Service):
             'bucket': settings.FILESERVICE_AWS_BUCKET,
             'expires': 100
         }
+
+        # Add conditions if passed
+        if conditions:
+            params['conditions'] = base64.b64encode(json.dumps(conditions).encode()).decode()
 
         # Make the request for an s3 presigned post.
         response = cls.get(path='/filemaster/api/file/{}/post/'.format(uuid), data=params)
