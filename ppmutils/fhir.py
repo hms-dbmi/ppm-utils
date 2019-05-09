@@ -1740,13 +1740,12 @@ class FHIR:
             if last_name:
                 patient['name'][0]['family'] = last_name
 
+            # Update the whole address
             street_address1 = form.get('street_address1')
-            if street_address1:
-                patient['address'][0]['line'][0] = street_address1
-
             street_address2 = form.get('street_address2')
-            if street_address2:
-                patient['address'][0]['line'][1] = street_address2
+            if street_address1:
+                patient['address'][0]['line'] = [street_address1] if not street_address2 \
+                    else [street_address1, street_address2]
 
             city = form.get('city')
             if city:
@@ -1779,6 +1778,13 @@ class FHIR:
                 else:
                     # Add it
                     patient['telecom'].append({'system': FHIR.patient_email_telecom_system, 'value': email})
+
+            else:
+                # Delete an existing number if it exists
+                for telecom in patient['telecom']:
+                    if telecom['system'] == FHIR.patient_email_telecom_system:
+                        patient['telecom'].remove(telecom)
+                        break
 
             active = form.get('active')
             if active is not None:

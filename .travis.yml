@@ -6,9 +6,8 @@ branches:
   - master
 install:
 - python setup.py -q install
-- pip install nose coverage
 script:
-  - nosetests --with-coverage --cover-package=ppmutils --cover-inclusive --cover-html
+  - python setup.py test
 after_success:
 - git config --global user.name "semantic-release (via TravisCI)"
 - git config --global user.email "semantic-release@travis"

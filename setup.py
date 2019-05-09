@@ -4,6 +4,7 @@ import sys
 from io import open
 
 from setuptools import find_packages, setup
+from setuptools.command.test import test as TestCommand
 
 
 def read(f):
@@ -18,6 +19,19 @@ def get_version(package):
     return re.search("__version__ = ['\"]([^'\"]+)['\"]", init_py).group(1)
 
 
+# Inspired by the example at https://pytest.org/latest/goodpractises.html
+class NoseTestCommand(TestCommand):
+    def finalize_options(self):
+        TestCommand.finalize_options(self)
+        self.test_args = []
+        self.test_suite = True
+
+    def run_tests(self):
+        # Run nose ensuring that argv simulates running nosetests directly
+        import nose
+        nose.run_exit(argv=['nosetests'])
+
+
 version = get_version('ppmutils')
 
 setup(
@@ -28,13 +42,8 @@ setup(
     author_email='dbmi-tech-core@hms.harvard.edu',
     packages=find_packages(exclude=['tests*']),
     license='Creative Commons Attribution-Noncommercial-Share Alike license',
-    install_requires=[
-        'django>=1.11,<3.0',
-        'python-dateutil',
-        'fhirclient',
-        'requests',
-        'furl',
-    ],
+    install_requires=read('requirements.txt').splitlines(),
+    tests_require=read('requirements-test.txt').splitlines(),
     include_package_data=True,
     classifiers=[
         'Environment :: Web Environment',
@@ -54,6 +63,7 @@ setup(
         'Topic :: Internet :: WWW/HTTP',
         'Topic :: Internet :: WWW/HTTP :: Dynamic Content',
     ],
+    cmdclass={'test': NoseTestCommand},
 )
 
 try:
