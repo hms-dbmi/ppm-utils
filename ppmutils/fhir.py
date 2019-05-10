@@ -1080,7 +1080,7 @@ class FHIR:
         return response.json()
 
     @staticmethod
-    def query_patients(study=None, enrollment=None, active=True, testing=False):
+    def query_patients(study=None, enrollment=None, active=True, testing=False, include_deceased=True):
         logger.debug('Getting patients - enrollment: {}, study: {}, active: {}, testing: {}'.format(
             enrollment, study, active, testing)
         )
@@ -1090,6 +1090,10 @@ class FHIR:
             'active': 'false' if not active else 'true',
             '_revinclude': ['ResearchSubject:individual', 'Flag:subject']
         }
+
+        # Check deceased
+        if not include_deceased:
+            query['deceased'] = 'false'
 
         # Peel out patients
         bundle = FHIR._query_bundle('Patient', query)
