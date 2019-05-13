@@ -336,7 +336,7 @@ class P2MD(PPM.Service):
         return cls.patch(request, f'/sources/api/file/{ppm_id}', data)
 
     @classmethod
-    def get_smart_endpoints(cls, request):
+    def get_smart_endpoints(cls, request=None):
         """
         Return a list of all registered SMART endpoints
         :param request: The current HttpRequest
@@ -377,7 +377,7 @@ class P2MD(PPM.Service):
         return endpoints
 
     @classmethod
-    def get_providers(cls, request):
+    def get_providers(cls, request=None):
         """
         Return a list of all registered data providers' codes and titles
         :param request: The current HttpRequest
@@ -386,7 +386,7 @@ class P2MD(PPM.Service):
         return cls.get(request, f'/sources/api/provider')
 
     @classmethod
-    def get_file_types(cls, request):
+    def get_file_types(cls, request=None):
         """
         Return a list of all registered data providers' codes and titles
         :param request: The current HttpRequest
@@ -395,18 +395,24 @@ class P2MD(PPM.Service):
         return cls.get(request, f'/sources/api/file/type')
 
     @classmethod
-    def get_participant_data_url(cls, ppm_id, filename):
+    def get_participant_data_url(cls, ppm_id, filename=None, providers=None):
         """
         Downloads the PPM dataset for the passed user
         :param ppm_id: The PPM ID of the requesting user
         :param filename: What the resulting archive should be called
+        :param providers: A list of providers to limit data included to
         :return: The user's entire dataset
         """
         # Build the URL
         url = furl(P2MD._build_url(f'/sources/api/ppm/{ppm_id}/archive/'))
 
+        # If providers, include them in query
+        if providers:
+            url.query.params.add('providers', ','.join(providers))
+
         # Add the return URL
-        url.query.params.add('filename', filename)
+        if filename:
+            url.query.params.add('filename', filename)
 
         # Patch for local
         if os.environ.get('DBMI_ENV') == 'local':
@@ -415,20 +421,105 @@ class P2MD(PPM.Service):
         return url.url
 
     @classmethod
-    def download_participant_data(cls, request, ppm_id):
+    def download_participant_data(cls, request, ppm_id, filename=None, providers=None):
         """
         Downloads the PPM dataset for the passed user
         :param request: The original Django request object
         :param ppm_id: The PPM ID of the requesting user
-        :param provider: The provider or format of the exported data
+        :param filename: What the resulting archive should be called
+        :param providers: A list of providers to limit data included to
         :return: The user's entire dataset
         """
+        # Build the URL
+        url = furl(P2MD.get_participant_data_url(ppm_id=ppm_id,
+                                                 filename=filename,
+                                                 providers=providers))
+
         # Make the request
-        response = cls.get(request, f'/sources/api/ppm/{ppm_id}/archive/', raw=True)
+        response = cls.get(request=request, path=url.pathstr, data=url.querystr, raw=True)
         if response:
             return response.content
 
         return None
+
+    @classmethod
+    def export_content_type(cls, provider=ExportProviders.Participant):
+        """
+        Returns the content type and extension for the passed export provider. Use this method
+        to prepare a response when passing through a Fileservice document.
+        :param provider: ExportProvider
+        :return: str, str
+        """
+        if provider is cls.ExportProviders.Participant:
+            return "application/zip", "zip"
+
+        else:
+            return "application/json", "json"
+
+    @classmethod
+    def get_data_document_references(cls, ppm_id, provider=None):
+        """
+        Queries the current user's FHIR record for any DocumentReferences related to this type
+        :return: A list of DocumentReferences
+        :rtype: list
+        """
+        # Gather data-related DocumentReferences
+        document_references = FHIR.query_data_document_references(patient=ppm_id, provider=provider)
+        logger.debug(f'{ppm_id}: Found {len(document_references)} DocumentReferences for: {provider}')
+
+        # Flatten resources and pick out relevant identifiers
+        flats = []
+        for document_reference in document_references:
+
+            # Flatten it
+            flat = FHIR.flatten_document_reference(document_reference['resource'])
+
+            # Pick out P2MD and Fileservice identifiers
+            if P2MD.p2md_identifier_system in flat:
+                flat['p2md_id'] = flat[P2MD.p2md_identifier_system]
+                del flat[P2MD.p2md_identifier_system]
+
+            if P2MD.fileservice_identifier_system in flat:
+                flat['fileservice_id'] = flat[P2MD.fileservice_identifier_system]
+                del flat[P2MD.fileservice_identifier_system]
+
+            elif flat.get('url'):
+                # To support older documents, try to parse it from URL
+                url = furl(flat['url'])
+                flat['fileservice_id'] = url.path.segments.pop(3)
+
+            else:
+                # Just make it empty
+                flat['fileservice_id'] = 'ERROR'
+
+            flats.append(flat)
+
+        return flats
+
+    @classmethod
+    def get_data_document_references_for_providers(cls, ppm_id, providers=None):
+        """
+        Queries the current user's FHIR record for any DocumentReferences related to the passed types
+        :return: A list of DocumentReferences
+        :rtype: list
+        """
+        # Get all flattened data document references
+        document_references = []
+        for document_reference in P2MD.get_data_document_references(ppm_id, provider=None):
+
+            # Check type and filter out non-requested provider documents
+            if not providers or document_reference['type'] not in providers:
+                continue
+
+            document_references.append(document_reference)
+
+        logger.debug(f'{ppm_id}: Found {len(document_references)} DocumentReferences for: {", ".join(providers)}')
+        return document_references
+
+    #
+    # Deprecated
+    #
+
 
     @classmethod
     def check_export(cls, request, ppm_id, provider=ExportProviders.Participant, age=24):
@@ -513,59 +604,3 @@ class P2MD(PPM.Service):
                             raw=True)
 
         return response.ok
-
-    @classmethod
-    def export_content_type(cls, provider=ExportProviders.Participant):
-        """
-        Returns the content type and extension for the passed export provider. Use this method
-        to prepare a response when passing through a Fileservice document.
-        :param provider: ExportProvider
-        :return: str, str
-        """
-        if provider is cls.ExportProviders.Participant:
-            return "application/zip", "zip"
-
-        else:
-            return "application/json", "json"
-
-    @classmethod
-    def get_data_document_references(cls, ppm_id, provider=''):
-        """
-        Queries the current user's FHIR record for any DocumentReferences related to this type
-        :return: A list of DocumentReferences
-        :rtype: list
-        """
-        # Gather data-related DocumentReferences
-        query = {'type': f'{P2MD.system}|{provider}'}
-        document_references = FHIR.query_document_references(ppm_id, query)
-
-        logger.debug(f'Found {len(document_references)} DocumentReferences for: {ppm_id}')
-
-        # Flatten resources and pick out relevant identifiers
-        flats = []
-        for document_reference in document_references:
-
-            # Flatten it
-            flat = FHIR.flatten_document_reference(document_reference['resource'])
-
-            # Pick out P2MD and Fileservice identifiers
-            if P2MD.p2md_identifier_system in flat:
-                flat['p2md_id'] = flat[P2MD.p2md_identifier_system]
-                del flat[P2MD.p2md_identifier_system]
-
-            if P2MD.fileservice_identifier_system in flat:
-                flat['fileservice_id'] = flat[P2MD.fileservice_identifier_system]
-                del flat[P2MD.fileservice_identifier_system]
-
-            elif flat.get('url'):
-                # To support older documents, try to parse it from URL
-                url = furl(flat['url'])
-                flat['fileservice_id'] = url.path.segments.pop(3)
-
-            else:
-                # Just make it empty
-                flat['fileservice_id'] = 'ERROR'
-
-            flats.append(flat)
-
-        return flats

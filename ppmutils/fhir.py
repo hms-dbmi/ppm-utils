@@ -1570,7 +1570,7 @@ class FHIR:
         return FHIR._query_resources('DocumentReference', query=_query)
 
     @staticmethod
-    def query_data_document_references(patient, provider=None):
+    def query_data_document_references(patient, provider=None, status=None):
         """
         Queries the current user's FHIR record for any DocumentReferences related to this type
         :return: A list of DocumentReference resources
@@ -1584,6 +1584,10 @@ class FHIR:
             query['type'] = f'{FHIR.data_document_reference_identifier_system}|{provider}'
         else:
             query['type'] = f'{FHIR.data_document_reference_identifier_system}|'
+
+        # Set preference on status
+        if status:
+            query['status'] = status
 
         return FHIR._query_resources('DocumentReference', query=query)
 
@@ -2251,6 +2255,39 @@ class FHIR:
 
         except Exception as e:
             logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={'ppm_id': patient_id})
+
+        return False
+
+    @staticmethod
+    def update_document_reference(document_reference, status='current'):
+        logger.debug('Supersede DocumentReference: {}'.format(document_reference['id']))
+
+        try:
+            # Build the URL
+            url = furl(PPM.fhir_url())
+            url.path.segments.extend(['DocumentReference', document_reference['id']])
+
+            # Get the patient reference
+            patient_ref = document_reference['subject']['reference']
+
+            # Set headers for patch operation
+            headers = {'Content-Type': 'application/json-patch+json'}
+
+            # Prepare the list of updated operations
+            data = [
+                {"op": "replace", "path": "/status", "value": status},
+            ]
+
+            # Patch it
+            response = requests.patch(url.url, headers=headers, json=data)
+            response.raise_for_status()
+
+            return response.ok
+
+        except Exception as e:
+            logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={
+                'document_reference': document_reference, 'patient': patient_ref
+            })
 
         return False
 
@@ -3446,6 +3483,20 @@ class FHIR:
         else:
             logger.error('Unhandled list resource type: {}'.format(resource_type))
             return None
+
+    @staticmethod
+    def flatten_document_references(bundle):
+
+        # Get the document references
+        references = FHIR._get_resources(bundle, 'DocumentReference')
+
+        # Flatten them
+        flattened = []
+        for reference in references:
+
+            flattened.append(FHIR.flatten_document_reference(reference))
+
+        return flattened
 
     @staticmethod
     def flatten_document_reference(resource):
