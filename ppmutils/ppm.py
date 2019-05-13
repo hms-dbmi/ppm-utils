@@ -180,17 +180,21 @@ class PPM:
                 return PPM.Questionnaire.ASDIndividualConsentQuestionnaire.value
 
     class Provider(Enum):
+        PPM = 'ppmfhir'
         Fitbit = 'fitbit'
         Twitter = 'twitter'
         Facebook = 'facebook'
         Gencove = 'gencove'
         uBiome = 'ubiome'
         PicnicHealth = 'picnichealth'
-        Broad = 'broad-genomics'
+        Broad = 'broad'
+        SMART = 'smart'
+        File = 'file'
 
         @staticmethod
         def choices():
             return (
+                (PPM.Provider.PPM.value, 'PPM FHIR'),
                 (PPM.Provider.Fitbit.value, 'Fitbit'),
                 (PPM.Provider.Twitter.value, 'Twitter'),
                 (PPM.Provider.Facebook.value, 'Facebook'),
@@ -198,6 +202,8 @@ class PPM:
                 (PPM.Provider.uBiome.value, 'uBiome'),
                 (PPM.Provider.Broad.value, 'Broad'),
                 (PPM.Provider.PicnicHealth.value, 'PicnicHealth'),
+                (PPM.Provider.SMART.value, 'SMART on FHIR'),
+                (PPM.Provider.File.value, 'PPM Files'),
             )
 
         @staticmethod
