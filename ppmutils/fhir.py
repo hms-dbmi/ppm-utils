@@ -69,8 +69,9 @@ class FHIR:
 
     # Patient extension flags
     twitter_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-twitter'
+    fitbit_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-fitbit'
     picnichealth_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/registered-picnichealth'
-
+    facebook_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-facebook'
     #
     # META
     #
@@ -2154,14 +2155,27 @@ class FHIR:
         return points_of_care
 
     @staticmethod
-    def update_twitter(email, handle=None):
-        logger.debug('Twitter handle: {}'.format(handle))
+    def update_twitter(patient_id, handle=None, uses_twitter=None):
+        """
+        Accepts details of a Twitter integration and updates the Patient record. A handle
+        automatically sets the 'uses-twitter' extension as true, whereas no handle
+        and no value for 'uses-twitter' deletes the extension and the handle from the Patient.
+        :param patient_id: Patient email, ID or object
+        :param handle: The user's Twitter handle
+        :param uses_twitter: The flag to set for whether the user has opted out of the integration
+        :return: bool
+        """
+        logger.debug('Twitter handle: {}, Uses Twitter: {}'.format(handle, uses_twitter))
 
         try:
             # Fetch the Patient.
             url = furl(PPM.fhir_url())
             url.path.segments.extend(['Patient'])
-            url.query.params.add('identifier', 'http://schema.org/email|{}'.format(email))
+
+            # Add patient query
+            url.query.params.update(FHIR._patient_query(patient_id))
+
+            # Make the request
             response = requests.get(url.url)
             response.raise_for_status()
             patient = response.json().get('entry')[0]['resource']
@@ -2182,24 +2196,34 @@ class FHIR:
                         patient['telecom'].remove(telecom)
 
             # Check for an existing Twitter status extension
-            uses_twitter = next((extension for extension in patient.get('extension', [])
-                                 if 'uses-twitter' in extension.get('url')), None)
-            if uses_twitter:
+            extension = next((extension for extension in patient.get('extension', [])
+                              if 'uses-twitter' in extension.get('url')), None)
 
-                # Update the flag
-                uses_twitter['valueBoolean'] = True if handle else False
+            # See if we need to update the extension
+            if handle is not None or uses_twitter is not None:
 
-            else:
-                # Add an extension indicating their use of Twitter
-                uses_twitter = {
+                # Set preference
+                value = handle is not None or uses_twitter
+                logger.debug('({}) Updating "uses_twitter" -> {}'.format(patient['id'], value))
+
+                if not extension:
+                    # Add an extension indicating their use of Twitter
+                    extension = {
                         'url': FHIR.twitter_extension_url,
-                        'valueBoolean': True if handle else False
+                        'valueBoolean': value
                     }
 
-                # Add it to their extensions
-                patient.setdefault('extension', []).append(uses_twitter)
+                    # Add it to their extensions
+                    patient.setdefault('extension', []).append(extension)
 
-            logger.debug('Extension: {}'.format(patient['extension']))
+                # Update the flag
+                extension['valueBoolean'] = value
+
+            elif extension:
+                logger.debug('({}) Deleting "uses_twitter" -> None'.format(patient['id']))
+
+                # Remove this extension
+                patient['extension'].remove(extension)
 
             # Save
             url.query.params.clear()
@@ -2211,6 +2235,79 @@ class FHIR:
 
         except Exception as e:
             logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={'ppm_id': email})
+
+        return False
+
+    @staticmethod
+    def update_patient_extension(patient_id, extension_url, value=None):
+        """
+        Accepts an extension URL and a value and does the necessary update on the Patient.
+        If None is passed for the value and the extension already exists, it is deleted from
+        the Patient.
+        :param patient_id: Patient email, ID or object
+        :param extension_url: The URL for the extension
+        :param value: The value to set: str, bool, int or None
+        :return: bool
+        """
+        logger.debug('Patient extension: "{}" -> "{}"'.format(extension_url, value))
+
+        try:
+            # Fetch the Patient.
+            url = furl(PPM.fhir_url())
+            url.path.segments.extend(['Patient'])
+
+            # Add patient query
+            url.query.params.update(FHIR._patient_query(patient_id))
+
+            # Get the data
+            response = requests.get(url.url)
+            response.raise_for_status()
+            patient = response.json().get('entry')[0]['resource']
+
+            # Check for an existing Facebook status extension
+            extension = next((extension for extension in patient.get('extension', [])
+                             if extension_url.lower() == extension.get('url', '').lower()), None)
+            if value is not None:
+                logger.debug('({}) Updating "{}" -> "{}"'.format(patient['id'], extension_url, value))
+
+                # Check if an existing one was found
+                if not extension:
+
+                    # Add an extension indicating their use of Facebook
+                    extension = {
+                        'url': extension_url
+                    }
+
+                    # Add it to their extensions
+                    patient.setdefault('extension', []).append(extension)
+
+                # Check type and set the value accordingly
+                if type(value) is str:
+                    extension['valueString'] = value
+                elif type(value) is bool:
+                    extension['valueBoolean'] = value
+                elif type(value) is int:
+                    extension['valueInteger'] = value
+                else:
+                    logger.error('Unhandled value type "{}" : "{}"'.format(value, type(value)))
+                    return False
+
+            elif extension:
+                logger.debug('({}) Deleting {} -> None'.format(patient['id'], extension_url))
+
+                # Remove this extension
+                patient['extension'].remove(extension)
+
+            # Save
+            url.query.params.clear()
+            url.path.segments.append(patient['id'])
+            response = requests.put(url.url, data=json.dumps(patient))
+            response.raise_for_status()
+
+            return response.ok
+
+        except Exception as e:
+            logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={'patient': patient})
 
         return False
 
@@ -3088,7 +3185,15 @@ class FHIR:
 
         # Get if they are not using Twitter
         patient['uses_twitter'] = next((extension['valueBoolean'] for extension in resource.get('extension', [])
-                                                    if 'uses-twitter' in extension.get('url')), True)
+                                        if 'uses-twitter' in extension.get('url')), True)
+
+        # Get if they are not using Fitbit
+        patient['uses_fitbit'] = next((extension['valueBoolean'] for extension in resource.get('extension', [])
+                                       if 'uses-fitbit' in extension.get('url')), True)
+
+        # Get if they are not using Fitbit
+        patient['uses_facebook'] = next((extension['valueBoolean'] for extension in resource.get('extension', [])
+                                       if 'uses-facebook' in extension.get('url')), True)
 
         # Get if they are registered with Picnichealth
         patient['picnichealth'] = next((extension['valueBoolean'] for extension in resource.get('extension', [])
