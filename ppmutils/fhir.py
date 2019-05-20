@@ -72,6 +72,8 @@ class FHIR:
     fitbit_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-fitbit'
     picnichealth_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/registered-picnichealth'
     facebook_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-facebook'
+    smart_on_fhir_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-smart-on-fhir'
+
     #
     # META
     #
@@ -2307,7 +2309,7 @@ class FHIR:
             return response.ok
 
         except Exception as e:
-            logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={'patient': patient})
+            logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={'patient': patient_id})
 
         return False
 
