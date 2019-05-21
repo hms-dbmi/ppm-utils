@@ -298,12 +298,12 @@ class P2MD(PPM.Service):
         return cls.get(request, f'/sources/api/file/{ppm_id}')
 
     @classmethod
-    def create_file(cls, request, ppm_id, document_type, filename, metadata=None, tags=None, content_type='application/octect-stream'):
+    def create_file(cls, request, study, ppm_id, document_type, filename, metadata=None, tags=None, content_type='application/octect-stream'):
         """
         Make a request to P2MD to create a file upload
         """
         # Set data
-        data = {'type': document_type, 'filename': filename}
+        data = {'study': study, 'type': document_type, 'filename': filename}
 
         # Add metadata and tags if passed
         if metadata:
@@ -325,12 +325,12 @@ class P2MD(PPM.Service):
         return uuid, upload
 
     @classmethod
-    def uploaded_file(cls, request, ppm_id, document_type, uuid, location, content_type='application/octect-stream'):
+    def uploaded_file(cls, request, study, ppm_id, document_type, uuid, location, content_type='application/octect-stream'):
         """
         Make a request to P2MD to create a file upload
         """
         # Set data
-        data = {'uuid': uuid, 'location': location, 'type': document_type, 'content_type': content_type}
+        data = {'study': study, 'uuid': uuid, 'location': location, 'type': document_type, 'content_type': content_type}
 
         # Return True if no errors
         return cls.patch(request, f'/sources/api/file/{ppm_id}', data)
