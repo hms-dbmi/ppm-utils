@@ -3197,6 +3197,10 @@ class FHIR:
         patient['uses_facebook'] = next((extension['valueBoolean'] for extension in resource.get('extension', [])
                                        if 'uses-facebook' in extension.get('url')), True)
 
+        # Get if they are not using SMART on FHIR / EHR
+        patient['uses_smart_on_fhir'] = next((extension['valueBoolean'] for extension in resource.get('extension', [])
+                                       if 'uses-smart-on-fhir' in extension.get('url')), True)
+
         # Get if they are registered with Picnichealth
         patient['picnichealth'] = next((extension['valueBoolean'] for extension in resource.get('extension', [])
                                         if FHIR.picnichealth_extension_url in extension.get('url')), False)
