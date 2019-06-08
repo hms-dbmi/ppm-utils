@@ -25,14 +25,20 @@ from fhirclient.models.codeableconcept import CodeableConcept
 from fhirclient.models.coding import Coding
 from fhirclient.models.communication import Communication
 from fhirclient.models.device import Device
+from fhirclient.models.resource import Resource
 
 from ppmutils.ppm import PPM
+from ppmutils.settings import ppm_settings
 
+# Get the app logger
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(ppm_settings.LOGGER_NAME)
 
 
-class FHIR:
+class FHIR(PPM.Service):
+
+    service = 'fhir'
+    ppm_settings_url_name = 'FHIR_URL'
 
     #
     # CONSTANTS
@@ -68,6 +74,7 @@ class FHIR:
     ppm_comm_coding_system = 'https://peoplepoweredmedicine.org/ppm-notification'
 
     # Patient extension flags
+    admin_notified_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/admin-notified'
     twitter_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-twitter'
     fitbit_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-fitbit'
     picnichealth_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/registered-picnichealth'
@@ -79,23 +86,20 @@ class FHIR:
     #
 
     @classmethod
-    def default_url_for_env(cls, environment):
+    def service_url(cls):
         """
-        Give implementing classes an opportunity to list a default set of URLs based on the DBMI_ENV,
-        if specified. Otherwise, return nothing
-        :param environment: The DBMI_ENV string
-        :return: A URL, if any
+        FHIR uses a more standard URL for everything so use this one instead of
+        the PPM service stripped down one
+        :return: The FHIR URL
+        :rtype: str
         """
-        if 'local' in environment:
-            return 'http://fhir:8008'
-        elif 'dev' in environment:
-            return 'https://fhir.ppm.aws.dbmi-dev.hms.harvard.edu'
-        elif 'prod' in environment:
-            return 'https://fhir.ppm.aws.dbmi.hms.harvard.edu'
-        else:
-            logger.error(f'Could not return a default URL for environment: {environment}')
 
-        return None
+        # Get from ppm settings
+        if not hasattr(ppm_settings, cls.ppm_settings_url_name):
+            raise SystemError('FHIR URL not defined in settings'.format(cls.service.upper()))
+
+        # Get it
+        return getattr(ppm_settings, cls.ppm_settings_url_name)
 
     @staticmethod
     def get_client(fhir_url):
@@ -141,6 +145,87 @@ class FHIR:
             # All comparisons passed
             return resource
 
+        return None
+
+    @staticmethod
+    def _get_resource(obj, as_json=True, model=None):
+        """
+        Accepts an arbitrary FHIR object (Bundle, Resource, dict, FHIRResource) and returns
+        either the FHIRResource or the immediate resource dict 'as_json'
+        :param obj: A bundle or list or resource as a dict or FHIRResource
+        :param as_json: Whether to return the item in FHIRResource or dict
+        :param model: If we want the resource back as a FHIRClient model resource, we need to
+                      supply the model subclass in the event the object would need to be constructed
+                      from its JSON dictionary form.
+        :return: object
+        """
+        # Check for valid object
+        if not obj:
+            logger.warning('FHIR: Attempt to extract resource from nothing: "{}"'.format(obj))
+            return None
+
+        # Check type
+        if isinstance(obj, Resource):
+
+            # Check if in a search bundle
+            if type(obj) is Bundle:
+
+                # Get entries
+                return FHIR._get_resource(obj.entry, as_json=as_json, model=model)
+
+            else:
+
+                # Object is resource, return it
+                return obj.as_json() if as_json else obj
+
+        # Check if is a search bundle entry
+        if type(obj) is BundleEntry:
+
+            # Return its resource
+            return FHIR._get_resource(obj.resource, as_json=as_json, model=model)
+
+        if type(obj) is list:
+
+            # Check len
+            if len(obj) > 1:
+                logger.warning('FHIR: Extracting single resource from a list with many resources')
+
+            # Call this
+            return FHIR._get_resource(obj[0], as_json=as_json, model=model)
+
+        if type(obj) is dict:
+
+            # Check for bundle
+            if obj.get('resourceType') == 'Bundle' and obj.get('entry'):
+
+                # Call this with bundle entries
+                return FHIR._get_resource(obj['entry'], as_json=as_json, model=model)
+
+            # Check for bundle entry
+            elif obj.get('resource') and obj.get('fullUrl'):
+
+                # Call this with resource
+                return FHIR._get_resource(obj['resource'], as_json=as_json, model=model)
+
+            elif obj.get('resourceType'):
+
+                # If we want JSON, return this
+                if as_json:
+                    return obj
+
+                elif model is not None and issubclass(model, Resource):
+                    try:
+                        # Use the passed model to construct it
+                        return model(jsondict=obj, strict=True)
+                    except Exception as e:
+                        logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={
+                            'obj': type(obj), 'as_json': as_json, 'model': model
+                        })
+                else:
+                    logger.warning('FHIR: Requested resource as FHIRClient Resource but did not supply'
+                                   'valid Resource subclass to construct with')
+
+        logger.error(f'FHIR: Nothing matched object: {obj}, as_json: {as_json}, model: {model}')
         return None
 
     @staticmethod
@@ -538,7 +623,7 @@ class FHIR:
         # If we needed the Patient resource id, we could follow the redirect
         # returned from a successful POST operation, and get the id out of the
         # new resource. We don't though, so we can save an HTTP request.
-        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+        response = requests.post(FHIR.service_url(), json=bundle.as_json())
 
         return response.ok
 
@@ -587,7 +672,7 @@ class FHIR:
         # If we needed the Patient resource id, we could follow the redirect
         # returned from a successful POST operation, and get the id out of the
         # new resource. We don't though, so we can save an HTTP request.
-        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+        response = requests.post(FHIR.service_url(), json=bundle.as_json())
 
         return response.ok
 
@@ -627,7 +712,7 @@ class FHIR:
         # If we needed the Patient resource id, we could follow the redirect
         # returned from a successful POST operation, and get the id out of the
         # new resource. We don't though, so we can save an HTTP request.
-        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+        response = requests.post(FHIR.service_url(), json=bundle.as_json())
 
         return response.ok
 
@@ -698,7 +783,7 @@ class FHIR:
             # If we needed the Patient resource id, we could follow the redirect
             # returned from a successful POST operation, and get the id out of the
             # new resource. We don't though, so we can save an HTTP request.
-            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+            response = requests.post(FHIR.service_url(), json=bundle.as_json())
 
             # Parse out created identifiers
             for result in response.json():
@@ -735,7 +820,7 @@ class FHIR:
             flag.period = period
 
         # Build the FHIR Flag destination URL.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('Flag')
 
         logger.debug('Creating flag at: {}'.format(url.url))
@@ -765,7 +850,7 @@ class FHIR:
         ))
 
         # Build the FHIR Communication destination URL.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('Communication')
 
         logger.debug('Creating communication at: {}'.format(url.url))
@@ -832,7 +917,7 @@ class FHIR:
 
         try:
             # Create the organization
-            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+            response = requests.post(FHIR.service_url(), json=bundle.as_json())
             logger.debug('Response: {}'.format(response.status_code))
             response.raise_for_status()
 
@@ -934,7 +1019,7 @@ class FHIR:
         full_bundle.entry = bundle_entries
         full_bundle.type = "transaction"
 
-        response = requests.post(url=PPM.fhir_url(), json=full_bundle.as_json())
+        response = requests.post(url=FHIR.service_url(), json=full_bundle.as_json())
 
         return response.ok
 
@@ -956,7 +1041,7 @@ class FHIR:
         logger.debug('Query resource: {}'.format(resource_type))
 
         # Build the URL.
-        url_builder = furl(PPM.fhir_url())
+        url_builder = furl(FHIR.service_url())
         url_builder.path.add(resource_type)
 
         # Add query if passed and set a return count to a high number, despite the server
@@ -1014,7 +1099,7 @@ class FHIR:
         logger.debug('Query resource: {} : {}'.format(resource_type, query))
 
         # Build the URL.
-        url_builder = furl(PPM.fhir_url())
+        url_builder = furl(FHIR.service_url())
         url_builder.path.add(resource_type)
 
         # Add query if passed and set a return count to a high number, despite the server
@@ -1072,7 +1157,7 @@ class FHIR:
         logger.debug('Query resource "{}": {}'.format(resource_type, _id))
 
         # Build the URL.
-        url_builder = furl(PPM.fhir_url())
+        url_builder = furl(FHIR.service_url())
         url_builder.path.add(resource_type)
         url_builder.path.add(_id)
 
@@ -1170,7 +1255,7 @@ class FHIR:
     def query_participant(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('Patient')
         url.query.params.add('_include', '*')
         url.query.params.add('_revinclude', '*')
@@ -1203,7 +1288,7 @@ class FHIR:
     def query_patient(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('Patient')
 
         # Get flags for current user
@@ -1236,7 +1321,7 @@ class FHIR:
     def get_participant(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('Patient')
         url.query.params.add('_include', '*')
         url.query.params.add('_revinclude', '*')
@@ -1275,7 +1360,7 @@ class FHIR:
     def get_patient(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('Patient')
         url.query.params.add('_include', '*')
         url.query.params.add('_revinclude', '*')
@@ -1308,7 +1393,7 @@ class FHIR:
     def get_composition(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('Composition')
         url.query.params.add('_include', '*')
         url.query.params.add('_revinclude', '*')
@@ -1343,7 +1428,7 @@ class FHIR:
 
         try:
             # Get the client
-            client = FHIR.get_client(PPM.fhir_url())
+            client = FHIR.get_client(FHIR.service_url())
 
             # Query the Patient
             search = Patient.where(struct={'identifier': 'http://schema.org/email|{}'.format(email)})
@@ -1379,7 +1464,7 @@ class FHIR:
         """
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('Device')
 
         # Check item type
@@ -1426,7 +1511,7 @@ class FHIR:
     def query_ppm_research_subjects(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('ResearchSubject')
 
         # Get flags for current user
@@ -1462,7 +1547,7 @@ class FHIR:
     def query_research_subjects(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('ResearchSubject')
 
         # Get flags for current user
@@ -1498,7 +1583,7 @@ class FHIR:
     def query_enrollment_flag(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('Flag')
 
         # Get flags for current user
@@ -1528,7 +1613,7 @@ class FHIR:
     def get_questionnaire_response(patient, questionnaire_id, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('QuestionnaireResponse')
         url.query.params.add('questionnaire', 'Questionnaire/{}'.format(questionnaire_id))
 
@@ -1636,7 +1721,7 @@ class FHIR:
         research_study_ids = [subject['study']['reference'].split('/')[1] for subject in research_subjects]
 
         # Make the query
-        research_study_url = furl(PPM.fhir_url())
+        research_study_url = furl(FHIR.service_url())
         research_study_url.path.add('ResearchStudy')
         research_study_url.query.params.add('_id', ','.join(research_study_ids))
 
@@ -1666,7 +1751,7 @@ class FHIR:
         research_study_ids = [subject['study']['reference'].split('/')[1] for subject in research_subjects]
 
         # Make the query
-        research_study_url = furl(PPM.fhir_url())
+        research_study_url = furl(FHIR.service_url())
         research_study_url.path.add('ResearchStudy')
         research_study_url.query.params.add('_id', ','.join(research_study_ids))
 
@@ -1802,7 +1887,7 @@ class FHIR:
                 patient['active'] = False if active in ['false', False] else True
 
             # Build the URL
-            url = furl(PPM.fhir_url())
+            url = furl(FHIR.service_url())
             url.path.segments.append('Patient')
             url.path.segments.append(fhir_id)
 
@@ -1836,7 +1921,7 @@ class FHIR:
             }]
 
             # Build the URL
-            url = furl(PPM.fhir_url())
+            url = furl(FHIR.service_url())
             url.path.segments.append('Patient')
             url.path.segments.append(patient_id)
 
@@ -1900,7 +1985,7 @@ class FHIR:
                 del device['expirationDate']
 
             # Build the URL
-            url = furl(PPM.fhir_url())
+            url = furl(FHIR.service_url())
             url.path.segments.append('Device')
             url.path.segments.append(device['id'])
 
@@ -1940,7 +2025,7 @@ class FHIR:
                 }]
 
             # Build the URL
-            url = furl(PPM.fhir_url())
+            url = furl(FHIR.service_url())
             url.path.segments.append('Patient')
             url.path.segments.append(patient_id)
 
@@ -1965,7 +2050,7 @@ class FHIR:
         logger.debug("Patient: {}, Status: {}".format(patient_id, status))
 
         # Fetch the flag.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('Flag')
 
         query = {
@@ -2041,7 +2126,7 @@ class FHIR:
                 flag.code.text = status.title()
 
                 # Build the URL
-                flag_url = furl(PPM.fhir_url())
+                flag_url = furl(FHIR.service_url())
                 flag_url.path.segments.extend(['Flag', flag.id])
 
                 logger.debug('Updating Flag "{}" with code: "{}"'.format(flag_url.url, status))
@@ -2180,7 +2265,7 @@ class FHIR:
                 return points_of_care
 
         # Look for it
-        organization_url = furl(PPM.fhir_url())
+        organization_url = furl(FHIR.service_url())
         organization_url.path.add('Organization')
         organization_url.query.params.add('name', point_of_care)
 
@@ -2240,7 +2325,7 @@ class FHIR:
         bundle.entry.append(list_entry)
 
         # Post the transaction
-        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+        response = requests.post(FHIR.service_url(), json=bundle.as_json())
         response.raise_for_status()
 
         # Return the flattened list with the new organization
@@ -2263,7 +2348,7 @@ class FHIR:
 
         try:
             # Fetch the Patient.
-            url = furl(PPM.fhir_url())
+            url = furl(FHIR.service_url())
             url.path.segments.extend(['Patient'])
 
             # Add patient query
@@ -2347,7 +2432,7 @@ class FHIR:
 
         try:
             # Fetch the Patient.
-            url = furl(PPM.fhir_url())
+            url = furl(FHIR.service_url())
             url.path.segments.extend(['Patient'])
 
             # Add patient query
@@ -2413,7 +2498,7 @@ class FHIR:
 
         try:
             # Fetch the Patient.
-            url = furl(PPM.fhir_url())
+            url = furl(FHIR.service_url())
             url.path.segments.extend(['Patient'])
             url.query.params.update(FHIR._patient_query(patient_id))
             response = requests.get(url.url)
@@ -2457,7 +2542,7 @@ class FHIR:
 
         try:
             # Build the URL
-            url = furl(PPM.fhir_url())
+            url = furl(FHIR.service_url())
             url.path.segments.extend(['DocumentReference', document_reference['id']])
 
             # Get the patient reference
@@ -2510,7 +2595,7 @@ class FHIR:
             logger.debug("Target resource: {}/{}".format(source_resource_type, source_resource_id))
             logger.debug('Target related resources: {}'.format(target_resource_types))
 
-            source_url = furl(PPM.fhir_url())
+            source_url = furl(FHIR.service_url())
             source_url.path.add(source_resource_type)
             source_url.query.params.add('_id', source_resource_id)
             source_url.query.params.add('_include', '*')
@@ -2551,7 +2636,7 @@ class FHIR:
             logger.debug('Delete request: {}'.format(json.dumps(transaction)))
 
             # Do the delete.
-            response = requests.post(PPM.fhir_url(), headers={'content-type': 'application/json'},
+            response = requests.post(FHIR.service_url(), headers={'content-type': 'application/json'},
                                      data=json.dumps(transaction))
             response.raise_for_status()
 
@@ -2577,7 +2662,7 @@ class FHIR:
         url = None
         try:
             # Build the URL
-            url = furl(PPM.fhir_url())
+            url = furl(FHIR.service_url())
             url.path.segments.append(resource_type)
             url.path.segments.append(resource_id)
 
@@ -2773,7 +2858,7 @@ class FHIR:
             })
 
         # Make the FHIR request.
-        response = requests.post(PPM.fhir_url(), headers={'content-type': 'application/json'},
+        response = requests.post(FHIR.service_url(), headers={'content-type': 'application/json'},
                                  data=json.dumps(transaction))
         response.raise_for_status()
 
@@ -2810,7 +2895,7 @@ class FHIR:
         research_study_ids = [subject['study']['reference'].split('/')[1] for subject in subjects]
 
         # Make the query
-        research_study_url = furl(PPM.fhir_url())
+        research_study_url = furl(FHIR.service_url())
         research_study_url.path.add('ResearchStudy')
         research_study_url.query.params.add('_id', ','.join(research_study_ids))
 
@@ -2839,7 +2924,7 @@ class FHIR:
         research_study_ids = [subject['study']['reference'].split('/')[1] for subject in subjects]
 
         # Make the query
-        research_study_url = furl(PPM.fhir_url())
+        research_study_url = furl(FHIR.service_url())
         research_study_url.path.add('ResearchStudy')
         research_study_url.query.params.add('_id', ','.join(research_study_ids))
 
@@ -2894,7 +2979,7 @@ class FHIR:
 
         try:
             # Get the client
-            client = FHIR.get_client(PPM.fhir_url())
+            client = FHIR.get_client(FHIR.service_url())
 
             # Query the Patient
             search = Patient.where(struct={'identifier': 'http://schema.org/email|{}'.format(email)})
@@ -2965,8 +3050,8 @@ class FHIR:
 
             # Get the PPM study/project resources
             studies = FHIR.flatten_ppm_studies(bundle)
-            if len(studies) > 1:
-                logger.warning('Patient/{} has more than one PPM study: {}'.format(ppm_id, studies))
+            if len(studies) != 1:
+                logger.warning('Patient/{} has invalid number of PPM study(s): {}'.format(ppm_id, studies))
 
             # Check for accepted and a start date
             participant['project'] = participant['study'] = studies[0]['study']
@@ -3009,12 +3094,13 @@ class FHIR:
             # Flatten consent composition
             participant['devices'] = FHIR.flatten_ppm_devices(bundle)
 
-            if participant['project'] == PPM.Study.NEER.value:
+            # Check for research studies
+            research_studies = FHIR.get_research_studies(bundle)
+            if research_studies:
+                participant['research_studies'] = research_studies
 
-                # Flatten research studies
-                participant['research_studies'] = FHIR.get_research_studies(bundle)
-
-            elif participant['project'] == PPM.Study.ASD.value:
+            # Autism has a special consent with a quiz, get that content and add it
+            if participant['project'] == PPM.Study.ASD.value:
 
                 # Get the questionnaire ID
                 quiz_id = FHIR.consent_questionnaire_id(participant)
@@ -3284,6 +3370,10 @@ class FHIR:
         patient['contact_email'] = next((telecom.get('value', '') for telecom in resource.get('telecom', [])
                                         if telecom.get('system') == FHIR.patient_email_telecom_system), '')
 
+        # Determine if admins have been notified of their completion of initial registration
+        patient['admin_notified'] = next((extension['valueDateTime'] for extension in resource.get('extension', [])
+                                          if 'admin-notified' in extension.get('url')), None)
+
         # Get how they heard about PPM
         patient['how_did_you_hear_about_us'] = next((extension['valueString'] for extension in resource.get('extension', [])
                                                     if 'how-did-you-hear-about-us' in extension.get('url')), '')
@@ -3515,13 +3605,18 @@ class FHIR:
                     if contract.bindingReference:
 
                         # Fetch the questionnaire and its responses.
-                        questionnaire_response_id = re.search('[^\/](\d+)$', contract.bindingReference.reference).group(0)
+                        questionnaire_response_id = re.search(r'[^\/](\d+)$',
+                                                              contract.bindingReference.reference).group(0)
                         questionnaire_response = next((entry.resource for entry in incoming_bundle.entry if
-                                                  entry.resource.resource_type == 'QuestionnaireResponse' and
-                                                  entry.resource.id == questionnaire_response_id), None)
+                                                       entry.resource.resource_type == 'QuestionnaireResponse' and
+                                                       entry.resource.id == questionnaire_response_id), None)
 
                         if not questionnaire_response:
-                            logger.error('Could not find bindingReference QR for Contract/{}'.format(contract.id))
+                            logger.error('Could not find bindingReference QR for Contract/{}'.format(contract.id),
+                                         extra={
+                                             'ppm_id': contract.subject,
+                                             'questionnaire_response': questionnaire_response_id
+                                         })
                             break
 
                         # Get the questionnaire and its response.
@@ -3530,75 +3625,92 @@ class FHIR:
                                          entry.resource.resource_type == 'Questionnaire'
                                          and entry.resource.id == questionnaire_id][0]
 
-                        if not questionnaire_response or not questionnaire:
+                        if not questionnaire:
                             logger.error('FHIR Error: Could not find bindingReference Questionnaire/Response'
                                          ' for Contract/{}'.format(contract.id),
                                          extra={'ppm_id': contract.subject, 'questionnaire': questionnaire_id,
                                                 'questionnaire_response': questionnaire_response_id})
                             break
 
-                        # The reference refers to a Questionnaire which is linked to a part of the consent form.
-                        if questionnaire_response.questionnaire.reference == "Questionnaire/individual-signature-part-1"\
-                                or questionnaire_response.questionnaire.reference == "Questionnaire/neer-signature":
+                        # These are special instances of consent signature questionnaires
+                        if questionnaire_id == "guardian-signature-part-1":
 
-                            # This is a person consenting for themselves.
-                            consent_object["type"] = "INDIVIDUAL"
-                            consent_object["signer_signature"] = base64.b64decode(contract.signer[0].signature[0].blob)
-                            consent_object["participant_name"] = contract.signer[0].signature[0].whoReference.display
-
-                            # These don't apply on an Individual consent.
-                            consent_object["participant_acknowledgement_reason"] = "N/A"
-                            consent_object["participant_acknowledgement"] = "N/A"
-                            consent_object["signer_name"] = "N/A"
-                            consent_object["signer_relationship"] = "N/A"
-                            consent_object["assent_signature"] = "N/A"
-                            consent_object["assent_date"] = "N/A"
-                            consent_object["explained_signature"] = "N/A"
-
-                        elif questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-1":
+                            # Customs have their own template
+                            signature_type = questionnaire_id
 
                             # This is a person consenting for someone else.
                             consent_object["type"] = "GUARDIAN"
 
                             related_id = contract.signer[0].party.reference.split('/')[1]
                             related_person = [entry.resource for entry in incoming_bundle.entry if
-                                             entry.resource.resource_type == 'RelatedPerson'
-                                         and entry.resource.id == related_id][0]
+                                              entry.resource.resource_type == 'RelatedPerson'
+                                              and entry.resource.id == related_id][0]
 
                             consent_object["signer_name"] = related_person.name[0].text
                             consent_object["signer_relationship"] = related_person.relationship.text
 
-                            consent_object["participant_name"] = contract.signer[0].signature[0].onBehalfOfReference.display
-                            consent_object["signer_signature"] = base64.b64decode(contract.signer[0].signature[0].blob)
+                            consent_object["participant_name"] = contract.signer[0].signature[0]\
+                                .onBehalfOfReference.display
+                            consent_object["signer_signature"] = base64.b64decode(
+                                contract.signer[0].signature[0].blob
+                            ).decode()
 
-                        elif questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-2":
+                        elif questionnaire_id == "guardian-signature-part-2":
 
-                            # This is the question about being able to get acknowledgement from the participant by the guardian/parent.
-                            consent_object["participant_acknowledgement"] = next(item.answer[0].valueString for item in questionnaire_response.item if item.linkId == 'question-1').title()
+                            # Customs have their own template
+                            signature_type = questionnaire_id
+
+                            # Get acknowledgement from the participant by the guardian/parent.
+                            consent_object["participant_acknowledgement"] = next(item.answer[0].valueString for item in
+                                                                                 questionnaire_response.item
+                                                                                 if item.linkId == 'question-1').title()
 
                             # If the answer to the question is no, grab the reason.
                             if consent_object["participant_acknowledgement"].lower() == "no":
-                                consent_object["participant_acknowledgement_reason"] = next(item.answer[0].valueString for item in questionnaire_response.item if item.linkId == 'question-1-1')
+                                consent_object["participant_acknowledgement_reason"] = \
+                                    next(item.answer[0].valueString for item in
+                                         questionnaire_response.item if item.linkId == 'question-1-1')
 
                             # This is the Guardian's signature letting us know they tried to explain this study.
-                            consent_object["explained_signature"] = base64.b64decode(contract.signer[0].signature[0].blob)
+                            consent_object["explained_signature"] = base64.b64decode(
+                                contract.signer[0].signature[0].blob
+                            ).decode()
 
-                        elif questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-3":
+                        elif questionnaire_id == "guardian-signature-part-3":
+
+                            # Customs have their own template
+                            signature_type = questionnaire_id
 
                             # A contract without a reference is the assent page.
-                            consent_object["assent_signature"] = base64.b64decode(contract.signer[0].signature[0].blob)
+                            consent_object["assent_signature"] = base64.b64decode(
+                                contract.signer[0].signature[0].blob
+                            ).decode()
                             consent_object["assent_date"] = contract.issued.origval
 
                             # Append the Questionnaire Text if the response is true.
                             for current_response in questionnaire_response.item:
 
                                 if current_response.answer[0].valueBoolean:
-                                    answer = [item for item in questionnaire.item if item.linkId == current_response.linkId][0]
+                                    answer = [item for item in questionnaire.item
+                                              if item.linkId == current_response.linkId][0]
                                     assent_exceptions.append(FHIR._exception_description(answer.text))
+
+                        # The default is a standard signature Questionnaire. Used for ASD-I, NEER, and Example studies
+                        else:
+
+                            # These all use the standard signature template
+                            signature_type = 'signature'
+
+                            # This is a person consenting for themselves.
+                            consent_object["type"] = "INDIVIDUAL"
+                            consent_object["signer_signature"] = base64.b64decode(
+                                contract.signer[0].signature[0].blob).decode()
+                            consent_object["participant_name"] = contract.signer[0].signature[0].whoReference.display
 
                         # Prepare to parse the questionnaire.
                         questionnaire_object = {
-                            'template': 'dashboard/{}.html'.format(questionnaire.id),
+                            'type': signature_type,
+                            'questionnaire_id': questionnaire_id,
                             'questions': []
                         }
 
@@ -3622,18 +3734,19 @@ class FHIR:
 
                                         elif item.type == 'question':
                                             question_object['yes'] = item.text
-                                            question_object['no'] = 'I was not able to explain this study to my child or ' \
-                                                                    'individual in my care who will be participating'
+                                            question_object['no'] = 'I was not able to explain this study ' \
+                                                                    'to my child or individual in my care ' \
+                                                                    'who will be participating'
                                             question_object['answer'] = response.answer[0].valueString.lower() == 'yes'
 
                             # Add it.
                             questionnaire_object['questions'].append(question_object)
 
                         # Check the type.
-                    if questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-3":
-                        consent_object['assent_questionnaires'].append(questionnaire_object)
-                    else:
-                        consent_object['consent_questionnaires'].append(questionnaire_object)
+                        if questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-3":
+                            consent_object['assent_questionnaires'].append(questionnaire_object)
+                        else:
+                            consent_object['consent_questionnaires'].append(questionnaire_object)
 
         consent_object["exceptions"] = consent_exceptions
         consent_object["assent_exceptions"] = assent_exceptions
