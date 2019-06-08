@@ -1,0 +1,17 @@
+{% if first_name %}{{ first_name }},{% else %}Hello,{% endif %}
+
+Thank you for your patience as we review your registration for the People-Powered Medicine {{ ppm_study_title }} study.  We wanted to inform you that we are still examining the registration information that you provided to determine eligibility and are consulting with additional oncology experts.  We may reach out to you as we move forward to clarify any potential questions we may have.  Please don’t hesitate to contact us if you have any questions or concerns.
+Thank you for your continued interest in PPM {{ ppm_study_title }}!
+
+{% if ppm_signature %}
+{{ ppm_signature.name }}
+{{ ppm_signature.title }}
+
+Harvard Medical School
+Department of Biomedical Informatics
+10 Shattuck Street
+Boston, MA 02115
+{{ ppm_signature.email }}
+Ph: {{ ppm_signature.phone }}
+{% endif %}
+

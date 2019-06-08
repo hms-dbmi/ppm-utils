@@ -5,11 +5,14 @@ import json
 import re
 import os
 
+from django.template.loader import render_to_string
+from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
+from ppmutils.settings import ppm_settings
 
-
+# Get the app logger
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(ppm_settings.LOGGER_NAME)
 
 
 class PPM:
@@ -17,23 +20,6 @@ class PPM:
     This class serves mostly to track the PPM project properties across
     studies and consolidate functionality common amongst all services.
     """
-
-    @staticmethod
-    def fhir_url():
-        if hasattr(settings, 'FHIR_URL'):
-            return settings.FHIR_URL
-
-        elif os.environ.get('FHIR_URL'):
-            return os.environ.get('FHIR_URL')
-
-        # Search environment
-        for key, value in os.environ.items():
-            if '_FHIR_URL' in key:
-                logger.debug('Found FHIR_URL in key: {}'.format(key))
-
-                return value
-
-        raise ValueError('FHIR_URL not defined in settings or in environment')
 
     @staticmethod
     def is_tester(email):
@@ -48,12 +34,7 @@ class PPM:
         elif hasattr(settings, 'TEST_EMAIL_PATTERNS') and type(getattr(settings, 'TEST_EMAIL_PATTERNS')) is list:
             testers = settings.TEST_EMAIL_PATTERNS
         else:
-            testers = [
-                '(b32147|bryan.n.larson)\+[a-zA-Z0-9_.+-]*@gmail.com',
-                'b32147@gmail.com',
-                'bryan.n.larson@gmail.com',
-                'bryan_larson@hms.harvard.edu'
-            ]
+            return False
 
         # Iterate through all patterns
         for pattern in testers:
@@ -62,9 +43,192 @@ class PPM:
 
         return False
 
+    class Email(Enum):
+        AdminProposedNotification = 'admin_proposed_notification'
+        AdminContactNotification = 'admin_contact_notification'
+        UserProposedNotification = 'user_proposed_notification'
+        UserAcceptedNotification = 'user_accepted_notification'
+        UserPendingNotification = 'user_pending_notification'
+        UserQueuedNotification = 'user_queued_notification'
+
+        @staticmethod
+        def send(email, study, recipients, subject=None, sender=None, context=None, reply_to=None):
+            """
+            Sends an email for the corresponding email identifier.
+            :param email: The email identifier
+            :param study: The study for which the email concerns
+            :param recipients: A list of recipients
+            :param subject: The subject for the email
+            :param sender: The sender
+            :param context: Context for the email
+            :param reply_to: A list of reply to addresses, if any
+            :return:
+            """
+            try:
+                # Add subject
+                if not subject:
+                    subject = PPM.Email.subject(email=email, study=study)
+
+                for recipient in recipients:
+                    logger.debug(f'Email: Sending "{email.value}" for study "{study}" -> "{recipient}"')
+
+                    # Check if test
+                    test_admin = PPM.Email.is_test(recipient)
+                    if test_admin:
+                        recipient = test_admin
+
+                    # Check reply to
+                    if not reply_to:
+                        reply_to = []
+
+                    # Render templates
+                    html, plain = PPM.Email.render(email=email, study=study, context=context, subject=subject)
+
+                    # Perform send
+                    msg = EmailMultiAlternatives(subject, plain, ppm_settings.EMAIL_DEFAULT_FROM, [recipient], reply_to=reply_to)
+                    msg.attach_alternative(html, "text/html")
+                    msg.send()
+
+                    logger.debug(f'Email: Sent email "{email.value}" for study "{study}" -> "{recipient}"')
+
+                    return True
+
+            except Exception as e:
+                logger.exception('Email error: {}'.format(e), exc_info=True, extra={
+                    'email': email.value, 'study': study, 'subject': subject, 'sender': sender, 'context': context
+                })
+
+            return False
+
+        @staticmethod
+        def is_test(recipient):
+            """
+            Tests the given user account for matching that of a test account.
+            Test accounts are specified as [regex 1]:[admin email],[regex 2]:[admin email],...
+            If the given user is a test account, return the specific admin for which notifications
+            should be limited to sending to.
+            :param recipient: The recipient email
+            :return: Admin email address if test account, None if not
+            """
+
+            # Check for test accounts
+            try:
+                if hasattr(ppm_settings, 'EMAIL_TEST_ACCOUNTS'):
+                    test_accounts = ppm_settings.EMAIL_TEST_ACCOUNTS
+                elif hasattr(settings, 'TEST_EMAIL_ACCOUNTS'):
+                    test_accounts = settings.TEST_EMAIL_ACCOUNTS.split(',')
+                else:
+                    return None
+
+                if test_accounts is not None and len(test_accounts) > 0:
+                    logger.info('Test accounts found, checking now...')
+
+                    for test_account in test_accounts:
+
+                        # Split the test account email from the destination admin email
+                        test_account_parts = test_account.split(':')
+                        regex = re.compile(test_account_parts[0])
+                        matches = regex.match(recipient)
+                        if matches is not None and matches.group():
+                            logger.info("Email: Test account found: {}, sending to {}".format(
+                                recipient, test_account_parts[1]
+                            ))
+
+                            # Return the test admin email
+                            return test_account_parts[1]
+
+            except Exception as e:
+                logger.warning('Test email lookup failed: {}'.format(e), exc_info=True)
+
+            return None
+
+        @staticmethod
+        def render(email, study, context, subject=None):
+            """
+            Accepts an email identifier and context and returns the rendered content as a string
+            :param email: The email identifier
+            :param study: The study for which the email concerns
+            :param context: The context for the email's content
+            :param subject: The optional subject line
+            :return: str
+            """
+            # Get the study
+            _study = PPM.Study.get(study)
+
+            # Add study
+            context['ppm_study'] = _study.value
+            context['ppm_study_title'] = PPM.Study.title(study)
+
+            # Add subject
+            context['ppm_subject'] = subject if subject is not None else PPM.Email.subject(email=email, study=study)
+
+            # Add signature bits
+            context['ppm_signature'] = ppm_settings.EMAIL_SIGNATURE
+
+            try:
+                # Check for study specific templates
+                if os.path.exists(f'ppmutils/{_study.value}/{email.value}.html'):
+
+                    # These templates are specific to this study
+                    template_paths = f'ppmutils/{_study.value}/{email.value}.html', \
+                                     f'ppmutils/{_study.value}/{email.value}.txt'
+
+                else:
+
+                    # These are generic templates and can be rendered across all studies
+                    template_paths = f'ppmutils/{email.value}.html', \
+                                     f'ppmutils/{email.value}.txt'
+
+                # Render templates
+                html = render_to_string(template_paths[0], context)
+                plain = render_to_string(template_paths[1], context)
+
+                return html, plain
+
+            except Exception as e:
+                logger.exception(f'Email error: {e}', exc_info=True, extra={
+                    'email': email.value, 'study': study,
+                })
+
+        @staticmethod
+        def subject(email, study):
+            """
+            Returns the default subject time for the email and study combination
+            :param email: The email identifier
+            :param study: The study for which the email concerned
+            :return: str
+            """
+            # Set email subject lines
+            subjects = {
+                'admin_contact_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Support',
+                'admin_proposed_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - New User Signup',
+                'user_proposed_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Registration',
+                'user_accepted_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Approved',
+                'user_queued_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Update',
+                'user_pending_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Update',
+            }
+
+            return subjects[email.value]
+
     class Study(Enum):
         NEER = 'neer'
         ASD = 'autism'
+        EXAMPLE = 'example'
+
+        @staticmethod
+        def equals(this, that):
+            """
+            Compares a reference to a study and returns whether it is the second
+            passed PPM.Study enum
+            :param this: The study object to be compared
+            :type this: object
+            :param that: What we are comparing against
+            :type that: object
+            :return: Whether they are one and the same
+            :rtype: boolean
+            """
+            # Compare
+            return PPM.Study.get(this) is PPM.Study.get(that)
 
         @staticmethod
         def identifiers():
@@ -74,6 +238,14 @@ class PPM:
             :rtype: list
             """
             return ['ppm-{}'.format(study.value) for study in PPM.Study]
+
+        @staticmethod
+        def testing(study):
+            """
+            Return true if the passed study is testing
+            :rtype: boolean
+            """
+            return PPM.Study.get(study) in [PPM.Study.EXAMPLE]
 
         @staticmethod
         def is_ppm(identifier):
@@ -87,6 +259,51 @@ class PPM:
             return identifier.lower() in PPM.Study.identifiers()
 
         @staticmethod
+        def get(study):
+            """
+            Returns an instance of the Study enum for the given study value, enum, whatever
+            :param study: The study value string, name or enum
+            :type study: Object
+            :return: The instance of PPM Study enum
+            :rtype: PPM.Study
+            """
+            # Check easy case
+            if study in PPM.Study:
+                return study
+
+            # Set a pattern to include FHIR prepended study identifiers
+            pattern = r'^(ppm-)?'
+
+            # Iterate studies
+            for _study in PPM.Study:
+
+                # Update the pattern for the study
+                if _study is PPM.Study.ASD:
+
+                    # Add an additional case for 'asd'
+                    study_pattern = pattern + '({}|asd)$'.format(PPM.Study.ASD.value)
+
+                else:
+                    study_pattern = pattern + '{}$'.format(_study.value)
+
+                # Check it
+                if type(study) is str and re.match(study_pattern, study.lower()) or study is _study:
+                    return _study
+
+            raise ValueError(f'Study "{study}" is not a valid PPM study value/name/anything')
+
+        @staticmethod
+        def dashboard_url(study):
+            """
+            Returns the defined dashboard for the passed study
+            :param study: The study we want the dashboard URL for
+            :type study: PPM.Study
+            :return: The dashboard URL
+            :rtype: str
+            """
+            return ppm_settings.dashboard_url(PPM.Study.get(study).value)
+
+        @staticmethod
         def from_value(study):
             """
             Returns an instance of the Study enum for the given study value
@@ -95,10 +312,7 @@ class PPM:
             :return: The instance of PPM Study enum
             :rtype: PPM.Study
             """
-            if study.lower() == PPM.Study.NEER.value:
-                return PPM.Project.NEER
-            elif study.lower() == PPM.Study.ASD.value or study.lower() == 'asd':
-                return PPM.Project.ASD
+            return PPM.Study.get(study)
 
         @staticmethod
         def title(study):
@@ -109,22 +323,226 @@ class PPM:
             :return: The title for the study
             :rtype: str
             """
-            if study is PPM.Study.NEER or study.lower() in \
-                    [PPM.Study.NEER.value, f'ppm-{PPM.Study.NEER.value}']:
+            # Get the enum
+            _study = PPM.Study.get(study)
+
+            # Check studies
+            if _study is PPM.Study.NEER:
                 return 'NEER'
-            elif study is PPM.Study.ASD or study.lower() in \
-                    [PPM.Study.ASD.value, f'ppm-{PPM.Study.ASD.value}', 'asd']:
+            elif _study is PPM.Study.ASD:
                 return 'Autism'
+            elif _study is PPM.Study.EXAMPLE:
+                return 'Example'
 
         @staticmethod
         def choices():
             return (
                 (PPM.Study.NEER.value, PPM.Study.title(PPM.Study.NEER.value)),
                 (PPM.Study.ASD.value, PPM.Study.title(PPM.Study.ASD.value)),
+                (PPM.Study.EXAMPLE.value, PPM.Study.title(PPM.Study.EXAMPLE.value)),
             )
+
+        @staticmethod
+        def dashboard(study):
+            """
+            This method returns the dashboard step description for the given study
+            :param study: The study for which the dashboard will be generated
+            :return: dict
+            """
+            # Get the enum
+            _study = PPM.Study.get(study)
+
+            steps = None
+            if _study is PPM.Study.ASD:
+                steps = {
+                    'email-confirm': {
+                        'blocking': True,
+                        'required': True,
+                    },
+                    'registration': {
+                        'blocking': True,
+                        'required': True,
+                        'completed_enrollment': PPM.Enrollment.Registered.value
+                    },
+                    'consent': {
+                        'blocking': True,
+                        'required': True,
+                        'prior_enrollment': PPM.Enrollment.Registered.value,
+                        'completed_enrollment': PPM.Enrollment.Consented.value
+                    },
+                    'poc': {
+                        'blocking': True,
+                        'required': True,
+                        'prior_enrollment': PPM.Enrollment.Consented.value,
+                        'completed_enrollment': PPM.Enrollment.Proposed.value
+                    },
+                    'approval': {
+                        'blocking': True,
+                        'required': True
+                    },
+                    'questionnaire': {
+                        'blocking': True,
+                        'required': True
+                    },
+                    'twitter': {
+                        'blocking': False,
+                        'required': False
+                    },
+                    'fitbit': {
+                        'blocking': False,
+                        'required': False
+                    },
+                    'facebook': {
+                        'blocking': False,
+                        'required': False
+                    },
+                    'ehr': {
+                        'blocking': False,
+                        'required': False,
+                        'multiple': True
+                    },
+                }
+            elif _study is PPM.Study.EXAMPLE:
+                steps = {
+                    'email-confirm': {
+                        'blocking': True,
+                        'required': True,
+                    },
+                    'registration': {
+                        'blocking': True,
+                        'required': True,
+                        'completed_enrollment': PPM.Enrollment.Registered.value
+                    },
+                    'consent': {
+                        'blocking': True,
+                        'required': True,
+                        'prior_enrollment': PPM.Enrollment.Registered.value,
+                        'completed_enrollment': PPM.Enrollment.Consented.value
+                    },
+                    'questionnaire': {
+                        'blocking': True,
+                        'required': True,
+                        'prior_enrollment': PPM.Enrollment.Consented.value,
+                        'completed_enrollment': PPM.Enrollment.Proposed.value
+                    },
+                    'approval': {
+                        'blocking': True,
+                        'required': True
+                    },
+                    'poc': {
+                        'blocking': True,
+                        'required': True
+                    },
+                    'research_study': {
+                        'blocking': False,
+                        'required': False
+                    },
+                    'twitter': {
+                        'blocking': False,
+                        'required': False
+                    },
+                    'fitbit': {
+                        'blocking': False,
+                        'required': False
+                    },
+                    'facebook': {
+                        'blocking': False,
+                        'required': False
+                    },
+                    'ehr': {
+                        'blocking': False,
+                        'required': False,
+                        'multiple': True
+                    },
+                    'picnichealth': {
+                        'blocking': False,
+                        'required': True
+                    },
+                }
+            elif _study is PPM.Study.NEER:
+                steps = {
+                    'email-confirm': {
+                        'blocking': True,
+                        'required': True,
+                    },
+                    'registration': {
+                        'blocking': True,
+                        'required': True,
+                        'completed_enrollment': PPM.Enrollment.Registered.value
+                    },
+                    'consent': {
+                        'blocking': True,
+                        'required': True,
+                        'prior_enrollment': PPM.Enrollment.Registered.value,
+                        'completed_enrollment': PPM.Enrollment.Consented.value
+                    },
+                    'questionnaire': {
+                        'blocking': True,
+                        'required': True,
+                        'prior_enrollment': PPM.Enrollment.Consented.value,
+                        'completed_enrollment': PPM.Enrollment.Proposed.value
+                    },
+                    'approval': {
+                        'blocking': True,
+                        'required': True
+                    },
+                    'poc': {
+                        'blocking': True,
+                        'required': True
+                    },
+                    'research_study': {
+                        'blocking': False,
+                        'required': False
+                    },
+                    'twitter': {
+                        'blocking': False,
+                        'required': False
+                    },
+                    'fitbit': {
+                        'blocking': False,
+                        'required': False
+                    },
+                    'facebook': {
+                        'blocking': False,
+                        'required': False
+                    },
+                    'ehr': {
+                        'blocking': False,
+                        'required': False,
+                        'multiple': True
+                    },
+                    'picnichealth': {
+                        'blocking': False,
+                        'required': True
+                    },
+                }
+
+            return steps
 
     # Alias Project as Study until we migrate all usages to Study
     Project = Study
+
+    # Set values for determining environments
+    class Environment(Enum):
+        Local = 'local'
+        Dev = 'dev'
+        Staging = 'staging'
+        Prod = 'prod'
+
+        @staticmethod
+        def from_value(environment):
+            """
+            Returns an instance of the Environment enum for the given value
+            :param environment: The study value string
+            :type environment: str
+            :return: The instance of PPM Environment enum
+            :rtype: PPM.Environment
+            """
+            try:
+                # From value
+                return PPM.Environment(value=environment)
+            except ValueError:
+                return None
 
     # Set the appropriate participant statuses
     class Enrollment(Enum):
@@ -158,18 +576,50 @@ class PPM:
             )
 
     class Questionnaire(Enum):
-        ASDGuardianConsentQuestionnaire = 'ppm-asd-consent-guardian-quiz'
-        ASDIndividualConsentQuestionnaire = 'ppm-asd-consent-individual-quiz'
+
+        # Survey/Questionnaires
+        ExampleQuestionnaire = 'ppm-example-registration-questionnaire'
         NEERQuestionnaire = 'ppm-neer-registration-questionnaire'
         ASDQuestionnaire = 'ppm-asd-questionnaire'
 
+        # Consents
+        EXAMPLEConsent = 'example-signature'
+        NEERConsent = 'neer-signature'
+        ASDGuardianConsentQuestionnaire = 'ppm-asd-consent-guardian-quiz'
+        ASDIndividualConsentQuestionnaire = 'ppm-asd-consent-individual-quiz'
+        ASDConsentIndividualSignatureQuestionnaire = 'individual-signature-part-1'
+        ASDConsentGuardianSignature1Questionnaire = 'guardian-signature-part-1'
+        ASDConsentGuardianSignature2Questionnaire = 'guardian-signature-part-2'
+        ASDConsentGuardianSignature3Questionnaire = 'guardian-signature-part-3'
+
         @staticmethod
-        def questionnaire_for_project(project):
-            if project == PPM.Project.ASD or project == PPM.Project.ASD.value:
+        def consent_questionnaire_for_study(study, **kwargs):
+            if PPM.Study.get(study) is PPM.Study.ASD:
+
+                # We need more info
+                if kwargs.get('type') == 'guardian':
+                    return (PPM.Questionnaire.ASDConsentGuardianSignature1Questionnaire.value,
+                            PPM.Questionnaire.ASDConsentGuardianSignature2Questionnaire.value,
+                            PPM.Questionnaire.ASDConsentGuardianSignature3Questionnaire.value)
+                else:
+                    return PPM.Questionnaire.ASDIndividualConsentQuestionnaire.value
+
+            elif PPM.Study.get(study) is PPM.Study.NEER:
+                return PPM.Questionnaire.NEERConsent.value
+
+            elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
+                return PPM.Questionnaire.EXAMPLEConsent.value
+
+        @staticmethod
+        def questionnaire_for_study(study):
+            if PPM.Study.get(study) is PPM.Study.ASD:
                 return PPM.Questionnaire.ASDQuestionnaire.value
 
-            elif project == PPM.Project.NEER or project == PPM.Project.NEER.value:
+            elif PPM.Study.get(study) is PPM.Study.NEER:
                 return PPM.Questionnaire.NEERQuestionnaire.value
+
+            elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
+                return PPM.Questionnaire.ExampleQuestionnaire.value
 
         @staticmethod
         def questionnaire_for_consent(composition):
@@ -178,6 +628,28 @@ class PPM:
 
             else:
                 return PPM.Questionnaire.ASDIndividualConsentQuestionnaire.value
+
+        @staticmethod
+        def consent_url(study):
+
+            # Get the study
+            study = PPM.Study.get(study)
+
+            # Build the URL
+            url = furl(ppm_settings.FHIRQUESTIONNAIRE_URL)
+
+            # Strip paths
+            url.path.segments.clear()
+            url.query.params.clear()
+
+            # Add the path
+            url.path.segments.extend(['fhirquestionnaire', 'consent', 'download', study.value, ''])
+
+            return url.url
+
+        @staticmethod
+        def questionnaire_for_project(project):  # TODO: Deprecated, remove!
+            return PPM.Questionnaire.questionnaire_for_study(project)
 
     class Provider(Enum):
         PPM = 'ppmfhir'
@@ -257,7 +729,12 @@ class PPM:
                                        PPM.TrackedItem.BloodSampleKit.value],
 
                 PPM.Study.ASD.value: [PPM.TrackedItem.Fitbit.value,
-                                      PPM.TrackedItem.SalivaSampleKit.value]
+                                      PPM.TrackedItem.SalivaSampleKit.value],
+
+                PPM.Study.EXAMPLE.value: [PPM.TrackedItem.Fitbit.value,
+                                          PPM.TrackedItem.uBiomeFecalSampleKit.value,
+                                          PPM.TrackedItem.BloodSampleKit.value,
+                                          PPM.TrackedItem.SalivaSampleKit.value],
             }
 
             return devices[study] if study else devices
@@ -271,6 +748,7 @@ class PPM:
         service = None
 
         # Set some auth header properties
+        ppm_settings_url_name = None
         jwt_cookie_name = 'DBMI_JWT'
         jwt_authorization_prefix = 'JWT'
         token_authorization_prefix = 'Token'
@@ -297,37 +775,20 @@ class PPM:
         @classmethod
         def service_url(cls):
 
-            # Check variations of names
-            names = ['###_URL', 'DBMI_###_URL', '###_API_URL', '###_BASE_URL']
-            for name in names:
-                if hasattr(settings, name.replace('###', cls.service.upper())):
-                    service_url = getattr(settings, name.replace('###', cls.service.upper()))
+            # Get from ppm settings
+            if not hasattr(ppm_settings, cls.ppm_settings_url_name):
+                raise SystemError('Service URL not defined in settings'.format(cls.service.upper()))
 
-                    # We want only the domain and no paths, as those should be specified in the calls
-                    # so strip any included paths and queries and return
-                    url = furl(service_url)
-                    url.path.segments.clear()
-                    url.query.params.clear()
+            # Get it
+            service_url = getattr(ppm_settings, cls.ppm_settings_url_name)
 
-                    return url.url
+            # We want only the domain and no paths, as those should be specified in the calls
+            # so strip any included paths and queries and return
+            url = furl(service_url)
+            url.path.segments.clear()
+            url.query.params.clear()
 
-            # Check for a default
-            environment = os.environ.get('DBMI_ENV')
-            if environment and cls.default_url_for_env(environment):
-                return cls.default_url_for_env(environment)
-
-            raise ValueError('Service URL not defined in settings'.format(cls.service.upper()))
-
-        @classmethod
-        def default_url_for_env(cls, environment):
-            """
-            Give implementing classes an opportunity to list a default set of URLs based on the DBMI_ENV,
-            if specified. Otherwise, return nothing
-            :param environment: The DBMI_ENV string
-            :return: A URL, if any
-            """
-            logger.warning(f'Class PPM does not return a default URL for environment: {environment}')
-            return None
+            return url.url
 
         @classmethod
         def headers(cls, request=None, content_type='application/json'):

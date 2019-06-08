@@ -1,0 +1,21 @@
+{% if first_name %}{{ first_name }},{% else %}Hello,{% endif %}
+
+Thank you so much for your interest in and support for our study, People-Powered Medicine {{ ppm_study_title }}. After carefully reviewing the answers you provided to our registration questions, it was determined that your case does not meet the requirements for the study at this time.
+
+We truly appreciate that you have taken the time to share your remarkable experience with us.  We would like to maintain contact with you to provide periodic updates/newsletters about the study, its progress, and any future changes to enrollment criteria.  However, if you would prefer that we remove your registration information from our system and do not want to receive updates about the study or recruitment, please let us know and we will remove your information from our database.
+
+Thank you again for the time and energy you invested in registering for People-Powered Medicine.  As you know, research only moves forward because of people like you.
+
+Wishing you the best,
+
+{% if ppm_signature %}
+{{ ppm_signature.name }}
+{{ ppm_signature.title }}
+
+Harvard Medical School
+Department of Biomedical Informatics
+10 Shattuck Street
+Boston, MA 02115
+{{ ppm_signature.email }}
+Ph: {{ ppm_signature.phone }}
+{% endif %}

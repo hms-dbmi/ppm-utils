@@ -5,34 +5,18 @@ import base64
 from django.conf import settings
 
 from ppmutils.ppm import PPM
+from ppmutils.settings import ppm_settings
 
+# Get the app logger
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(ppm_settings.LOGGER_NAME)
 
 
 class Fileservice(PPM.Service):
 
     # Set the service name
     service = 'Fileservice'
-
-    @classmethod
-    def default_url_for_env(cls, environment):
-        """
-        Give implementing classes an opportunity to list a default set of URLs based on the DBMI_ENV,
-        if specified. Otherwise, return nothing
-        :param environment: The DBMI_ENV string
-        :return: A URL, if any
-        """
-        if 'local' in environment:
-            return 'http://dbmi-fileservice:8012'
-        elif 'dev' in environment:
-            return 'https://fileservice.aws.dbmi-dev.hms.harvard.edu'
-        elif 'prod' in environment:
-            return 'https://files.dbmi.hms.harvard.edu'
-        else:
-            logger.error(f'Could not return a default URL for environment: {environment}')
-
-        return None
+    ppm_settings_url_name = 'FILESERVICE_URL'
 
     @classmethod
     def check_groups(cls, admins=None):

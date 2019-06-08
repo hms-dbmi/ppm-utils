@@ -1,0 +1,21 @@
+{% if first_name %}{{ first_name }},{% else %}Hello,{% endif %}
+
+Thank you so much for your interest in and support for our study, People-Powered Medicine NEER (Network for Enigmatic Exceptional Responders).  As you know, we are recruiting individuals who are considered exceptional responders to treatments for cancer.  The definition of exceptional responder is not universal and is different for every cancer type, cancer state, and even treatment.  The definition used for this study was based on statistical analyses of outliers for each cancer in conjunction with the various forms of treatments.  After carefully reviewing the answers you provided to our registration questions, it was determined that your case does not meet the requirements for the study at this time.
+
+However, we believe that each cancer survivor is both unique and exceptional, and that no two cancers are exactly alike.  This thinking was the basis for NEER and the urgent need we identified to investigate why some people have an extraordinary response to treatment for these very challenging diseases.  Although our definition of exceptional responder is narrow right now and enrollment has been prioritized to those who are the farthest outliers for their particular type of cancer and treatment, our criteria for this study could evolve in the future to allow for broader recruitment.
+
+We truly appreciate that you have taken the time to share your remarkable experience with us.  We would like to maintain contact with you to provide periodic updates/newsletters about the study, its progress, and any future changes to enrollment criteria.  However, if you would prefer that we remove your registration information from our system and do not want to receive updates about the study or recruitment, please let us know and we will remove your information from our database.
+
+Thank you again for the time and energy you invested in registering for NEER.  As you know, research only moves forward because of people like you.
+
+Wishing you the best,
+
+Cassandra Perry, MS, CGC
+
+Project Manager, People-Powered Medicine (PPM)
+Harvard Medical School
+Department of Biomedical Informatics
+10 Shattuck Street
+Boston, MA 02115
+Cassandra_Perry@hms.harvard.edu
+Ph: 617-432-5484
