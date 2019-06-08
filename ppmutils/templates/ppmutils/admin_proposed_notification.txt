@@ -1,0 +1,14 @@
+
+Hello,
+
+A new user has completed the People-Powered Medicine registration and is awaiting review from an administrator. Please login to the administrative dashboard to review their profile.
+
+Study: {{ ppm_study_title }}
+
+Participant ID: {{ ppm_id }}
+
+{% if environment and environment != 'prod' %}
+Environment: {{ environment }}
+{% endif %}
+
+{{ admin_url }}

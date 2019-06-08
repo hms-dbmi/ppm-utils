@@ -6,12 +6,14 @@ import re
 import os
 from functools import total_ordering
 
+from django.template.loader import render_to_string
+from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
+from ppmutils.settings import ppm_settings
 
-
+# Get the app logger
 import logging
-
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(ppm_settings.LOGGER_NAME)
 
 
 class PPMEnum(Enum):
@@ -139,6 +141,21 @@ class PPM:
         RANT = "rant"
 
         @staticmethod
+        def equals(this, that):
+            """
+            Compares a reference to a study and returns whether it is the second
+            passed PPM.Study enum
+            :param this: The study object to be compared
+            :type this: object
+            :param that: What we are comparing against
+            :type that: object
+            :return: Whether they are one and the same
+            :rtype: boolean
+            """
+            # Compare
+            return PPM.Study.get(this) is PPM.Study.get(that)
+
+        @staticmethod
         def fhir_id(study):
             """
             Return the FHIR identifier for the passed study
@@ -207,6 +224,51 @@ class PPM:
             :rtype: PPM.Study
             """
             return cls.enum(enum)
+
+        @staticmethod
+        def get(study):
+            """
+            Returns an instance of the Study enum for the given study value, enum, whatever
+            :param study: The study value string, name or enum
+            :type study: Object
+            :return: The instance of PPM Study enum
+            :rtype: PPM.Study
+            """
+            # Check easy case
+            if study in PPM.Study:
+                return study
+
+            # Set a pattern to include FHIR prepended study identifiers
+            pattern = r'^(ppm-)?'
+
+            # Iterate studies
+            for _study in PPM.Study:
+
+                # Update the pattern for the study
+                if _study is PPM.Study.ASD:
+
+                    # Add an additional case for 'asd'
+                    study_pattern = pattern + '({}|asd)$'.format(PPM.Study.ASD.value)
+
+                else:
+                    study_pattern = pattern + '{}$'.format(_study.value)
+
+                # Check it
+                if type(study) is str and re.match(study_pattern, study.lower()) or study is _study:
+                    return _study
+
+            raise ValueError(f'Study "{study}" is not a valid PPM study value/name/anything')
+
+        @staticmethod
+        def dashboard_url(study):
+            """
+            Returns the defined dashboard for the passed study
+            :param study: The study we want the dashboard URL for
+            :type study: PPM.Study
+            :return: The dashboard URL
+            :rtype: str
+            """
+            return ppm_settings.dashboard_url(PPM.Study.get(study).value)
 
         @staticmethod
         def from_value(study):
@@ -915,6 +977,7 @@ class PPM:
         jwt_cookie_name = "DBMI_JWT"
         jwt_authorization_prefix = "JWT"
         token_authorization_prefix = "Token"
+        ppm_settings_url_name = None
 
         @classmethod
         def _build_url(cls, path):
@@ -941,38 +1004,20 @@ class PPM:
         @classmethod
         def service_url(cls):
 
-            # Check variations of names
-            names = ["###_URL", "DBMI_###_URL", "###_API_URL", "###_BASE_URL"]
-            for name in names:
-                if hasattr(settings, name.replace("###", cls.service.upper())):
-                    service_url = getattr(settings, name.replace("###", cls.service.upper()))
+            # Get from ppm settings
+            if not hasattr(ppm_settings, cls.ppm_settings_url_name):
+                raise SystemError('Service URL not defined in settings'.format(cls.service.upper()))
 
-                    # We want only the domain and no paths, as those should be
-                    # specified in the calls so strip any included paths and queries
-                    # and return
-                    url = furl(service_url)
-                    url.path.segments.clear()
-                    url.query.params.clear()
+            # Get it
+            service_url = getattr(ppm_settings, cls.ppm_settings_url_name)
 
-                    return url.url
+            # We want only the domain and no paths, as those should be specified in the calls
+            # so strip any included paths and queries and return
+            url = furl(service_url)
+            url.path.segments.clear()
+            url.query.params.clear()
 
-            # Check for a default
-            environment = os.environ.get("DBMI_ENV")
-            if environment and cls.default_url_for_env(environment):
-                return cls.default_url_for_env(environment)
-
-            raise ValueError("Service URL not defined in settings".format(cls.service.upper()))
-
-        @classmethod
-        def default_url_for_env(cls, environment):
-            """
-            Give implementing classes an opportunity to list a default set of URLs
-            based on the DBMI_ENV, if specified. Otherwise, return nothing
-            :param environment: The DBMI_ENV string
-            :return: A URL, if any
-            """
-            logger.warning(f"Class PPM does not return a default URL for " f"environment: {environment}")
-            return None
+            return url.url
 
         @classmethod
         def headers(cls, request=None, content_type="application/json"):

@@ -29,13 +29,17 @@ from fhirclient.models.device import Device
 from fhirclient.models.resource import Resource
 
 from ppmutils.ppm import PPM
+from ppmutils.settings import ppm_settings
 
+# Get the app logger
 import logging
+logger = logging.getLogger(ppm_settings.LOGGER_NAME)
 
-logger = logging.getLogger(__name__)
 
+class FHIR(PPM.Service):
 
-class FHIR:
+    service = 'fhir'
+    ppm_settings_url_name = 'FHIR_URL'
 
     #
     # CONSTANTS
@@ -86,6 +90,7 @@ class FHIR:
     facebook_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-facebook"
     smart_on_fhir_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-smart-on-fhir"
     referral_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/" "StructureDefinition/how-did-you-hear-about-us"
+    admin_notified_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/admin-notified'
 
     # Qualtrics IDs
     qualtrics_survey_identifier_system = "https://peoplepoweredmedicine.org/fhir/qualtrics/survey"
@@ -96,23 +101,20 @@ class FHIR:
     #
 
     @classmethod
-    def default_url_for_env(cls, environment):
+    def service_url(cls):
         """
-        Give implementing classes an opportunity to list a default set of URLs
-        based on the DBMI_ENV, if specified. Otherwise, return nothing
-        :param environment: The DBMI_ENV string
-        :return: A URL, if any
+        FHIR uses a more standard URL for everything so use this one instead of
+        the PPM service stripped down one
+        :return: The FHIR URL
+        :rtype: str
         """
-        if "local" in environment:
-            return "http://fhir:8008"
-        elif "dev" in environment:
-            return "https://fhir.ppm.aws.dbmi-dev.hms.harvard.edu"
-        elif "prod" in environment:
-            return "https://fhir.ppm.aws.dbmi.hms.harvard.edu"
-        else:
-            logger.error(f"Could not return a default URL for environment: {environment}")
 
-        return None
+        # Get from ppm settings
+        if not hasattr(ppm_settings, cls.ppm_settings_url_name):
+            raise SystemError('FHIR URL not defined in settings'.format(cls.service.upper()))
+
+        # Get it
+        return getattr(ppm_settings, cls.ppm_settings_url_name)
 
     @staticmethod
     def get_client(fhir_url):
@@ -730,7 +732,7 @@ class FHIR:
         # If we needed the Patient resource id, we could follow the redirect
         # returned from a successful POST operation, and get the id out of the
         # new resource. We don't though, so we can save an HTTP request.
-        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+        response = requests.post(FHIR.service_url(), json=bundle.as_json())
 
         return response.ok
 
@@ -773,7 +775,7 @@ class FHIR:
         # If we needed the Patient resource id, we could follow the redirect
         # returned from a successful POST operation, and get the id out of the
         # new resource. We don't though, so we can save an HTTP request.
-        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+        response = requests.post(FHIR.service_url(), json=bundle.as_json())
 
         return response.ok
 
@@ -808,7 +810,7 @@ class FHIR:
         # If we needed the Patient resource id, we could follow the redirect
         # returned from a successful POST operation, and get the id out of the
         # new resource. We don't though, so we can save an HTTP request.
-        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+        response = requests.post(FHIR.service_url(), json=bundle.as_json())
 
         return response.ok
 
@@ -875,7 +877,7 @@ class FHIR:
             # If we needed the Patient resource id, we could follow the redirect
             # returned from a successful POST operation, and get the id out of the
             # new resource. We don't though, so we can save an HTTP request.
-            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+            response = requests.post(FHIR.service_url(), json=bundle.as_json())
 
             # Parse out created identifiers
             for result in response.json():
@@ -912,8 +914,8 @@ class FHIR:
             flag.period = period
 
         # Build the FHIR Flag destination URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append("Flag")
+        url = furl(FHIR.service_url())
+        url.path.segments.append('Flag')
 
         logger.debug("Creating flag at: {}".format(url.url))
 
@@ -944,8 +946,8 @@ class FHIR:
         )
 
         # Build the FHIR Communication destination URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append("Communication")
+        url = furl(FHIR.service_url())
+        url.path.segments.append('Communication')
 
         logger.debug("Creating communication at: {}".format(url.url))
 
@@ -1008,8 +1010,7 @@ class FHIR:
 
         try:
             # Create the organization
-            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
-            logger.debug("Response: {}".format(response.status_code))
+            response = requests.post(FHIR.service_url(), json=bundle.as_json())
             response.raise_for_status()
 
             return response.json()
@@ -1118,7 +1119,7 @@ class FHIR:
         full_bundle.entry = bundle_entries
         full_bundle.type = "transaction"
 
-        response = requests.post(url=PPM.fhir_url(), json=full_bundle.as_json())
+        response = requests.post(url=FHIR.service_url(), json=full_bundle.as_json())
 
         return response.ok
 
@@ -1273,7 +1274,7 @@ class FHIR:
         logger.debug("Query resource: {}".format(resource_type))
 
         # Build the URL.
-        url_builder = furl(PPM.fhir_url())
+        url_builder = furl(FHIR.service_url())
         url_builder.path.add(resource_type)
 
         # Add query if passed and set a return count to a high number,
@@ -1332,7 +1333,7 @@ class FHIR:
         logger.debug("Query resource: {} : {}".format(resource_type, query))
 
         # Build the URL.
-        url_builder = furl(PPM.fhir_url())
+        url_builder = furl(FHIR.service_url())
         url_builder.path.add(resource_type)
 
         # Add query if passed and set a return count to a high number,
@@ -1391,7 +1392,7 @@ class FHIR:
         logger.debug('Query resource "{}": {}'.format(resource_type, _id))
 
         # Build the URL.
-        url_builder = furl(PPM.fhir_url())
+        url_builder = furl(FHIR.service_url())
         url_builder.path.add(resource_type)
         url_builder.path.add(_id)
 
@@ -1542,10 +1543,10 @@ class FHIR:
     def query_participant(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append("Patient")
-        url.query.params.add("_include", "*")
-        url.query.params.add("_revinclude", "*")
+        url = furl(FHIR.service_url())
+        url.path.segments.append('Patient')
+        url.query.params.add('_include', '*')
+        url.query.params.add('_revinclude', '*')
 
         # Add patient query
         for key, value in FHIR._patient_query(patient).items():
@@ -1578,8 +1579,8 @@ class FHIR:
     def query_patient(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append("Patient")
+        url = furl(FHIR.service_url())
+        url.path.segments.append('Patient')
 
         # Get flags for current user
         query = FHIR._patient_query(patient)
@@ -1613,10 +1614,10 @@ class FHIR:
     def get_participant(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append("Patient")
-        url.query.params.add("_include", "*")
-        url.query.params.add("_revinclude", "*")
+        url = furl(FHIR.service_url())
+        url.path.segments.append('Patient')
+        url.query.params.add('_include', '*')
+        url.query.params.add('_revinclude', '*')
 
         # Add patient query
         for key, value in FHIR._patient_query(patient).items():
@@ -1654,10 +1655,10 @@ class FHIR:
     def get_patient(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append("Patient")
-        url.query.params.add("_include", "*")
-        url.query.params.add("_revinclude", "*")
+        url = furl(FHIR.service_url())
+        url.path.segments.append('Patient')
+        url.query.params.add('_include', '*')
+        url.query.params.add('_revinclude', '*')
 
         # Add query for patient
         for key, value in FHIR._patient_query(patient).items():
@@ -1859,7 +1860,7 @@ class FHIR:
 
         try:
             # Get the client
-            client = FHIR.get_client(PPM.fhir_url())
+            client = FHIR.get_client(FHIR.service_url())
 
             # Query the Patient
             search = Patient.where(struct={"identifier": "http://schema.org/email|{}".format(email)})
@@ -1893,7 +1894,6 @@ class FHIR:
         :return: A list of resources
         :rtype: list
         """
-
         # Check item type
         if item:
             query = {
@@ -1969,8 +1969,8 @@ class FHIR:
     def query_enrollment_flag(patient, flatten_return=False):
 
         # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append("Flag")
+        url = furl(FHIR.service_url())
+        url.path.segments.append('Flag')
 
         # Get flags for current user
         query = FHIR._patient_resource_query(patient, "subject")
@@ -2322,8 +2322,8 @@ class FHIR:
                 patient["active"] = False if active in ["false", False] else True
 
             # Build the URL
-            url = furl(PPM.fhir_url())
-            url.path.segments.append("Patient")
+            url = furl(FHIR.service_url())
+            url.path.segments.append('Patient')
             url.path.segments.append(fhir_id)
 
             # Put it
@@ -2353,8 +2353,8 @@ class FHIR:
             patch = [{"op": "replace", "path": "/active", "value": True if active else False}]
 
             # Build the URL
-            url = furl(PPM.fhir_url())
-            url.path.segments.append("Patient")
+            url = furl(FHIR.service_url())
+            url.path.segments.append('Patient')
             url.path.segments.append(patient_id)
 
             # Put it
@@ -2421,9 +2421,9 @@ class FHIR:
                 del device["expirationDate"]
 
             # Build the URL
-            url = furl(PPM.fhir_url())
-            url.path.segments.append("Device")
-            url.path.segments.append(device["id"])
+            url = furl(FHIR.service_url())
+            url.path.segments.append('Device')
+            url.path.segments.append(device['id'])
 
             # Put it
             response = requests.put(url.url, json=device)
@@ -2467,8 +2467,8 @@ class FHIR:
                 patch.append({"op": "replace", "path": "/active", "value": active})
 
             # Build the URL
-            url = furl(PPM.fhir_url())
-            url.path.segments.append("Patient")
+            url = furl(FHIR.service_url())
+            url.path.segments.append('Patient')
             url.path.segments.append(patient_id)
 
             # Put it
@@ -2493,8 +2493,8 @@ class FHIR:
         logger.debug("Patient: {}, Status: {}".format(patient_id, status))
 
         # Fetch the flag.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append("Flag")
+        url = furl(FHIR.service_url())
+        url.path.segments.append('Flag')
 
         query = {
             "subject": "Patient/{}".format(patient_id),
@@ -2593,8 +2593,8 @@ class FHIR:
                 flag.code.text = status.title()
 
                 # Build the URL
-                flag_url = furl(PPM.fhir_url())
-                flag_url.path.segments.extend(["Flag", flag.id])
+                flag_url = furl(FHIR.service_url())
+                flag_url.path.segments.extend(['Flag', flag.id])
 
                 logger.debug('Updating Flag "{}" with code: "{}"'.format(flag_url.url, status))
 
@@ -2832,9 +2832,9 @@ class FHIR:
                 return points_of_care
 
         # Look for it
-        organization_url = furl(PPM.fhir_url())
-        organization_url.path.add("Organization")
-        organization_url.query.params.add("name", point_of_care)
+        organization_url = furl(FHIR.service_url())
+        organization_url.path.add('Organization')
+        organization_url.query.params.add('name', point_of_care)
 
         response = requests.get(organization_url.url)
         response.raise_for_status()
@@ -2892,7 +2892,7 @@ class FHIR:
         bundle.entry.append(list_entry)
 
         # Post the transaction
-        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+        response = requests.post(FHIR.service_url(), json=bundle.as_json())
         response.raise_for_status()
 
         # Return the flattened list with the new organization
@@ -2917,8 +2917,8 @@ class FHIR:
 
         try:
             # Fetch the Patient.
-            url = furl(PPM.fhir_url())
-            url.path.segments.extend(["Patient"])
+            url = furl(FHIR.service_url())
+            url.path.segments.extend(['Patient'])
 
             # Add patient query
             url.query.params.update(FHIR._patient_query(patient_id))
@@ -3006,8 +3006,8 @@ class FHIR:
 
         try:
             # Fetch the Patient.
-            url = furl(PPM.fhir_url())
-            url.path.segments.extend(["Patient"])
+            url = furl(FHIR.service_url())
+            url.path.segments.extend(['Patient'])
 
             # Add patient query
             url.query.params.update(FHIR._patient_query(patient_id))
@@ -3076,8 +3076,8 @@ class FHIR:
 
         try:
             # Fetch the Patient.
-            url = furl(PPM.fhir_url())
-            url.path.segments.extend(["Patient"])
+            url = furl(FHIR.service_url())
+            url.path.segments.extend(['Patient'])
             url.query.params.update(FHIR._patient_query(patient_id))
             response = requests.get(url.url)
             response.raise_for_status()
@@ -3127,8 +3127,8 @@ class FHIR:
         patient_ref = None
         try:
             # Build the URL
-            url = furl(PPM.fhir_url())
-            url.path.segments.extend(["DocumentReference", document_reference["id"]])
+            url = furl(FHIR.service_url())
+            url.path.segments.extend(['DocumentReference', document_reference['id']])
 
             # Get the patient reference
             patient_ref = document_reference["subject"]["reference"]
@@ -3184,7 +3184,7 @@ class FHIR:
             logger.debug("Target resource: {}/{}".format(source_resource_type, source_resource_id))
             logger.debug("Target related resources: {}".format(target_resource_types))
 
-            source_url = furl(PPM.fhir_url())
+            source_url = furl(FHIR.service_url())
             source_url.path.add(source_resource_type)
             source_url.query.params.add("_id", source_resource_id)
             source_url.query.params.add("_include", "*")
@@ -3218,9 +3218,8 @@ class FHIR:
             logger.debug("Delete request: {}".format(json.dumps(transaction)))
 
             # Do the delete.
-            response = requests.post(
-                PPM.fhir_url(), headers={"content-type": "application/json"}, data=json.dumps(transaction),
-            )
+            response = requests.post(FHIR.service_url(), headers={'content-type': 'application/json'},
+                                     data=json.dumps(transaction))
             response.raise_for_status()
 
             # Log it.
@@ -3252,7 +3251,7 @@ class FHIR:
         url = None
         try:
             # Build the URL
-            url = furl(PPM.fhir_url())
+            url = furl(FHIR.service_url())
             url.path.segments.append(resource_type)
             url.path.segments.append(resource_id)
 
@@ -3455,9 +3454,8 @@ class FHIR:
             logger.error("Unsupported project: {}".format(project), extra={"ppm_id": patient_id})
 
         # Make the FHIR request.
-        response = requests.post(
-            PPM.fhir_url(), headers={"content-type": "application/json"}, data=json.dumps(transaction),
-        )
+        response = requests.post(FHIR.service_url(), headers={'content-type': 'application/json'},
+                                 data=json.dumps(transaction))
         response.raise_for_status()
 
     #
@@ -3477,9 +3475,9 @@ class FHIR:
         research_study_ids = [subject["study"]["reference"].split("/")[1] for subject in subjects]
 
         # Make the query
-        research_study_url = furl(PPM.fhir_url())
-        research_study_url.path.add("ResearchStudy")
-        research_study_url.query.params.add("_id", ",".join(research_study_ids))
+        research_study_url = furl(FHIR.service_url())
+        research_study_url.path.add('ResearchStudy')
+        research_study_url.query.params.add('_id', ','.join(research_study_ids))
 
         # Fetch them
         research_study_response = requests.get(research_study_url.url)
@@ -3506,9 +3504,9 @@ class FHIR:
         research_study_ids = [subject["study"]["reference"].split("/")[1] for subject in subjects]
 
         # Make the query
-        research_study_url = furl(PPM.fhir_url())
-        research_study_url.path.add("ResearchStudy")
-        research_study_url.query.params.add("_id", ",".join(research_study_ids))
+        research_study_url = furl(FHIR.service_url())
+        research_study_url.path.add('ResearchStudy')
+        research_study_url.query.params.add('_id', ','.join(research_study_ids))
 
         # Fetch them
         research_study_response = requests.get(research_study_url.url)
@@ -3567,7 +3565,7 @@ class FHIR:
 
         try:
             # Get the client
-            client = FHIR.get_client(PPM.fhir_url())
+            client = FHIR.get_client(FHIR.service_url())
 
             # Query the Patient
             search = Patient.where(struct={"identifier": "http://schema.org/email|{}".format(email)})
@@ -4394,6 +4392,10 @@ class FHIR:
             ),
             "",
         )
+
+        # Determine if admins have been notified of their completion of initial registration
+        patient['admin_notified'] = next((extension['valueDateTime'] for extension in resource.get('extension', [])
+                                          if 'admin-notified' in extension.get('url')), None)
 
         # Get how they heard about PPM
         patient["how_did_you_hear_about_us"] = next(

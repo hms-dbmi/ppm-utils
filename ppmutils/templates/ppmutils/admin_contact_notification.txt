@@ -1,0 +1,5 @@
+Name: {{ from_name }}
+Email: {{ from_email }}
+Study: {{ ppm_study_title }}
+Comment:
+{{ message }}
