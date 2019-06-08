@@ -1,0 +1,19 @@
+{% if first_name %}{{ first_name }},{% else %}Hello,{% endif %}
+
+We have reviewed your registration information for the People-Powered Medicine {{ ppm_study_title }} study and are pleased to offer you enrollment as a participant.  In the next several weeks, you will receive your materials (for example, a Fitbit if you opted to wear one) for participation in the study as well as instructions for use.  We will also reach out to you for any required signatures as we begin to collect your medical records and access previous pathology samples for DNA sequencing.  Please don’t hesitate to contact us if you have any questions or concerns about any part of the study.
+
+If you no longer wish to be enrolled in this study, please contact us as soon as possible and we will remove your information from the system.
+
+Thank you for sharing your remarkable experience with us, and we look forward to having you join us for this valuable research!
+
+{% if ppm_signature %}
+{{ ppm_signature.name }}
+{{ ppm_signature.title }}
+
+Harvard Medical School
+Department of Biomedical Informatics
+10 Shattuck Street
+Boston, MA 02115
+{{ ppm_signature.email }}
+Ph: {{ ppm_signature.phone }}
+{% endif %}
