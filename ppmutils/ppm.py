@@ -354,168 +354,202 @@ class PPM:
 
             steps = None
             if _study is PPM.Study.ASD:
-                steps = {
-                    'email-confirm': {
+                steps = [
+                    {
+                        'step': 'email-confirm',
                         'blocking': True,
                         'required': True,
                     },
-                    'registration': {
+                    {
+                        'step': 'registration',
                         'blocking': True,
                         'required': True,
-                        'completed_enrollment': PPM.Enrollment.Registered.value
+                        'post_enrollment': PPM.Enrollment.Registered.value
                     },
-                    'consent': {
+                    {
+                        'step': 'consent',
                         'blocking': True,
                         'required': True,
-                        'prior_enrollment': PPM.Enrollment.Registered.value,
-                        'completed_enrollment': PPM.Enrollment.Consented.value
+                        'pre_enrollment': PPM.Enrollment.Registered.value,
+                        'post_enrollment': PPM.Enrollment.Consented.value
                     },
-                    'poc': {
+                    {
+                        'step': 'poc',
                         'blocking': True,
                         'required': True,
-                        'prior_enrollment': PPM.Enrollment.Consented.value,
-                        'completed_enrollment': PPM.Enrollment.Proposed.value
+                        'pre_enrollment': PPM.Enrollment.Consented.value,
+                        'post_enrollment': PPM.Enrollment.Proposed.value
                     },
-                    'approval': {
+                    {
+                        'step': 'approval',
                         'blocking': True,
                         'required': True
                     },
-                    'questionnaire': {
+                    {
+                        'step': 'questionnaire',
                         'blocking': True,
                         'required': True
                     },
-                    'twitter': {
+                    {
+                        'step': 'twitter',
                         'blocking': False,
                         'required': False
                     },
-                    'fitbit': {
+                    {
+                        'step': 'fitbit',
                         'blocking': False,
                         'required': False
                     },
-                    'facebook': {
+                    {
+                        'step': 'facebook',
                         'blocking': False,
                         'required': False
                     },
-                    'ehr': {
+                    {
+                        'step': 'ehr',
                         'blocking': False,
                         'required': False,
                         'multiple': True
                     },
-                }
+                ]
             elif _study is PPM.Study.EXAMPLE:
-                steps = {
-                    'email-confirm': {
+                steps = [
+                    {
+                        'step': 'email-confirm',
                         'blocking': True,
                         'required': True,
                     },
-                    'registration': {
+                    {
+                        'step': 'registration',
                         'blocking': True,
                         'required': True,
-                        'completed_enrollment': PPM.Enrollment.Registered.value
+                        'post_enrollment': PPM.Enrollment.Registered.value
                     },
-                    'consent': {
+                    {
+                        'step': 'consent',
                         'blocking': True,
                         'required': True,
-                        'prior_enrollment': PPM.Enrollment.Registered.value,
-                        'completed_enrollment': PPM.Enrollment.Consented.value
+                        'pre_enrollment': PPM.Enrollment.Registered.value,
+                        'post_enrollment': PPM.Enrollment.Consented.value
                     },
-                    'questionnaire': {
+                    {
+                        'step': 'questionnaire',
                         'blocking': True,
                         'required': True,
-                        'prior_enrollment': PPM.Enrollment.Consented.value,
-                        'completed_enrollment': PPM.Enrollment.Proposed.value
+                        'pre_enrollment': PPM.Enrollment.Consented.value,
+                        'post_enrollment': PPM.Enrollment.Proposed.value
                     },
-                    'approval': {
+                    {
+                        'step': 'approval',
                         'blocking': True,
                         'required': True
                     },
-                    'poc': {
+                    {
+                        'step': 'poc',
                         'blocking': True,
                         'required': True
                     },
-                    'research_study': {
+                    {
+                        'step': 'research-studies',
                         'blocking': False,
                         'required': False
                     },
-                    'twitter': {
+                    {
+                        'step': 'twitter',
                         'blocking': False,
                         'required': False
                     },
-                    'fitbit': {
+                    {
+                        'step': 'fitbit',
                         'blocking': False,
                         'required': False
                     },
-                    'facebook': {
+                    {
+                        'step': 'facebook',
                         'blocking': False,
                         'required': False
                     },
-                    'ehr': {
+                    {
+                        'step': 'ehr',
                         'blocking': False,
                         'required': False,
                         'multiple': True
                     },
-                    'picnichealth': {
+                    {
+                        'step': 'picnichealth',
                         'blocking': False,
                         'required': True
                     },
-                }
+                ]
             elif _study is PPM.Study.NEER:
-                steps = {
-                    'email-confirm': {
+                steps = [
+                    {
+                        'step': 'email-confirm',
                         'blocking': True,
                         'required': True,
                     },
-                    'registration': {
+                    {
+                        'step': 'registration',
                         'blocking': True,
                         'required': True,
-                        'completed_enrollment': PPM.Enrollment.Registered.value
+                        'post_enrollment': PPM.Enrollment.Registered.value
                     },
-                    'consent': {
+                    {
+                        'step': 'consent',
                         'blocking': True,
                         'required': True,
-                        'prior_enrollment': PPM.Enrollment.Registered.value,
-                        'completed_enrollment': PPM.Enrollment.Consented.value
+                        'pre_enrollment': PPM.Enrollment.Registered.value,
+                        'post_enrollment': PPM.Enrollment.Consented.value
                     },
-                    'questionnaire': {
+                    {
+                        'step': 'questionnaire',
                         'blocking': True,
                         'required': True,
-                        'prior_enrollment': PPM.Enrollment.Consented.value,
-                        'completed_enrollment': PPM.Enrollment.Proposed.value
+                        'pre_enrollment': PPM.Enrollment.Consented.value,
+                        'post_enrollment': PPM.Enrollment.Proposed.value
                     },
-                    'approval': {
+                    {
+                        'step': 'approval',
                         'blocking': True,
                         'required': True
                     },
-                    'poc': {
+                    {
+                        'step': 'poc',
                         'blocking': True,
                         'required': True
                     },
-                    'research_study': {
+                    {
+                        'step': 'research-studies',
                         'blocking': False,
                         'required': False
                     },
-                    'twitter': {
+                    {
+                        'step': 'twitter',
                         'blocking': False,
                         'required': False
                     },
-                    'fitbit': {
+                    {
+                        'step': 'fitbit',
                         'blocking': False,
                         'required': False
                     },
-                    'facebook': {
+                    {
+                        'step': 'facebook',
                         'blocking': False,
                         'required': False
                     },
-                    'ehr': {
+                    {
+                        'step': 'ehr',
                         'blocking': False,
                         'required': False,
                         'multiple': True
                     },
-                    'picnichealth': {
+                    {
+                        'step': 'picnichealth',
                         'blocking': False,
                         'required': True
                     },
-                }
+                ]
 
             return steps
 
@@ -817,8 +851,11 @@ class PPM:
                 return {"Authorization": '{} {}'.format(prefix, token),
                         'Content-Type': content_type}
 
-            raise SystemError('No request with JWT, or no token specified for service "{}", '
-                              'cannot build request headers'.format(cls.service))
+            else:
+                logger.warning('No request with JWT, or no token specified for service "{}", '
+                               'cannot build request headers'.format(cls.service))
+
+                return {'Content-Type': content_type}
 
         @classmethod
         def get_jwt(cls, request):
