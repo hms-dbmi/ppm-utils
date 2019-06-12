@@ -76,16 +76,8 @@ CONFIG_DEFAULTS = {
     'ENABLE_LOGGING': True,
     'LOG_LEVEL': logging.WARNING,
 
-    # Configure email
-    'EMAIL_ENABLED': False,
-    'EMAIL_BACKEND': 'django.core.mail.backends.smtp.EmailBackend',
-    'EMAIL_HOST': None,
-    'EMAIL_USER': None,
-    'EMAIL_PASSWORD': None,
-    'EMAIL_PORT': None,
-    'EMAIL_USE_SSL': None,
-
     # Configure email settings
+    'EMAIL_ENABLED': False,
     'EMAIL_DEFAULT_FROM': 'ppm-no-reply@dbmi.hms.harvard.edu',
     'EMAIL_TEST_ACCOUNTS': ['tester[\d]?@peoplepoweredmedicine.org:admin@peoplepoweredmedicine.org'],
     'EMAIL_SIGNATURE': {
