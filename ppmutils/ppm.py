@@ -48,12 +48,7 @@ class PPM:
         elif hasattr(settings, 'TEST_EMAIL_PATTERNS') and type(getattr(settings, 'TEST_EMAIL_PATTERNS')) is list:
             testers = settings.TEST_EMAIL_PATTERNS
         else:
-            testers = [
-                '(b32147|bryan.n.larson)\+[a-zA-Z0-9_.+-]*@gmail.com',
-                'b32147@gmail.com',
-                'bryan.n.larson@gmail.com',
-                'bryan_larson@hms.harvard.edu'
-            ]
+            return False
 
         # Iterate through all patterns
         for pattern in testers:
@@ -67,13 +62,22 @@ class PPM:
         ASD = 'autism'
 
         @staticmethod
+        def fhir_id(study):
+            """
+            Return the FHIR identifier for the passed study
+            :return: A PPM study identifier
+            :rtype: str
+            """
+            return 'ppm-{}'.format(PPM.Study.get(study).value)
+
+        @staticmethod
         def identifiers():
             """
             Return a list of all PPM study identifiers to be used in FHIR resources
             :return: A list of PPM study identifiers
             :rtype: list
             """
-            return ['ppm-{}'.format(study.value) for study in PPM.Study]
+            return [PPM.Study.fhir_id(study) for study in PPM.Study]
 
         @staticmethod
         def is_ppm(identifier):
@@ -87,6 +91,40 @@ class PPM:
             return identifier.lower() in PPM.Study.identifiers()
 
         @staticmethod
+        def get(study):
+            """
+            Returns an instance of the Study enum for the given study value, enum, whatever
+            :param study: The study value string, name or enum
+            :type study: Object
+            :return: The instance of PPM Study enum
+            :rtype: PPM.Study
+            """
+            # Check easy case
+            if study in PPM.Study:
+                return study
+
+            # Set a pattern to include FHIR prepended study identifiers
+            pattern = r'^(ppm-)?'
+
+            # Iterate studies
+            for _study in PPM.Study:
+
+                # Update the pattern for the study
+                if _study is PPM.Study.ASD:
+
+                    # Add an additional case for 'asd'
+                    study_pattern = pattern + '({}|asd)$'.format(PPM.Study.ASD.value)
+
+                else:
+                    study_pattern = pattern + '{}$'.format(_study.value)
+
+                # Check it
+                if type(study) is str and re.match(study_pattern, study.lower()) or study is _study:
+                    return _study
+
+            raise ValueError(f'Study "{study}" is not a valid PPM study value/name/anything')
+
+        @staticmethod
         def from_value(study):
             """
             Returns an instance of the Study enum for the given study value
@@ -95,10 +133,7 @@ class PPM:
             :return: The instance of PPM Study enum
             :rtype: PPM.Study
             """
-            if study.lower() == PPM.Study.NEER.value:
-                return PPM.Project.NEER
-            elif study.lower() == PPM.Study.ASD.value or study.lower() == 'asd':
-                return PPM.Project.ASD
+            return PPM.Study.get(study)
 
         @staticmethod
         def title(study):
@@ -109,11 +144,13 @@ class PPM:
             :return: The title for the study
             :rtype: str
             """
-            if study is PPM.Study.NEER or study.lower() in \
-                    [PPM.Study.NEER.value, f'ppm-{PPM.Study.NEER.value}']:
+            # Get the enum
+            _study = PPM.Study.get(study)
+
+            # Check studies
+            if _study is PPM.Study.NEER:
                 return 'NEER'
-            elif study is PPM.Study.ASD or study.lower() in \
-                    [PPM.Study.ASD.value, f'ppm-{PPM.Study.ASD.value}', 'asd']:
+            elif _study is PPM.Study.ASD:
                 return 'Autism'
 
         @staticmethod
@@ -137,6 +174,16 @@ class PPM:
         Terminated = 'terminated'
 
         @staticmethod
+        def get(enrollment):
+            """Accepts any form of an enrollment and returns the enum"""
+            if type(enrollment) is str:
+                return PPM.Enrollment(value=enrollment)
+            elif type(enrollment) is PPM.Enrollment:
+                return enrollment
+            else:
+                raise ValueError('Value "{}" is not a valid enrollment'.format(enrollment))
+
+        @staticmethod
         def choices():
             return (
                 (PPM.Enrollment.Registered.value, 'Registered'),
@@ -147,6 +194,11 @@ class PPM:
                 (PPM.Enrollment.Ineligible.value, 'Queue'),
                 (PPM.Enrollment.Terminated.value, 'Finished'),
             )
+
+        @staticmethod
+        def title(enrollment):
+            """Returns the value to be used as the enrollment's title"""
+            return dict(PPM.Enrollment.choices())[PPM.Enrollment.get(enrollment).value]
 
     class Communication(Enum):
         PicnicHealthRegistration = 'picnichealth-registration'
@@ -164,11 +216,11 @@ class PPM:
         ASDQuestionnaire = 'ppm-asd-questionnaire'
 
         @staticmethod
-        def questionnaire_for_project(project):
-            if project == PPM.Project.ASD or project == PPM.Project.ASD.value:
+        def questionnaire_for_project(study):
+            if PPM.Study.get(study) is PPM.Study.ASD:
                 return PPM.Questionnaire.ASDQuestionnaire.value
 
-            elif project == PPM.Project.NEER or project == PPM.Project.NEER.value:
+            elif PPM.Study.get(study) is PPM.Study.NEER:
                 return PPM.Questionnaire.NEERQuestionnaire.value
 
         @staticmethod

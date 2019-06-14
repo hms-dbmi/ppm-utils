@@ -76,3 +76,27 @@ class TestPPMService(unittest.TestCase):
         self.assertTrue('//' not in str(url.path))
         self.assertEqual(len(url.query.params.items()), 2)
         self.assertEqual('some.test.api.address', url.netloc)
+
+    def test_ppm_study_meta_1(self):
+
+        # Compare methods for determining study meta
+        self.assertEqual(PPM.Study.title(PPM.Study.NEER), PPM.Study.title(PPM.Study.NEER.value))
+        self.assertEqual(PPM.Study.title(PPM.Study.ASD), PPM.Study.title(PPM.Study.ASD.value))
+
+        # Use FHIR codes
+        self.assertEqual(PPM.Study.title(PPM.Study.ASD), PPM.Study.title(PPM.Study.fhir_id(PPM.Study.ASD)))
+        self.assertEqual(PPM.Study.title(PPM.Study.ASD), PPM.Study.title(PPM.Study.fhir_id(PPM.Study.ASD.value)))
+
+    def test_ppm_study_meta_2(self):
+
+        # Compare methods for determining study meta
+        self.assertTrue(PPM.Study.get(PPM.Study.NEER) is PPM.Study.NEER)
+        self.assertTrue(PPM.Study.get(PPM.Study.NEER.value) is PPM.Study.NEER)
+        self.assertTrue(PPM.Study.get(PPM.Study.ASD) is PPM.Study.ASD)
+        self.assertTrue(PPM.Study.get(PPM.Study.ASD.value) is PPM.Study.ASD)
+
+    def test_ppm_study_meta_3(self):
+
+        # Compare methods for determining study meta
+        self.assertTrue(PPM.Study.is_ppm(PPM.Study.fhir_id(PPM.Study.NEER)))
+        self.assertTrue(PPM.Study.is_ppm(PPM.Study.fhir_id(PPM.Study.ASD)))
