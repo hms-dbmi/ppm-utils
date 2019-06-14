@@ -2053,9 +2053,8 @@ class FHIR(PPM.Service):
         url = furl(FHIR.service_url())
         url.path.segments.append('Flag')
 
-        query = {
-            'subject': 'Patient/{}'.format(patient_id),
-        }
+        # Build the query
+        query = FHIR._patient_resource_query(patient_id, key='subject')
 
         content = None
         try:
@@ -2175,7 +2174,7 @@ class FHIR(PPM.Service):
                 }]
 
             # Build the URL
-            url = furl(PPM.fhir_url())
+            url = furl(FHIR.service_url())
             url.path.segments.append('ResearchSubject')
             url.path.segments.append(research_subject_id)
 
@@ -2202,7 +2201,7 @@ class FHIR(PPM.Service):
         logger.debug("Patient: {}, Study: {}, Start: {}, End: {}".format(patient_id, study, start, end))
 
         # Fetch the flag.
-        url = furl(PPM.fhir_url())
+        url = furl(FHIR.service_url())
         url.path.segments.append('ResearchSubject')
 
         # Build the query
