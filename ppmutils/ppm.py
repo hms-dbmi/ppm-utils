@@ -968,6 +968,173 @@ class PPM:
     # Alias Device to TrackedItem
     Device = TrackedItem
 
+    class Email(Enum):
+        AdminProposedNotification = 'admin_proposed_notification'
+        AdminContactNotification = 'admin_contact_notification'
+        UserProposedNotification = 'user_proposed_notification'
+        UserAcceptedNotification = 'user_accepted_notification'
+        UserPendingNotification = 'user_pending_notification'
+        UserQueuedNotification = 'user_queued_notification'
+
+        @staticmethod
+        def send(email, study, recipients, subject=None, sender=None, context=None, reply_to=None):
+            """
+            Sends an email for the corresponding email identifier.
+            :param email: The email identifier
+            :param study: The study for which the email concerns
+            :param recipients: A list of recipients
+            :param subject: The subject for the email
+            :param sender: The sender
+            :param context: Context for the email
+            :param reply_to: A list of reply to addresses, if any
+            :return:
+            """
+            try:
+                # Add subject
+                if not subject:
+                    subject = PPM.Email.subject(email=email, study=study)
+
+                for recipient in recipients:
+                    logger.debug(f'Email: Sending "{email.value}" for study "{study}" -> "{recipient}"')
+
+                    # Check if test
+                    test_admin = PPM.Email.is_test(recipient)
+                    if test_admin:
+                        recipient = test_admin
+
+                    # Check reply to
+                    if not reply_to:
+                        reply_to = []
+
+                    # Render templates
+                    html, plain = PPM.Email.render(email=email, study=study, context=context, subject=subject)
+
+                    # Perform send
+                    msg = EmailMultiAlternatives(subject, plain, ppm_settings.EMAIL_DEFAULT_FROM, [recipient], reply_to=reply_to)
+                    msg.attach_alternative(html, "text/html")
+                    msg.send()
+
+                    logger.debug(f'Email: Sent email "{email.value}" for study "{study}" -> "{recipient}"')
+
+                    return True
+
+            except Exception as e:
+                logger.exception('Email error: {}'.format(e), exc_info=True, extra={
+                    'email': email.value, 'study': study, 'subject': subject, 'sender': sender, 'context': context
+                })
+
+            return False
+
+        @staticmethod
+        def is_test(recipient):
+            """
+            Tests the given user account for matching that of a test account.
+            Test accounts are specified as [regex 1]:[admin email],[regex 2]:[admin email],...
+            If the given user is a test account, return the specific admin for which notifications
+            should be limited to sending to.
+            :param recipient: The recipient email
+            :return: Admin email address if test account, None if not
+            """
+
+            # Check for test accounts
+            try:
+                if hasattr(ppm_settings, 'EMAIL_TEST_ACCOUNTS'):
+                    test_accounts = ppm_settings.EMAIL_TEST_ACCOUNTS
+                elif hasattr(settings, 'TEST_EMAIL_ACCOUNTS'):
+                    test_accounts = settings.TEST_EMAIL_ACCOUNTS.split(',')
+                else:
+                    return None
+
+                if test_accounts is not None and len(test_accounts) > 0:
+                    logger.info('Test accounts found, checking now...')
+
+                    for test_account in test_accounts:
+
+                        # Split the test account email from the destination admin email
+                        test_account_parts = test_account.split(':')
+                        regex = re.compile(test_account_parts[0])
+                        matches = regex.match(recipient)
+                        if matches is not None and matches.group():
+                            logger.info("Email: Test account found: {}, sending to {}".format(
+                                recipient, test_account_parts[1]
+                            ))
+
+                            # Return the test admin email
+                            return test_account_parts[1]
+
+            except Exception as e:
+                logger.warning('Test email lookup failed: {}'.format(e), exc_info=True)
+
+            return None
+
+        @staticmethod
+        def render(email, study, context, subject=None):
+            """
+            Accepts an email identifier and context and returns the rendered content as a string
+            :param email: The email identifier
+            :param study: The study for which the email concerns
+            :param context: The context for the email's content
+            :param subject: The optional subject line
+            :return: str
+            """
+            # Get the study
+            _study = PPM.Study.get(study)
+
+            # Add study
+            context['ppm_study'] = _study.value
+            context['ppm_study_title'] = PPM.Study.title(study)
+
+            # Add subject
+            context['ppm_subject'] = subject if subject is not None else PPM.Email.subject(email=email, study=study)
+
+            # Add signature bits
+            context['ppm_signature'] = ppm_settings.EMAIL_SIGNATURE
+
+            try:
+                # Check for study specific templates
+                if os.path.exists(f'ppmutils/{_study.value}/{email.value}.html'):
+
+                    # These templates are specific to this study
+                    template_paths = f'ppmutils/{_study.value}/{email.value}.html', \
+                                     f'ppmutils/{_study.value}/{email.value}.txt'
+
+                else:
+
+                    # These are generic templates and can be rendered across all studies
+                    template_paths = f'ppmutils/{email.value}.html', \
+                                     f'ppmutils/{email.value}.txt'
+
+                # Render templates
+                html = render_to_string(template_paths[0], context)
+                plain = render_to_string(template_paths[1], context)
+
+                return html, plain
+
+            except Exception as e:
+                logger.exception(f'Email error: {e}', exc_info=True, extra={
+                    'email': email.value, 'study': study,
+                })
+
+        @staticmethod
+        def subject(email, study):
+            """
+            Returns the default subject time for the email and study combination
+            :param email: The email identifier
+            :param study: The study for which the email concerned
+            :return: str
+            """
+            # Set email subject lines
+            subjects = {
+                'admin_contact_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Support',
+                'admin_proposed_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - New User Signup',
+                'user_proposed_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Registration',
+                'user_accepted_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Approved',
+                'user_queued_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Update',
+                'user_pending_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Update',
+            }
+
+            return subjects[email.value]
+
     class Service(object):
 
         # Subclasses set this to direct requests
