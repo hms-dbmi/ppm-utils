@@ -2977,13 +2977,22 @@ class FHIR:
 
             # Set status and dates
             participant['enrollment'] = enrollment['enrollment']
-            if enrollment['enrollment'] == PPM.Enrollment.Accepted.value and enrollment.get('start'):
+            if enrollment.get('start'):
 
                 # Convert time zone to assumed ET
                 participant['enrollment_accepted_date'] = FHIR._format_date(enrollment['start'], '%m/%d/%Y')
 
             else:
                 participant['enrollment_accepted_date'] = ''
+
+            # Check for completed/terminated
+            if enrollment.get('end'):
+
+                # Convert time zone to assumed ET
+                participant['enrollment_terminated_date'] = FHIR._format_date(enrollment['end'], '%m/%d/%Y')
+            #
+            # else:
+            #     participant['enrollment_terminated_date'] = ''
 
             # Flatten consent composition
             participant['composition'] = FHIR.flatten_consent_composition(bundle)
