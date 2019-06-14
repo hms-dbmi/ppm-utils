@@ -2005,7 +2005,6 @@ class FHIR(PPM.Service):
 
         return False
 
-
     @staticmethod
     def update_patient_deceased(patient_id, date=None):
 
@@ -2054,9 +2053,8 @@ class FHIR(PPM.Service):
         url = furl(FHIR.service_url())
         url.path.segments.append('Flag')
 
-        query = {
-            'subject': 'Patient/{}'.format(patient_id),
-        }
+        # Build the query
+        query = FHIR._patient_resource_query(patient_id, key='subject')
 
         content = None
         try:
@@ -2147,6 +2145,99 @@ class FHIR(PPM.Service):
         except Exception as e:
             logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={'ppm_id': patient_id})
             raise
+
+    @staticmethod
+    def update_research_subject(patient_id, research_subject_id, start=None, end=None):
+        logger.debug("Patient: {}, ResearchSubject: {}, Start: {}, End: {}".format(
+            patient_id, research_subject_id, start, end
+        ))
+
+        content = None
+        try:
+            # Build the update
+            if end:
+                patch = [{
+                    'op': 'add',
+                    'path': '/period/end',
+                    'value': end.isoformat()
+                }]
+            else:
+                patch = [{
+                    'op': 'remove',
+                    'path': '/period/end'
+                }]
+            if start:
+                patch = [{
+                    'op': 'update',
+                    'path': '/period/start',
+                    'value': start.isoformat()
+                }]
+
+            # Build the URL
+            url = furl(FHIR.service_url())
+            url.path.segments.append('ResearchSubject')
+            url.path.segments.append(research_subject_id)
+
+            # Put it
+            response = requests.patch(url.url, json=patch, headers={'content-type': 'application/json-patch+json'})
+            content = response.content
+            response.raise_for_status()
+
+            return response.ok
+
+        except requests.HTTPError as e:
+            logger.error('FHIR Request Error: {}'.format(e), exc_info=True,
+                         extra={'ppm_id': patient_id, 'response': content, 'research_subject_id': research_subject_id})
+
+        except Exception as e:
+            logger.error('FHIR Error: {}'.format(e), exc_info=True, extra={
+                'ppm_id': patient_id, 'research_subject_id': research_subject_id
+            })
+
+        return False
+
+    @staticmethod
+    def update_ppm_research_subject(patient_id, study=None, start=None, end=None):
+        logger.debug("Patient: {}, Study: {}, Start: {}, End: {}".format(patient_id, study, start, end))
+
+        # Fetch the flag.
+        url = furl(FHIR.service_url())
+        url.path.segments.append('ResearchSubject')
+
+        # Build the query
+        query = FHIR._patient_resource_query(patient_id)
+
+        # Build study identifier
+        study_query = '{}|'.format(FHIR.research_subject_identifier_system)
+        if study:
+            study_query += PPM.Study.get(study).value
+
+        # Add study query
+        query['identifier'] = study_query
+
+        content = None
+        research_subject_id = None
+        try:
+            # Fetch the research subject.
+            research_subjects = FHIR._query_resources('ResearchSubject', query=query)
+
+            # Iterate studies
+            for research_subject_id in [resource['resource']['id'] for resource in research_subjects]:
+                logger.debug(f'{patient_id}: Found ResearchSubject/{research_subject_id} -> {end}')
+
+                # Do the update
+                return FHIR.update_research_subject(patient_id, research_subject_id, start, end)
+
+        except requests.HTTPError as e:
+            logger.error('FHIR Request Error: {}'.format(e), exc_info=True,
+                         extra={'ppm_id': patient_id, 'response': content, 'research_subject_id': research_subject_id})
+
+        except Exception as e:
+            logger.error('FHIR Error: {}'.format(e), exc_info=True, extra={
+                'ppm_id': patient_id, 'research_subject_id': research_subject_id
+            })
+
+        return False
 
     @staticmethod
     def update_point_of_care_list(patient, point_of_care):

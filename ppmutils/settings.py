@@ -18,6 +18,7 @@ from ppmutils import environment as env
 # Set service URLs based on environment
 PPM_ENVIRONMENTS = {
     'prod': {
+        'API_URL': 'https://api.ppm.aws.dbmi.hms.harvard.edu',
         'ADMIN_URL': 'https://p2m2a.dbmi.hms.harvard.edu',
         'FHIRQUESTIONNAIRE_URL': 'https://p2m2.dbmi.hms.harvard.edu/fhirquestionnaire',
         'P2MD_URL': 'https://p2m2.dbmi.hms.harvard.edu',
@@ -30,6 +31,7 @@ PPM_ENVIRONMENTS = {
         }
     },
     'dev': {
+        'API_URL': 'https://api.ppm.aws.dbmi-dev.hms.harvard.edu',
         'ADMIN_URL': 'https://p2m2a.aws.dbmi-dev.hms.harvard.edu',
         'FHIRQUESTIONNAIRE_URL': 'https://p2m2.aws.dbmi-dev.hms.harvard.edu/fhirquestionnaire',
         'P2MD_URL': 'https://p2m2.aws.dbmi-dev.hms.harvard.edu',
@@ -42,6 +44,7 @@ PPM_ENVIRONMENTS = {
         }
     },
     'local': {
+        'API_URL': 'http://ppm-api:8007',
         'ADMIN_URL': 'http://localhost:8011',
         'FHIRQUESTIONNAIRE_URL': 'http://localhost:8019/fhirquestionnaire',
         'P2MD_URL': 'http://p2md:8020',
@@ -95,7 +98,7 @@ REQUIRED_SETTINGS = ('FHIR_URL', )
 REMOVED_SETTINGS = ()
 
 # List of service URLs
-SERVICE_URLS = ('FHIR_URL', 'ADMIN_URL', 'FHIRQUESTIONNAIRE_URL', 'P2MD_URL', 'FILESERVICE_URL', )
+SERVICE_URLS = ('API_URL', 'FHIR_URL', 'ADMIN_URL', 'FHIRQUESTIONNAIRE_URL', 'P2MD_URL', 'FILESERVICE_URL', )
 
 # List of needed email settings if enabled
 EMAIL_SETTINGS = ('EMAIL_BACKEND', 'EMAIL_HOST', 'EMAIL_HOST_USER', 'EMAIL_HOST_PASSWORD', 'EMAIL_PORT', 'EMAIL_USE_SSL', )
