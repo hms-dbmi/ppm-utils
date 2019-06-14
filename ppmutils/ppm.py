@@ -62,13 +62,22 @@ class PPM:
         ASD = 'autism'
 
         @staticmethod
+        def fhir_id(study):
+            """
+            Return the FHIR identifier for the passed study
+            :return: A PPM study identifier
+            :rtype: str
+            """
+            return 'ppm-{}'.format(PPM.Study.get(study).value)
+
+        @staticmethod
         def identifiers():
             """
             Return a list of all PPM study identifiers to be used in FHIR resources
             :return: A list of PPM study identifiers
             :rtype: list
             """
-            return ['ppm-{}'.format(study.value) for study in PPM.Study]
+            return [PPM.Study.fhir_id(study) for study in PPM.Study]
 
         @staticmethod
         def is_ppm(identifier):
