@@ -527,7 +527,7 @@ class PPM:
             study = PPM.Study.get(study)
 
             # Build the URL
-            url = furl(ppm_settings.FHIRQUESTIONNAIRE_URL)
+            url = furl(ppm_settings.QUESTIONNAIRE_URL)
 
             # Strip paths
             url.path.segments.clear()
