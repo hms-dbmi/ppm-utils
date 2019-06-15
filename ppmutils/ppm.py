@@ -90,6 +90,14 @@ class PPM:
             return PPM.Study.get(study) in [PPM.Study.EXAMPLE]
 
         @staticmethod
+        def testing(study):
+            """
+            Return true if the passed study is testing
+            :rtype: boolean
+            """
+            return PPM.Study.get(study) in [PPM.Study.EXAMPLE]
+
+        @staticmethod
         def is_ppm(identifier):
             """
             Returns whether a study identifier is a PPM one or not
