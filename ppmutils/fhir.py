@@ -2014,9 +2014,12 @@ class FHIR:
                     # Set status.
                     flag.status = 'inactive'
 
-                    # Set an end date.
-                    now = FHIRDate(datetime.now().isoformat())
-                    flag.period.end = now
+                    # Set an end date if a flag is present
+                    if flag.period:
+                        now = FHIRDate(datetime.now().isoformat())
+                        flag.period.end = now
+                    else:
+                        logger.debug('Flag has no period/start, cannot set end: Patient/{}'.format(patient_id))
 
                 elif code.code == 'accepted' and status != 'accepted':
                     logger.debug('Reverting back to inactive with no dates')
