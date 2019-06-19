@@ -1083,6 +1083,104 @@ class FHIR:
         return response.json()
 
     @staticmethod
+    def query_participants(studies=None, enrollments=None, active=None, testing=False):
+        """
+        Queries the current set of participants. This allows filtering on study, enrollment, status, etc.
+        A list of matching participants are returned as flattened Patient resource dicts.
+        :param studies: A list of PPM studies to filter on
+        :param enrollments: A list of PPM enrollments to filter on
+        :param active: Select on whether the Patient.active flag is set or not
+        :param testing: Whether to include testing participants or not
+        :return: list
+        """
+        logger.debug('Querying participants - \n\tenrollments: {}\n\tstudies: {}\n\tactive: {}\n\ttesting: {}'.format(
+            enrollments, studies, active, testing)
+        )
+
+        # Ensure we are using values
+        if studies:
+            studies = [PPM.Study.get(study).value for study in studies]
+        if enrollments:
+            enrollments = [PPM.Enrollment.get(enrollment).value for enrollment in enrollments]
+
+        # Build the query
+        query = {
+            '_revinclude': ['ResearchSubject:individual', 'Flag:subject']
+        }
+
+        # Check if filtering on active
+        if active is not None:
+            query['active'] = 'false' if not active else 'true'
+
+        # Peel out patients
+        bundle = FHIR._query_bundle('Patient', query)
+
+        # Check for empty query set
+        if not bundle.entry:
+            return []
+
+        # Build a dictionary keyed by FHIR IDs containing enrollment status
+        patient_enrollments = {entry.resource.subject.reference.split('/')[1]: entry.resource.code.coding[0].code
+                               for entry in bundle.entry if entry.resource.resource_type == 'Flag'}
+
+        # Build a dictionary keyed by FHIR IDs containing flattened study objects
+        patient_studies = {entry.resource.individual.reference.split('/')[1]:
+                           {'study': FHIR.get_study_from_research_subject(entry.resource),
+                           'date_registered': entry.resource.period.start.origval}
+                           for entry in bundle.entry if entry.resource.resource_type == 'ResearchSubject' and
+                           FHIR.is_ppm_research_subject(entry.resource.as_json())}
+
+        # Process patients
+        patients = []
+        for patient in [entry.resource for entry in bundle.entry if entry.resource.resource_type == 'Patient']:
+            try:
+                # Fetch their email
+                email = next(identifier.value for identifier in patient.identifier
+                             if identifier.system == FHIR.patient_email_identifier_system)
+
+                # Check if tester
+                if not testing and PPM.is_tester(email):
+                    continue
+
+                # Get values and compare to filters
+                patient_enrollment = patient_enrollments.get(patient.id)
+                patient_study = patient_studies.get(patient.id)
+
+                if enrollments and patient_enrollment.lower() not in enrollments:
+                    continue
+
+                if studies and patient_study.get('study').lower() not in studies:
+                    continue
+
+                # Format date registered
+                date_registered = FHIR._format_date(patient_study.get('date_registered'), '%m/%d/%Y')
+
+                # Build the dict
+                patient_dict = {
+                    'email': email,
+                    'fhir_id': patient.id,
+                    'ppm_id': patient.id,
+                    'enrollment': patient_enrollment,
+                    'status': patient_enrollment,
+                    'study': patient_study.get('study'),
+                    'project': patient_study.get('study'),
+                    'date_registered': date_registered,
+                }
+
+                # Wrap the patient resource in a fake bundle and flatten them
+                flattened_patient = FHIR.flatten_patient({'entry': [{'resource': patient.as_json()}]})
+                if flattened_patient:
+                    patient_dict.update(flattened_patient)
+
+                # Add it
+                patients.append(patient_dict)
+
+            except Exception as e:
+                logger.exception('Resources malformed for Patient/{}: {}'.format(patient.id, e))
+
+        return patients
+
+    @staticmethod
     def query_patients(study=None, enrollment=None, active=True, testing=False, include_deceased=True):
         logger.debug('Getting patients - enrollment: {}, study: {}, active: {}, testing: {}'.format(
             enrollment, study, active, testing)
@@ -1921,8 +2019,16 @@ class FHIR:
         return False
 
     @staticmethod
-    def update_patient_deceased(patient_id, date=None):
-
+    def update_patient_deceased(patient_id, date=None, active=None):
+        """
+        Updates a participant as deceased. If a date is passed, they are marked
+        as such as well as updated be being inactive. If passed, 'active' will
+        update this flag on the Patient simultaneously.
+        :param patient_id: The patient identifier
+        :param date: The date of death for the Patient
+        :param active: The value to set on the Patient's 'active' flag
+        :return: boolean
+        """
         # Make the updates
         content = None
         try:
@@ -1938,6 +2044,14 @@ class FHIR:
                     'op': 'remove',
                     'path': '/deceasedDateTime'
                 }]
+
+            # Update active if needed
+            if active is not None:
+                patch.append({
+                    'op': 'replace',
+                    'path': '/active',
+                    'value': active
+                })
 
             # Build the URL
             url = furl(PPM.fhir_url())
@@ -2003,13 +2117,32 @@ class FHIR:
                     flag.status = 'active'
 
                     # Set a start date.
-                    now = FHIRDate(datetime.now().isoformat())
-                    period = Period()
-                    period.start = now
-                    flag.period = period
+                    if flag.period and flag.period.start:
+
+                        # Remove the end
+                        flag.period.end = None
+
+                    else:
+                        now = FHIRDate(datetime.now().isoformat())
+                        period = Period()
+                        period.start = now
+                        flag.period = period
 
                 elif code.code != 'terminated' and status == 'terminated':
-                    logger.debug('Setting enrollment flag status to "inactive"')
+                    logger.debug('Setting enrollment flag status to "terminated"')
+
+                    # Set status.
+                    flag.status = 'inactive'
+
+                    # Set an end date if a flag is present
+                    if flag.period:
+                        now = FHIRDate(datetime.now().isoformat())
+                        flag.period.end = now
+                    else:
+                        logger.debug('Flag has no period/start, cannot set end: Patient/{}'.format(patient_id))
+
+                elif code.code != 'completed' and status == 'completed':
+                    logger.debug('Setting enrollment flag status to "completed"')
 
                     # Set status.
                     flag.status = 'inactive'
@@ -2331,7 +2464,7 @@ class FHIR:
             return response.ok
 
         except Exception as e:
-            logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={'ppm_id': email})
+            logger.exception('FHIR error: {}'.format(e), exc_info=True, extra={'ppm_id': patient_id})
 
         return False
 
@@ -2458,6 +2591,7 @@ class FHIR:
     def update_document_reference(document_reference, status='current'):
         logger.debug('Supersede DocumentReference: {}'.format(document_reference['id']))
 
+        patient_ref = None
         try:
             # Build the URL
             url = furl(PPM.fhir_url())

@@ -17,7 +17,6 @@ class PPM:
     This class serves mostly to track the PPM project properties across
     studies and consolidate functionality common amongst all services.
     """
-
     @staticmethod
     def fhir_url():
         if hasattr(settings, 'FHIR_URL'):
@@ -90,39 +89,32 @@ class PPM:
             """
             return identifier.lower() in PPM.Study.identifiers()
 
-        @staticmethod
-        def get(study):
+        @classmethod
+        def enum(cls, enum):
+            """Accepts any form of an enum and returns the enum"""
+            for item in cls:
+                if enum is item or enum == item.name or enum == item.value or \
+                        enum == cls.title(item) or enum == cls.fhir_id(item):
+                    return item
+
+            # Check edge case
+            if enum == 'ppm-asd' or enum == 'asd':
+                # An edge case from change in study naming
+                logger.warning('PPM.Study deprecated study identifier used: "{}"'.format(enum))
+                return PPM.Study.ASD
+
+            raise ValueError('Value "{}" is not a valid {}'.format(enum, cls.__name__))
+
+        @classmethod
+        def get(cls, enum):
             """
             Returns an instance of the Study enum for the given study value, enum, whatever
-            :param study: The study value string, name or enum
-            :type study: Object
+            :param enum: The study value string, name or enum
+            :type enum: Object
             :return: The instance of PPM Study enum
             :rtype: PPM.Study
             """
-            # Check easy case
-            if study in PPM.Study:
-                return study
-
-            # Set a pattern to include FHIR prepended study identifiers
-            pattern = r'^(ppm-)?'
-
-            # Iterate studies
-            for _study in PPM.Study:
-
-                # Update the pattern for the study
-                if _study is PPM.Study.ASD:
-
-                    # Add an additional case for 'asd'
-                    study_pattern = pattern + '({}|asd)$'.format(PPM.Study.ASD.value)
-
-                else:
-                    study_pattern = pattern + '{}$'.format(_study.value)
-
-                # Check it
-                if type(study) is str and re.match(study_pattern, study.lower()) or study is _study:
-                    return _study
-
-            raise ValueError(f'Study "{study}" is not a valid PPM study value/name/anything')
+            return cls.enum(enum)
 
         @staticmethod
         def from_value(study):
@@ -135,29 +127,27 @@ class PPM:
             """
             return PPM.Study.get(study)
 
-        @staticmethod
-        def title(study):
+        @classmethod
+        def title(cls, study):
             """
             Returns the title to be used for the given study.
             :param study: The study identifier or value
-            :type study: str
+            :type study: object
             :return: The title for the study
             :rtype: str
             """
-            # Get the enum
-            _study = PPM.Study.get(study)
+            return dict(PPM.Study.choices())[PPM.Study.get(study).value]
 
-            # Check studies
-            if _study is PPM.Study.NEER:
-                return 'NEER'
-            elif _study is PPM.Study.ASD:
-                return 'Autism'
-
-        @staticmethod
-        def choices():
+        @classmethod
+        def choices(cls):
+            """
+            Returns a choices tuple of tuples. Define enum titles if different from names/values
+            here as this is the source for pulling enum titles.
+            :return: ((str, str), )
+            """
             return (
-                (PPM.Study.NEER.value, PPM.Study.title(PPM.Study.NEER.value)),
-                (PPM.Study.ASD.value, PPM.Study.title(PPM.Study.ASD.value)),
+                (PPM.Study.NEER.value, 'NEER'),
+                (PPM.Study.ASD.value, 'Autism'),
             )
 
     # Alias Project as Study until we migrate all usages to Study
@@ -169,22 +159,27 @@ class PPM:
         Consented = 'consented'
         Proposed = 'proposed'
         Accepted = 'accepted'
+        Completed = 'completed'
         Pending = 'pending'
         Ineligible = 'ineligible'
         Terminated = 'terminated'
 
-        @staticmethod
-        def get(enrollment):
-            """Accepts any form of an enrollment and returns the enum"""
-            if type(enrollment) is str:
-                return PPM.Enrollment(value=enrollment)
-            elif type(enrollment) is PPM.Enrollment:
-                return enrollment
-            else:
-                raise ValueError('Value "{}" is not a valid enrollment'.format(enrollment))
+        @classmethod
+        def enum(cls, enum):
+            """Accepts any form of an enum and returns the enum"""
+            for item in cls:
+                if enum is item or enum == item.name or enum == item.value or enum == cls.title(item):
+                    return item
 
-        @staticmethod
-        def choices():
+            raise ValueError('Value "{}" is not a valid {}'.format(enum, cls.__name__))
+
+        @classmethod
+        def get(cls, enum):
+            """Accepts any form of an enrollment and returns the enum"""
+            return cls.enum(enum)
+
+        @classmethod
+        def choices(cls):
             return (
                 (PPM.Enrollment.Registered.value, 'Registered'),
                 (PPM.Enrollment.Consented.value, 'Consented'),
@@ -192,22 +187,70 @@ class PPM:
                 (PPM.Enrollment.Pending.value, 'Pending'),
                 (PPM.Enrollment.Accepted.value, 'Accepted'),
                 (PPM.Enrollment.Ineligible.value, 'Queue'),
-                (PPM.Enrollment.Terminated.value, 'Finished'),
+                (PPM.Enrollment.Completed.value, 'Completed'),
+                (PPM.Enrollment.Terminated.value, 'Terminated'),
             )
 
-        @staticmethod
-        def title(enrollment):
+        @classmethod
+        def active_choices(cls):
+            return (choice for choice in PPM.Enrollment.choices() if PPM.Enrollment.is_active(choice[0]))
+
+        @classmethod
+        def title(cls, enrollment):
             """Returns the value to be used as the enrollment's title"""
             return dict(PPM.Enrollment.choices())[PPM.Enrollment.get(enrollment).value]
 
+        @staticmethod
+        def is_active(enrollment):
+            """
+            Accepts an enrollment and returns whether it is considered 'active' or not. This
+            will determine how this flag is set on participant records. The state of being
+            active generally means this participant is in the enrollment procedure and is
+            still considered for acceptance, or if already accepted, should receive notifications,
+            requests, and any other communications concerning the study.
+            :param enrollment: The enrollment to consider
+            :return: boolean
+            """
+            enrollment = PPM.Enrollment.get(enrollment)
+
+            # Set these here
+            return enrollment not in [PPM.Enrollment.Ineligible, PPM.Enrollment.Terminated, PPM.Enrollment.Completed]
+
     class Communication(Enum):
+        ParticipantProposed = 'participant-proposed'
+        ParticipantPending = 'participant-pending'
+        ParticipantQueued = 'participant-queued'
+        ParticipantAccepted = 'participant-accepted'
         PicnicHealthRegistration = 'picnichealth-registration'
 
-        @staticmethod
-        def choices():
+        @classmethod
+        def enum(cls, enum):
+            """Accepts any form of an enum and returns the enum"""
+            for item in cls:
+                if enum is item or enum == item.name or enum == item.value or enum == cls.title(item):
+                    return item
+
+            raise ValueError('Value "{}" is not a valid {}'.format(enum, cls.__name__))
+
+        @classmethod
+        def get(cls, enum):
+            """Accepts any form of an communication and returns the enum"""
+            return cls.enum(enum)
+
+        @classmethod
+        def choices(cls):
             return (
+                (PPM.Communication.ParticipantProposed.value, 'Participant Proposed'),
+                (PPM.Communication.ParticipantPending.value, 'Participant Pending'),
+                (PPM.Communication.ParticipantQueued.value, 'Participant Queued'),
+                (PPM.Communication.ParticipantAccepted.value, 'Participant Accepted'),
                 (PPM.Communication.PicnicHealthRegistration.value, 'PicnicHealth Registration'),
             )
+
+        @classmethod
+        def title(cls, communication):
+            """Returns the value to be used as the communication's title"""
+            return dict(PPM.Communication.choices())[PPM.Communication.get(communication).value]
 
     class Questionnaire(Enum):
         ASDGuardianConsentQuestionnaire = 'ppm-asd-consent-guardian-quiz'
@@ -243,8 +286,22 @@ class PPM:
         SMART = 'smart'
         File = 'file'
 
-        @staticmethod
-        def choices():
+        @classmethod
+        def enum(cls, enum):
+            """Accepts any form of an enum and returns the enum"""
+            for item in cls:
+                if enum is item or enum == item.name or enum == item.value or enum == cls.title(item):
+                    return item
+
+            raise ValueError('Value "{}" is not a valid {}'.format(enum, cls.__name__))
+
+        @classmethod
+        def get(cls, enum):
+            """Accepts any form of an provider and returns the enum"""
+            return cls.enum(enum)
+
+        @classmethod
+        def choices(cls):
             return (
                 (PPM.Provider.PPM.value, 'PPM FHIR'),
                 (PPM.Provider.Fitbit.value, 'Fitbit'),
@@ -258,16 +315,10 @@ class PPM:
                 (PPM.Provider.File.value, 'PPM Files'),
             )
 
-        @staticmethod
-        def title(provider):
-            """
-            Returns the title for the given provider
-            :param provider: The item code/ID
-            :type provider: str
-            :return: The provider's title
-            :rtype: str
-            """
-            return dict(PPM.Provider.choices())[provider]
+        @classmethod
+        def title(cls, provider):
+            """Returns the value to be used as the provider's title"""
+            return dict(PPM.Provider.choices())[PPM.Provider.get(provider).value]
 
     class TrackedItem(Enum):
         Fitbit = 'fitbit'
@@ -275,8 +326,22 @@ class PPM:
         uBiomeFecalSampleKit = 'ubiome'
         BloodSampleKit = 'blood'
 
-        @staticmethod
-        def choices():
+        @classmethod
+        def enum(cls, enum):
+            """Accepts any form of an enum and returns the enum"""
+            for item in cls:
+                if enum is item or enum == item.name or enum == item.value or enum == cls.title(item):
+                    return item
+
+            raise ValueError('Value "{}" is not a valid {}'.format(enum, cls.__name__))
+
+        @classmethod
+        def get(cls, enum):
+            """Accepts any form of an tracked item and returns the enum"""
+            return cls.enum(enum)
+
+        @classmethod
+        def choices(cls):
             return (
                 (PPM.TrackedItem.Fitbit.value, 'FitBit'),
                 (PPM.TrackedItem.SalivaSampleKit.value, 'Saliva Kit'),
@@ -284,8 +349,8 @@ class PPM:
                 (PPM.TrackedItem.BloodSampleKit.value, 'Blood Sample'),
             )
 
-        @staticmethod
-        def title(tracked_item):
+        @classmethod
+        def title(cls, tracked_item):
             """
             Returns the title for the given tracked item/device
             :param tracked_item: The item code/ID
@@ -293,7 +358,7 @@ class PPM:
             :return: The item's title
             :rtype: str
             """
-            return dict(PPM.TrackedItem.choices())[tracked_item]
+            return dict(PPM.TrackedItem.choices())[PPM.TrackedItem.get(tracked_item).value]
 
         @staticmethod
         def devices(study=None):

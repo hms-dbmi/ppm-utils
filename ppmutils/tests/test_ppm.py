@@ -100,3 +100,69 @@ class TestPPMService(unittest.TestCase):
         # Compare methods for determining study meta
         self.assertTrue(PPM.Study.is_ppm(PPM.Study.fhir_id(PPM.Study.NEER)))
         self.assertTrue(PPM.Study.is_ppm(PPM.Study.fhir_id(PPM.Study.ASD)))
+
+    def test_ppm_study_meta_4(self):
+
+        # Compare methods for determining study meta
+        ppm_enum = PPM.Study
+        for enum in ppm_enum:
+            # Compare getters on name
+            self.assertEqual(ppm_enum.enum(enum.name), enum)
+            # Compare getters on value
+            self.assertEqual(ppm_enum.enum(enum.value), enum)
+            # Compare getters on title
+            self.assertEqual(ppm_enum.enum(ppm_enum.title(enum)), enum)
+            # Compare getters on identifier
+            self.assertEqual(ppm_enum.enum(ppm_enum.fhir_id(enum)), enum)
+
+        # Check edge cases
+        self.assertEqual(ppm_enum.enum('ppm-asd'), PPM.Study.ASD)
+        self.assertEqual(ppm_enum.enum('asd'), PPM.Study.ASD)
+
+    def test_ppm_enrollment_meta_1(self):
+
+        # Compare methods for determining study meta
+        ppm_enum = PPM.Enrollment
+        for enum in ppm_enum:
+            # Compare getters on name
+            self.assertEqual(ppm_enum.enum(enum.name), enum)
+            # Compare getters on value
+            self.assertEqual(ppm_enum.enum(enum.value), enum)
+            # Compare getters on title
+            self.assertEqual(ppm_enum.enum(ppm_enum.title(enum)), enum)
+
+    def test_ppm_communication_meta_1(self):
+
+        # Compare methods for determining study meta
+        ppm_enum = PPM.Communication
+        for enum in ppm_enum:
+            # Compare getters on name
+            self.assertEqual(ppm_enum.enum(enum.name), enum)
+            # Compare getters on value
+            self.assertEqual(ppm_enum.enum(enum.value), enum)
+            # Compare getters on title
+            self.assertEqual(ppm_enum.enum(ppm_enum.title(enum)), enum)
+
+    def test_ppm_provider_meta_1(self):
+
+        # Compare methods for determining study meta
+        ppm_enum = PPM.Provider
+        for enum in ppm_enum:
+            # Compare getters on name
+            self.assertEqual(ppm_enum.enum(enum.name), enum)
+            # Compare getters on value
+            self.assertEqual(ppm_enum.enum(enum.value), enum)
+            # Compare getters on title
+            self.assertEqual(ppm_enum.enum(ppm_enum.title(enum)), enum)
+
+    def test_ppm_tracked_item_meta_1(self):
+
+        # Compare methods for determining study meta
+        ppm_enum = PPM.TrackedItem
+        for enum in ppm_enum:
+            # Compare getters on name
+            self.assertEqual(ppm_enum.enum(enum.name), enum)
+            # Compare getters on value
+            self.assertEqual(ppm_enum.enum(enum.value), enum)
+            # Compare getters on title
+            self.assertEqual(ppm_enum.enum(ppm_enum.title(enum)), enum)
