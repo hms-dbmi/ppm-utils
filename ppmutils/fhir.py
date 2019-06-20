@@ -73,6 +73,7 @@ class FHIR:
     picnichealth_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/registered-picnichealth'
     facebook_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-facebook'
     smart_on_fhir_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-smart-on-fhir'
+    referral_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/how-did-you-hear-about-us'
 
     #
     # META
@@ -1870,29 +1871,53 @@ class FHIR:
 
             phone = form.get('phone')
             if phone:
-                for telecom in patient['telecom']:
+                for telecom in patient.get('telecom', []):
                     if telecom['system'] == FHIR.patient_phone_telecom_system:
                         telecom['value'] = phone
                         break
                 else:
                     # Add it
-                    patient['telecom'].append({'system': FHIR.patient_phone_telecom_system, 'value': phone})
+                    patient.setdefault('telecom', []).append(
+                        {'system': FHIR.patient_phone_telecom_system, 'value': phone}
+                    )
 
             email = form.get('contact_email')
             if email:
-                for telecom in patient['telecom']:
+                for telecom in patient.get('telecom', []):
                     if telecom['system'] == FHIR.patient_email_telecom_system:
                         telecom['value'] = email
                         break
                 else:
                     # Add it
-                    patient['telecom'].append({'system': FHIR.patient_email_telecom_system, 'value': email})
+                    patient.setdefault('telecom', []).append(
+                        {'system': FHIR.patient_email_telecom_system, 'value': email}
+                    )
 
             else:
-                # Delete an existing number if it exists
-                for telecom in patient['telecom']:
+                # Delete an existing email if it exists
+                for telecom in patient.get('telecom', []):
                     if telecom['system'] == FHIR.patient_email_telecom_system:
                         patient['telecom'].remove(telecom)
+                        break
+
+            # Update their referral method if needed
+            referral = form.get('how_did_you_hear_about_us')
+            if referral:
+                for extension in patient.get('extension', []):
+                    if extension['url'] == FHIR.referral_extension_url:
+                        extension['valueString'] = referral
+                        break
+                else:
+                    # Add it
+                    patient.setdefault('extension', []).append(
+                        {'url': FHIR.referral_extension_url, 'valueString': referral}
+                    )
+
+            else:
+                # Delete this if not specified
+                for extension in patient.get('extension', []):
+                    if extension['url'] == FHIR.referral_extension_url:
+                        patient['extension'].remove(extension)
                         break
 
             active = form.get('active')
@@ -4155,7 +4180,7 @@ class FHIR:
                 logger.debug('Adding "How did you hear about is"')
                 patient_data['extension'] = [
                     {
-                        "url": "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/how-did-you-hear-about-us",
+                        "url": FHIR.referral_extension_url,
                         "valueString": form.get('how_did_you_hear_about_us')
                     }
                 ]
