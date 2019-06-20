@@ -209,40 +209,6 @@ class PPM:
             return cls.enum(enum)
 
         @staticmethod
-        def get(study):
-            """
-            Returns an instance of the Study enum for the given study value, enum, whatever
-            :param study: The study value string, name or enum
-            :type study: Object
-            :return: The instance of PPM Study enum
-            :rtype: PPM.Study
-            """
-            # Check easy case
-            if study in PPM.Study:
-                return study
-
-            # Set a pattern to include FHIR prepended study identifiers
-            pattern = r'^(ppm-)?'
-
-            # Iterate studies
-            for _study in PPM.Study:
-
-                # Update the pattern for the study
-                if _study is PPM.Study.ASD:
-
-                    # Add an additional case for 'asd'
-                    study_pattern = pattern + '({}|asd)$'.format(PPM.Study.ASD.value)
-
-                else:
-                    study_pattern = pattern + '{}$'.format(_study.value)
-
-                # Check it
-                if type(study) is str and re.match(study_pattern, study.lower()) or study is _study:
-                    return _study
-
-            raise ValueError(f'Study "{study}" is not a valid PPM study value/name/anything')
-
-        @staticmethod
         def dashboard_url(study):
             """
             Returns the defined dashboard for the passed study
