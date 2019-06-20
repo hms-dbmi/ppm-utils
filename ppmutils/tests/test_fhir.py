@@ -323,6 +323,50 @@ class TestFHIR(unittest.TestCase):
         self.assertTrue(next((telecom for telecom in payload['telecom'] if telecom['system'] == 'email'), False))
 
     @responses.activate
+    def test_patient_update_contact_email(self):
+
+        # Set the new email
+        contact_email = 'somenewemail@email.com'
+
+        # Build a patient with a lastname
+        patient = FHIRData.patient('patient@email.org', firstname='User', lastname='Patient', street2='Unit 500')
+
+        # Set an example form
+        form = {'contact_email': contact_email}
+
+        # Build the response handler
+        responses.add(responses.GET,
+                      re.compile(self.fhir_url + r'/Patient/.*'),
+                      json=patient,
+                      status=200)
+
+        def update_callback(request):
+
+            return 200, {}, json.dumps({'operation': 'Patient resource updated!'})
+
+        responses.add_callback(
+            responses.PUT,
+            re.compile(self.fhir_url + r'/Patient/.*'),
+            callback=update_callback,
+            content_type='application/json'
+        )
+
+        # Do the update
+        updated = FHIR.update_patient(patient['id'], form=form)
+
+        # Check it
+        self.assertGreaterEqual(len(responses.calls), 2)
+        self.assertTrue(updated)
+
+        payload = json.loads(responses.calls[1].request.body)
+
+        # Ensure last name was removed
+        self.assertEqual(
+            next(telecom for telecom in payload['telecom'] if telecom['system'] == 'email')['value'],
+            contact_email
+        )
+
+    @responses.activate
     def test_patient_update_remove_contact_email(self):
 
         # Build a patient with a lastname
@@ -360,6 +404,128 @@ class TestFHIR(unittest.TestCase):
 
         # Ensure last name was removed
         self.assertFalse(next((telecom for telecom in payload['telecom'] if telecom['system'] == 'email'), False))
+
+    @responses.activate
+    def test_patient_update_add_referral(self):
+
+        # Build a patient with a lastname
+        patient = FHIRData.patient('patient@email.org', firstname='User', lastname='Patient', street2='Unit 500')
+
+        # Set an example form
+        form = {'how_did_you_hear_about_us': 'I was referred by John Smith'}
+
+        # Build the response handler
+        responses.add(responses.GET,
+                      re.compile(self.fhir_url + r'/Patient/.*'),
+                      json=patient,
+                      status=200)
+
+        def update_callback(request):
+
+            return 200, {}, json.dumps({'operation': 'Patient resource updated!'})
+
+        responses.add_callback(
+            responses.PUT,
+            re.compile(self.fhir_url + r'/Patient/.*'),
+            callback=update_callback,
+            content_type='application/json'
+        )
+
+        # Do the update
+        updated = FHIR.update_patient(patient['id'], form=form)
+
+        # Check it
+        self.assertGreaterEqual(len(responses.calls), 2)
+        self.assertTrue(updated)
+
+        payload = json.loads(responses.calls[1].request.body)
+
+        # Ensure last name was removed
+        self.assertTrue(next((e for e in payload['extension'] if e['url'] == FHIR.referral_extension_url), False))
+
+    @responses.activate
+    def test_patient_update_referral(self):
+
+        # Set new value
+        referral = 'new_referral'
+
+        # Build a patient with a lastname
+        patient = FHIRData.patient('patient@email.org', firstname='User', lastname='Patient', street2='Unit 500')
+        patient.setdefault('extension', []).append({'url': FHIR.referral_extension_url, 'valueString': 'old_referral'})
+
+        # Set an example form
+        form = {'how_did_you_hear_about_us': referral}
+
+        # Build the response handler
+        responses.add(responses.GET,
+                      re.compile(self.fhir_url + r'/Patient/.*'),
+                      json=patient,
+                      status=200)
+
+        def update_callback(request):
+
+            return 200, {}, json.dumps({'operation': 'Patient resource updated!'})
+
+        responses.add_callback(
+            responses.PUT,
+            re.compile(self.fhir_url + r'/Patient/.*'),
+            callback=update_callback,
+            content_type='application/json'
+        )
+
+        # Do the update
+        updated = FHIR.update_patient(patient['id'], form=form)
+
+        # Check it
+        self.assertGreaterEqual(len(responses.calls), 2)
+        self.assertTrue(updated)
+
+        payload = json.loads(responses.calls[1].request.body)
+
+        # Ensure last name was removed
+        self.assertEqual(
+            next((e for e in payload['extension'] if e['url'] == FHIR.referral_extension_url), False)['valueString'],
+            referral
+        )
+
+    @responses.activate
+    def test_patient_update_remove_referral(self):
+
+        # Build a patient with a lastname
+        patient = FHIRData.patient('patient@email.org', firstname='User', lastname='Patient',
+                                   street2='Unit 500', contact_email='user@email.org')
+
+        # Set an example form
+        form = {'how_did_you_hear_about_us': None}
+
+        # Build the response handler
+        responses.add(responses.GET,
+                      re.compile(self.fhir_url + r'/Patient/.*'),
+                      json=patient,
+                      status=200)
+
+        def update_callback(request):
+
+            return 200, {}, json.dumps({'operation': 'Patient resource updated!'})
+
+        responses.add_callback(
+            responses.PUT,
+            re.compile(self.fhir_url + r'/Patient/.*'),
+            callback=update_callback,
+            content_type='application/json'
+        )
+
+        # Do the update
+        updated = FHIR.update_patient(patient['id'], form=form)
+
+        # Check it
+        self.assertGreaterEqual(len(responses.calls), 2)
+        self.assertTrue(updated)
+
+        payload = json.loads(responses.calls[1].request.body)
+
+        # Ensure last name was removed
+        self.assertFalse(next((e for e in payload['extension'] if e['url'] == FHIR.referral_extension_url), False))
 
     @responses.activate
     def test_patient_update_requirements(self):
