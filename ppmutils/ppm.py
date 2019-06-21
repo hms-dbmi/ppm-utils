@@ -216,10 +216,24 @@ class PPM:
             # Set these here
             return enrollment not in [PPM.Enrollment.Ineligible, PPM.Enrollment.Terminated, PPM.Enrollment.Completed]
 
+        @classmethod
+        def notification_for_enrollment(cls, enrollment):
+            """Returns the identifier of a communication to be sent out when this enrollment is set"""
+            # Branch
+            enrollment = PPM.Enrollment.enum(enrollment)
+            if enrollment is PPM.Enrollment.Pending:
+                return PPM.Communication.ParticipantPending
+            elif enrollment is PPM.Enrollment.Ineligible:
+                return PPM.Communication.ParticipantIneligible
+            elif enrollment is PPM.Enrollment.Accepted:
+                return PPM.Communication.ParticipantAccepted
+
+            return None
+
     class Communication(Enum):
         ParticipantProposed = 'participant-proposed'
         ParticipantPending = 'participant-pending'
-        ParticipantQueued = 'participant-queued'
+        ParticipantIneligible = 'participant-ineligible'
         ParticipantAccepted = 'participant-accepted'
         PicnicHealthRegistration = 'picnichealth-registration'
 
@@ -242,7 +256,7 @@ class PPM:
             return (
                 (PPM.Communication.ParticipantProposed.value, 'Participant Proposed'),
                 (PPM.Communication.ParticipantPending.value, 'Participant Pending'),
-                (PPM.Communication.ParticipantQueued.value, 'Participant Queued'),
+                (PPM.Communication.ParticipantIneligible.value, 'Participant Queued'),
                 (PPM.Communication.ParticipantAccepted.value, 'Participant Accepted'),
                 (PPM.Communication.PicnicHealthRegistration.value, 'PicnicHealth Registration'),
             )
