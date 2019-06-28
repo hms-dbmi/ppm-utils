@@ -209,6 +209,41 @@ class FHIR:
             return default
 
     @staticmethod
+    def _get_referenced_id(resource, resource_type, key=None):
+        '''
+        Checks a resource JSON and returns any ID reference for the given resource
+        type. If 'key' is passed, that will be forced, if anything is present or not.
+        :param resource: The resource JSON to check
+        :type resource: dict
+        :param resource_type: The type of the referenced resource
+        :type resource_type: str
+        :param key: The resource key to check for the reference
+        :type key: str
+        :return: The requested referenced resources ID or None
+        :rtype: str
+        '''
+        try:
+            # Try it out.
+            if key and resource.get(key, {}).get('reference'):
+                return resource[key]['reference'].replace(f'{resource_type}/', '')
+
+            else:
+                # Find it
+                for key, value in resource.items():
+                    if type(value) is dict and value.get('reference') and resource_type in value.get('reference'):
+                        return value['reference'].replace(f'{resource_type}/', '')
+
+        except (KeyError, IndexError):
+            logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={
+                'resource_type': resource_type, 'key': key,
+            })
+
+        else:
+            logger.warning(f'FHIR Error: No reference found for "{resource_type}"')
+
+        return None
+
+    @staticmethod
     def _get_attribute_or(item, keys, default=None):
         '''
         Fetch an attribute from an object. Keys is a list of attribute names and indices to use to
@@ -1657,14 +1692,17 @@ class FHIR:
         return None
 
     @staticmethod
-    def query_document_references(patient, query=None):
+    def query_document_references(patient=None, query=None):
         """
         Queries the current user's FHIR record for any DocumentReferences related to this type
         :return: A list of DocumentReference resources
         :rtype: list
         """
         # Build the query
-        _query = FHIR._patient_resource_query(patient)
+        _query = {}
+
+        if patient:
+            _query.update(FHIR._patient_resource_query(patient))
 
         if query:
             _query.update(query)
@@ -1672,14 +1710,17 @@ class FHIR:
         return FHIR._query_resources('DocumentReference', query=_query)
 
     @staticmethod
-    def query_data_document_references(patient, provider=None, status=None):
+    def query_data_document_references(patient=None, provider=None, status=None):
         """
         Queries the current user's FHIR record for any DocumentReferences related to this type
         :return: A list of DocumentReference resources
         :rtype: list
         """
         # Build the query
-        query = FHIR._patient_resource_query(patient)
+        query = {}
+
+        if patient:
+            query.update(FHIR._patient_resource_query(patient))
 
         # Set the provider, if passed
         if provider:
@@ -3296,6 +3337,7 @@ class FHIR:
         formatted_authored_date = FHIR._format_date(authored_date, '%m/%d/%Y')
 
         return {
+            'ppm_id': FHIR._get_referenced_id(questionnaire_response.as_json(), 'Patient'),
             'authored': formatted_authored_date,
             'responses': response
         }
@@ -3485,6 +3527,9 @@ class FHIR:
         # Get the study ID
         record['study'] = FHIR.get_study_from_research_subject(resource)
 
+        # Link back to participant
+        record['ppm_id'] = FHIR._get_referenced_id(resource, 'Patient')
+
         return record
 
     @staticmethod
@@ -3579,6 +3624,9 @@ class FHIR:
             record['type'] = ''
             record['name'] = ''
 
+        # Link back to participant
+        record['ppm_id'] = FHIR._get_referenced_id(resource, 'Patient')
+
         return record
 
     @staticmethod
@@ -3610,6 +3658,9 @@ class FHIR:
         record['status'] = FHIR._get_or(resource, ['status'])
         record['start'] = FHIR._get_or(resource, ['period', 'start'])
         record['end'] = FHIR._get_or(resource, ['period', 'end'])
+
+        # Link back to participant
+        record['ppm_id'] = FHIR._get_referenced_id(resource, 'Patient')
 
         return record
 
@@ -3800,6 +3851,9 @@ class FHIR:
         consent_object["exceptions"] = consent_exceptions
         consent_object["assent_exceptions"] = assent_exceptions
 
+        # Link back to participant
+        consent_object['ppm_id'] = FHIR._get_referenced_id(questionnaire_response.as_json(), 'Patient')
+
         return consent_object
 
     @staticmethod
@@ -3877,6 +3931,9 @@ class FHIR:
     @staticmethod
     def flatten_document_reference(resource):
 
+        # Get the actual resource in case we were handed a BundleEntry
+        resource = FHIR._get_or(resource, ['resource'], resource)
+
         # Pick out properties and build a dict
         reference = {'id': FHIR._get_or(resource, ['id'])}
 
@@ -3904,8 +3961,7 @@ class FHIR:
         # Get person
         reference['patient'] = FHIR._get_or(resource, ['subject', 'reference'])
         if reference.get('patient'):
-            reference['ppm_id'] = reference['patient'].split('/')[1]
-            reference['fhir_id'] = reference['ppm_id']
+            reference['ppm_id'] = reference['fhir_id'] = FHIR._get_referenced_id(resource, 'Patient')
 
         # Check for data
         reference['data'] = FHIR._get_or(resource, ['content', 0, 'attachment', 'data'])
