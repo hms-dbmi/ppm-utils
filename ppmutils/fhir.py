@@ -1240,7 +1240,9 @@ class FHIR:
             return []
 
         # Build a dictionary keyed by FHIR IDs containing enrollment status
-        enrollments = {entry.resource.subject.reference.split('/')[1]: entry.resource.code.coding[0].code
+        enrollments = {entry.resource.subject.reference.split('/')[1]:
+                           {'status': entry.resource.code.coding[0].code,
+                            'date_accepted': entry.resource.period.start.origval if entry.resource.period else ''}
                        for entry in bundle.entry if entry.resource.resource_type == 'Flag'}
 
         # Build a dictionary keyed by FHIR IDs containing flattened study objects
@@ -1266,7 +1268,7 @@ class FHIR:
                 patient_enrollment = enrollments.get(patient.id)
                 patient_study = studies.get(patient.id)
 
-                if enrollment and enrollment.lower() != patient_enrollment.lower():
+                if enrollment and enrollment.lower() != patient_enrollment['status'].lower():
                     continue
 
                 if study and study.lower() != patient_study.get('study').lower():
@@ -1280,12 +1282,16 @@ class FHIR:
                     'email': email,
                     'fhir_id': patient.id,
                     'ppm_id': patient.id,
-                    'enrollment': patient_enrollment,
-                    'status': enrollment,
+                    'enrollment': patient_enrollment['status'],
+                    'status': patient_enrollment['status'],
                     'study': patient_study.get('study'),
                     'project': patient_study.get('study'),
                     'date_registered': date_registered,
                 }
+
+                # Check acceptance
+                if patient_enrollment.get('date_accepted'):
+                    patient_dict['date_accepted'] = FHIR._format_date(patient_enrollment['date_accepted'], '%m/%d/%Y')
 
                 # Wrap the patient resource in a fake bundle and flatten them
                 flattened_patient = FHIR.flatten_patient({'entry': [{'resource': patient.as_json()}]})
