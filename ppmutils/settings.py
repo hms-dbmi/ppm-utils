@@ -21,7 +21,7 @@ PPM_ENVIRONMENTS = {
         'API_URL': 'https://api.ppm.aws.dbmi.hms.harvard.edu',
         'ADMIN_URL': 'https://p2m2a.dbmi.hms.harvard.edu',
         'QUESTIONNAIRE_URL': 'https://questionnaire.ppm.dbmi.hms.harvard.edu/questionnaire',
-        'P2MD_URL': 'https://p2m2.dbmi.hms.harvard.edu',
+        'DATA_URL': 'https://p2m2.dbmi.hms.harvard.edu',
         'FHIR_URL': 'https://fhir.ppm.aws.dbmi.hms.harvard.edu',
         'FILESERVICE_URL': 'https://fileservice.ppm.aws.dbmi.hms.harvard.edu',
         'DASHBOARD_URL': {
@@ -34,7 +34,7 @@ PPM_ENVIRONMENTS = {
         'API_URL': 'https://api.ppm.aws.dbmi-dev.hms.harvard.edu',
         'ADMIN_URL': 'https://p2m2a.aws.dbmi-dev.hms.harvard.edu',
         'QUESTIONNAIRE_URL': 'https://questionnaire.ppm.aws.dbmi-dev.hms.harvard.edu/questionnaire',
-        'P2MD_URL': 'https://p2m2.aws.dbmi-dev.hms.harvard.edu',
+        'DATA_URL': 'https://p2m2.aws.dbmi-dev.hms.harvard.edu',
         'FHIR_URL': 'https://fhir.ppm.aws.dbmi-dev.hms.harvard.edu',
         'FILESERVICE_URL': 'https://fileservice.ppm.aws.dbmi-dev.hms.harvard.edu',
         'DASHBOARD_URL': {
@@ -47,7 +47,7 @@ PPM_ENVIRONMENTS = {
         'API_URL': 'http://ppm-api:8007',
         'ADMIN_URL': 'http://localhost:8011',
         'QUESTIONNAIRE_URL': 'http://localhost:8021/questionnaire',
-        'P2MD_URL': 'http://p2md:8020',
+        'DATA_URL': 'http://p2md:8020',
         'FHIR_URL': 'http://fhir:8080/baseDstu3',
         'FILESERVICE_URL': 'http://dbmi-fileservice:8012',
         'DASHBOARD_URL': {
@@ -70,7 +70,7 @@ CONFIG_DEFAULTS = {
     'API_URL': None,
     'ADMIN_URL': None,
     'QUESTIONNAIRE_URL': None,
-    'P2MD_URL': None,
+    'DATA_URL': None,
     'FHIR_URL': None,
     'FILESERVICE_URL': None,
 
@@ -98,7 +98,7 @@ REQUIRED_SETTINGS = ('FHIR_URL', )
 REMOVED_SETTINGS = ()
 
 # List of service URLs
-SERVICE_URLS = ('API_URL', 'FHIR_URL', 'ADMIN_URL', 'QUESTIONNAIRE_URL', 'P2MD_URL', 'FILESERVICE_URL', )
+SERVICE_URLS = ('API_URL', 'FHIR_URL', 'ADMIN_URL', 'QUESTIONNAIRE_URL', 'DATA_URL', 'FILESERVICE_URL', )
 
 # List of needed email settings if enabled
 EMAIL_SETTINGS = ('EMAIL_BACKEND', 'EMAIL_HOST', 'EMAIL_HOST_USER', 'EMAIL_HOST_PASSWORD', 'EMAIL_PORT', 'EMAIL_USE_SSL', )
