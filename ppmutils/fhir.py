@@ -1129,7 +1129,7 @@ class FHIR:
         :param testing: Whether to include testing participants or not
         :return: list
         """
-        logger.debug('Querying participants - \n\tenrollments: {}\n\tstudies: {}\n\tactive: {}\n\ttesting: {}'.format(
+        logger.debug('Querying participants - Enrollments: {} - Studies: {} - Active: {} - Testing: {}'.format(
             enrollments, studies, active, testing)
         )
 
@@ -1156,8 +1156,10 @@ class FHIR:
             return []
 
         # Build a dictionary keyed by FHIR IDs containing enrollment status
-        patient_enrollments = {entry.resource.subject.reference.split('/')[1]: entry.resource.code.coding[0].code
-                               for entry in bundle.entry if entry.resource.resource_type == 'Flag'}
+        patient_enrollments = {entry.resource.subject.reference.split('/')[1]:
+                               {'status': entry.resource.code.coding[0].code,
+                                'date_accepted': entry.resource.period.start.origval if entry.resource.period else ''}
+                                for entry in bundle.entry if entry.resource.resource_type == 'Flag'}
 
         # Build a dictionary keyed by FHIR IDs containing flattened study objects
         patient_studies = {entry.resource.individual.reference.split('/')[1]:
@@ -1182,96 +1184,10 @@ class FHIR:
                 patient_enrollment = patient_enrollments.get(patient.id)
                 patient_study = patient_studies.get(patient.id)
 
-                if enrollments and patient_enrollment.lower() not in enrollments:
+                if enrollments and patient_enrollment['status'].lower() not in enrollments:
                     continue
 
                 if studies and patient_study.get('study').lower() not in studies:
-                    continue
-
-                # Format date registered
-                date_registered = FHIR._format_date(patient_study.get('date_registered'), '%m/%d/%Y')
-
-                # Build the dict
-                patient_dict = {
-                    'email': email,
-                    'fhir_id': patient.id,
-                    'ppm_id': patient.id,
-                    'enrollment': patient_enrollment,
-                    'status': patient_enrollment,
-                    'study': patient_study.get('study'),
-                    'project': patient_study.get('study'),
-                    'date_registered': date_registered,
-                }
-
-                # Wrap the patient resource in a fake bundle and flatten them
-                flattened_patient = FHIR.flatten_patient({'entry': [{'resource': patient.as_json()}]})
-                if flattened_patient:
-                    patient_dict.update(flattened_patient)
-
-                # Add it
-                patients.append(patient_dict)
-
-            except Exception as e:
-                logger.exception('Resources malformed for Patient/{}: {}'.format(patient.id, e))
-
-        return patients
-
-    @staticmethod
-    def query_patients(study=None, enrollment=None, active=True, testing=False, include_deceased=True):
-        logger.debug('Getting patients - enrollment: {}, study: {}, active: {}, testing: {}'.format(
-            enrollment, study, active, testing)
-        )
-
-        # Build the query
-        query = {
-            'active': 'false' if not active else 'true',
-            '_revinclude': ['ResearchSubject:individual', 'Flag:subject']
-        }
-
-        # Check deceased
-        if not include_deceased:
-            query['deceased'] = 'false'
-
-        # Peel out patients
-        bundle = FHIR._query_bundle('Patient', query)
-
-        # Check for empty query set
-        if not bundle.entry:
-            return []
-
-        # Build a dictionary keyed by FHIR IDs containing enrollment status
-        enrollments = {entry.resource.subject.reference.split('/')[1]:
-                           {'status': entry.resource.code.coding[0].code,
-                            'date_accepted': entry.resource.period.start.origval if entry.resource.period else ''}
-                       for entry in bundle.entry if entry.resource.resource_type == 'Flag'}
-
-        # Build a dictionary keyed by FHIR IDs containing flattened study objects
-        studies = {entry.resource.individual.reference.split('/')[1]:
-                       {'study': FHIR.get_study_from_research_subject(entry.resource),
-                        'date_registered': entry.resource.period.start.origval}
-                   for entry in bundle.entry if entry.resource.resource_type == 'ResearchSubject' and
-                   FHIR.is_ppm_research_subject(entry.resource.as_json())}
-
-        # Process patients
-        patients = []
-        for patient in [entry.resource for entry in bundle.entry if entry.resource.resource_type == 'Patient']:
-            try:
-                # Fetch their email
-                email = next(identifier.value for identifier in patient.identifier
-                             if identifier.system == FHIR.patient_email_identifier_system)
-
-                # Check if tester
-                if not testing and PPM.is_tester(email):
-                    continue
-
-                # Get values and compare to filters
-                patient_enrollment = enrollments.get(patient.id)
-                patient_study = studies.get(patient.id)
-
-                if enrollment and enrollment.lower() != patient_enrollment['status'].lower():
-                    continue
-
-                if study and study.lower() != patient_study.get('study').lower():
                     continue
 
                 # Format date registered
@@ -1305,6 +1221,19 @@ class FHIR:
                 logger.exception('Resources malformed for Patient/{}: {}'.format(patient.id, e))
 
         return patients
+
+    @staticmethod
+    def query_patients(study=None, enrollment=None, active=None, testing=False, include_deceased=True):
+        logger.debug('Getting patients - enrollment: {}, study: {}, active: {}, testing: {}'.format(
+            enrollment, study, active, testing)
+        )
+
+        # Check for multiples
+        enrollments = enrollment.split(',') if enrollment else None
+        studies = study.split(',') if study else None
+
+        # Call the query_participants method
+        return FHIR.query_participants(studies, enrollments, active, testing)
 
     @staticmethod
     def query_participant(patient, flatten_return=False):
