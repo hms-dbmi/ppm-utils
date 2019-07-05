@@ -596,7 +596,51 @@ class FHIR(PPM.Service):
             raise ValueError("Unhandled instance of a Patient identifier: {}".format(identifier))
 
     @staticmethod
-    def _patient_resource_query(identifier, key="patient"):
+    def _patient_id(identifier):
+        """
+        Accepts an identifier and returns the actual Patient ID
+        to 'patient'.
+        :param identifier: object
+        :return: str
+        """
+        # Check types
+        if type(identifier) is str and re.match(r"^\d+$", identifier):
+
+            # Likely a FHIR ID
+            return identifier
+
+        # Check for an email address
+        elif type(identifier) is str and re.match(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)", identifier):
+
+            # An email address
+            return FHIR.get_ppm_id(identifier)
+
+        # Check for a resource
+        elif type(identifier) is dict and identifier.get('resourceType') == 'Patient':
+
+            return identifier['id']
+
+        # Check for a bundle entry
+        elif type(identifier) is dict and identifier.get('resource', {}).get('resourceType') == 'Patient':
+
+            return identifier['resource']['id']
+
+        # Check for a bundle
+        elif type(identifier) is dict and identifier.get('resource', {}).get('resourceType') == 'Bundle' and \
+                FHIR._find_resource(identifier, resource_type='Patient'):
+
+            return FHIR._find_resource(identifier, resource_type='Patient')['id']
+
+        # Check for a Patient object
+        elif type(identifier) is Patient:
+
+            return identifier.id
+
+        else:
+            raise ValueError('Unhandled instance of a Patient identifier: {}'.format(identifier))
+
+    @staticmethod
+    def _patient_resource_query(identifier, key='patient'):
         """
         Accepts an identifier and builds the query for resources related to that
          Patient. Identifier can be a FHIR ID, an email address, or a Patient object.

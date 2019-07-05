@@ -40,6 +40,8 @@ logger = logging.getLogger(ppm_settings.LOGGER_NAME)
 class SFHIR(PPM.Service):
 
     service = 'fhir'
+    ppm_settings_url_name = 'FHIR_URL'
+    proxied = True
 
     #
     # CONSTANTS
@@ -2536,7 +2538,11 @@ class SFHIR(PPM.Service):
     def get_ppm_id(request, email):
 
         # Return patient
-        return SFHIR.get_patient(request, email).get('id', None)
+        patient = SFHIR.get_patient(request, email)
+        if not patient:
+            return None
+
+        return patient.get('id', None)
 
     @staticmethod
     def get_name(patient, full=False):
@@ -2656,11 +2662,69 @@ class SFHIR(PPM.Service):
                 if participant.get('consent_quiz'):
                     participant['consent_quiz_answers'] = SFHIR.questionnaire_answers(bundle, quiz_id)
 
+            # Get study specific resources
+            if PPM.Study.enum(participant['study']) is PPM.Study.NEER:
+                participant[PPM.Study.NEER.value] = SFHIR._flatten_neer_participant(bundle)
+
+            elif PPM.Study.enum(participant['study']) is PPM.Study.ASD:
+                participant[PPM.Study.ASD.value] = SFHIR._flatten_autism_participant(bundle)
+
+            elif PPM.Study.enum(participant['study']) is PPM.Study.EXAMPLE:
+                participant[PPM.Study.EXAMPLE.value] = SFHIR._flatten_neer_participant(bundle)
+
         except Exception as e:
             logger.exception('FHIR error: {}'.format(e), exc_info=True,
                              extra={'ppm_id': ppm_id, 'email': email})
 
         return participant
+
+    @staticmethod
+    def _flatten_neer_participant(bundle):
+        """
+        Continues flattening a participant by adding any study specific data to their record.
+        This will include answers in questionnaires, etc.
+        :param bundle: The participant's entire FHIR record
+        :return: dict
+        """
+        # Put values in a dictionary
+        values = {}
+
+        # Get questionnaire answers
+        questionnaire_response = next((q for q in SFHIR._find_resources(bundle, 'QuestionnaireResponse') if
+                                       q['questionnaire']['reference'] == f'Questionnaire/{PPM.Questionnaire.NEERQuestionnaire.value}'), None)
+        if questionnaire_response:
+
+            # Get values
+            values['diagnosis'] = next(i['answer'][0]['valueString'] for i in questionnaire_response['item'] if i['linkId'] == 'question-12')
+            values['pcp'] = next(i['answer'][0]['valueString'] for i in questionnaire_response['item'] if i['linkId'] == 'question-24')
+            values['oncologist'] = next(i['answer'][0]['valueString'] for i in questionnaire_response['item'] if i['linkId'] == 'question-25')
+
+            # Parse dates
+            try:
+                birthdate = next(
+                    i['answer'][0]['valueString'] for i in questionnaire_response['item'] if i['linkId'] == 'question-5')
+                values['birthdate'] = parse(birthdate)
+            except Exception as e:
+                logger.exception(f'FHIR Error: {e}', exc_info=True, extra={'birthdate': birthdate})
+
+            try:
+                date_diagnosis = next(
+                    i['answer'][0]['valueString'] for i in questionnaire_response['item'] if i['linkId'] == 'question-14')
+                values['date_diagnosis'] = parse(date_diagnosis)
+            except Exception as e:
+                logger.exception(f'FHIR Error: {e}', exc_info=True, extra={'date_diagnosis': date_diagnosis})
+
+        return values
+
+    @staticmethod
+    def _flatten_autism_participant(bundle):
+        """
+        Continues flattening a participant by adding any study specific data to their record.
+        This will include answers in questionnaires, etc.
+        :param bundle: The participant's entire FHIR record
+        :return: dict
+        """
+        return {}
 
     @staticmethod
     def flatten_questionnaire_response(bundle_dict, questionnaire_id):

@@ -1058,6 +1058,9 @@ class PPM:
         # Subclasses set this to direct requests
         service = None
 
+        # If enabled, all requests are routed through PPM-API
+        proxied = False
+
         # Set some auth header properties
         jwt_cookie_name = "DBMI_JWT"
         jwt_authorization_prefix = "JWT"
@@ -1068,39 +1071,44 @@ class PPM:
         def _build_url(cls, path):
 
             # Build the url, chancing on doubling up a slash or two.
-            url = furl(cls.service_url() + "/" + path)
+            url = furl(cls.service_url())
+            url.path.segments.extend([p for p in path.split('/') if p])
 
-            # Filter empty segments (double slashes in path)
-            segments = [
-                segment
-                for index, segment in enumerate(url.path.segments)
-                if segment != "" or index == len(url.path.segments) - 1
-            ]
+            # add trailing slash
+            url.path.segments.append('')
 
-            # Log the filter
-            if len(segments) < len(url.path.segments):
-                logger.debug("Path filtered: /{} -> /{}".format("/".join(url.path.segments), "/".join(segments)))
-
-            # Set it
-            url.path.segments = segments
+            logger.debug(f'Path "{path}" -> "{url.url}"')
 
             return url.url
 
         @classmethod
         def service_url(cls):
 
-            # Get from ppm settings
-            if not hasattr(ppm_settings, cls.ppm_settings_url_name):
-                raise SystemError('Service URL not defined in settings'.format(cls.service.upper()))
+            # Check if this service should be proxied through PPM-API
+            if cls.proxied:
 
-            # Get it
-            service_url = getattr(ppm_settings, cls.ppm_settings_url_name)
+                # We want only the domain and no paths, as those should be specified in the calls
+                # so strip any included paths and queries and return
+                url = furl(ppm_settings.API_URL)
+                url.path.segments.clear()
+                url.query.params.clear()
 
-            # We want only the domain and no paths, as those should be specified in the calls
-            # so strip any included paths and queries and return
-            url = furl(service_url)
-            url.path.segments.clear()
-            url.query.params.clear()
+                # Add API base path
+                url.path.segments.extend(['api', 'v1', cls.service])
+
+            else:
+                # Get from ppm settings
+                if not hasattr(ppm_settings, cls.ppm_settings_url_name):
+                    raise SystemError('Service URL not defined in settings'.format(cls.service.upper()))
+
+                # Get it
+                service_url = getattr(ppm_settings, cls.ppm_settings_url_name)
+
+                # We want only the domain and no paths, as those should be specified in the calls
+                # so strip any included paths and queries and return
+                url = furl(service_url)
+                url.path.segments.clear()
+                url.query.params.clear()
 
             return url.url
 
@@ -1366,11 +1374,12 @@ class PPM:
             return False
 
         @classmethod
-        def request(cls, verb, request=None, path="/", data=None, check=True):
+        def request(cls, verb, headers=None, request=None, path='/', data=None, check=True):
             """
             Runs the appropriate REST operation. Request is required for JWT auth,
             not required for token auth.
             :param verb: The RESTful operation to be performed
+            :param headers: Any additional headers to include
             :param request: The current Django request
             :param path: The path of the request
             :param data: Request data or params
@@ -1383,12 +1392,18 @@ class PPM:
             if not data:
                 data = {}
 
+            # Compile headers
+            if headers:
+                cls.headers(request).update(headers)
+            else:
+                headers = cls.headers(request)
+
             # Track response for error reporting
             response = None
             try:
                 # Build arguments
                 args = [cls._build_url(path)]
-                kwargs = {"headers": cls.headers(request)}
+                kwargs = {'headers': headers}
 
                 # Check how data should be passed
                 if verb.lower() in ["get", "head"]:
