@@ -8,8 +8,8 @@ logger = logging.getLogger(ppm_settings.LOGGER_NAME)
 
 class API(PPM.Service):
 
-    service = 'API'
-    ppm_settings_url_name = 'API_URL'
+    service = 'ppm'
+    proxied = True
 
     @classmethod
     def studies(cls, as_choices=False):
@@ -20,7 +20,7 @@ class API(PPM.Service):
         :return: dict
         """
         # Make the request
-        items = cls.get(request=None, path=f'/api/v1/ppm/study/')
+        items = cls.get(request=None, path=f'/study/')
 
         # Return dashboard
         return items if not as_choices else ((i['code'], i['title']) for i in items)
@@ -34,12 +34,12 @@ class API(PPM.Service):
         """
         # Make the request
         if not study:
-            items = cls.get(request=None, path=f'/api/v1/ppm/step/')
+            items = cls.get(request=None, path=f'/step/')
         else:
             # Get the study proper
             study = PPM.Study.get(study)
 
-            items = cls.get(request=None, path=f'/api/v1/ppm/study/{study.value}/')['dashboard']
+            items = cls.get(request=None, path=f'/study/{study.value}/')['dashboard']
 
         return items
 
@@ -51,7 +51,7 @@ class API(PPM.Service):
         :return: dict
         """
         # Make the request
-        items = cls.get(request=None, path=f'/api/v1/ppm/enrollment/')
+        items = cls.get(request=None, path=f'/enrollment/')
 
         # Return dashboard
         return items if not as_choices else ((i['code'], i['title']) for i in items)
@@ -66,12 +66,25 @@ class API(PPM.Service):
         """
         # Make the request
         if not study:
-            items = cls.get(request=None, path=f'/api/v1/ppm/sample/')
+            items = cls.get(request=None, path=f'/sample/')
         else:
             # Get the study proper
             study = PPM.Study.get(study)
 
-            items = cls.get(request=None, path=f'/api/v1/ppm/study/{study.value}/')['samples']
+            items = cls.get(request=None, path=f'/study/{study.value}/')['samples']
+
+        # Return dashboard
+        return items if not as_choices else ((i['code'], i['title']) for i in items)
+
+    @classmethod
+    def get_participant(cls, request, ppm_id=None):
+        """
+        Queries the API for the dashboard for the given study
+        :param as_choices: Return the items as a tuple of tuples
+        :return: dict
+        """
+        # Make the request
+        items = cls.get(request=request, path=f'/participants/')
 
         # Return dashboard
         return items if not as_choices else ((i['code'], i['title']) for i in items)

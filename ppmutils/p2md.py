@@ -12,8 +12,8 @@ logger = logging.getLogger(ppm_settings.LOGGER_NAME)
 
 class P2MD(PPM.Service):
 
-    service = "P2MD"
-    ppm_settings_url_name = 'P2MD_URL'
+    service = 'data'
+    ppm_settings_url_name = 'DATA_URL'
 
     # This is the system prefix used for coding DocumentReferences created by P2MD
     system = FHIR.data_document_reference_identifier_system
