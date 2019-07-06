@@ -25,6 +25,7 @@ from fhirclient.models.codeableconcept import CodeableConcept
 from fhirclient.models.coding import Coding
 from fhirclient.models.communication import Communication
 from fhirclient.models.device import Device
+from fhirclient.models.resource import Resource
 
 from ppmutils.ppm import PPM
 
@@ -145,6 +146,85 @@ class FHIR:
         return None
 
     @staticmethod
+    def _find_resources(obj, resource_type=None):
+        """
+        Accepts an arbitrary FHIR object (Bundle, Resource, dict, FHIRResource) and returns
+        either the FHIRResources or the immediate resource dicts matching the resource type
+        :param obj: A bundle or list or resource as a dict or FHIRResource
+        :param resource_type: If multiple resources exist, only return these types
+        :return: list
+        """
+        # Check for valid object
+        if not obj:
+            logger.warning('FHIR: Attempt to extract resource from nothing: "{}"'.format(obj))
+            return None
+
+        # Check type
+        if isinstance(obj, Resource):
+
+            # Check if in a search bundle
+            if type(obj) is Bundle:
+
+                # Get entries
+                return FHIR._find_resources(obj.entry, resource_type=resource_type)
+
+            else:
+
+                # Object is resource, return it
+                return [obj.as_json()] if not resource_type or obj.resource_type == resource_type else []
+
+        # Check if is a search bundle entry
+        if type(obj) is BundleEntry:
+
+            # Return its resource
+            return FHIR._find_resources(obj.resource, resource_type=resource_type)
+
+        if type(obj) is list:
+
+            # Get all matching resources
+            resources = []
+            for r in obj:
+                resources.extend(FHIR._find_resources(r, resource_type=resource_type))
+
+            return resources
+
+        if type(obj) is dict:
+
+            # Check for bundle
+            if obj.get('resourceType') == 'Bundle' and obj.get('entry'):
+
+                # Call this with bundle entries
+                return FHIR._find_resources(obj['entry'], resource_type=resource_type)
+
+            # Check for bundle entry
+            elif obj.get('resource') and obj.get('fullUrl'):
+
+                # Call this with resource
+                return FHIR._find_resources(obj['resource'], resource_type=resource_type)
+
+            elif obj.get('resourceType'):
+
+                # Object is a resource, return it
+                return [obj] if not resource_type or obj['resourceType'] == resource_type else []
+
+            else:
+                logger.warning('FHIR: Requested resource as FHIRClient Resource but did not supply'
+                               'valid Resource subclass to construct with')
+
+        return []
+
+    @staticmethod
+    def _find_resource(obj, resource_type=None):
+        """
+        Accepts an arbitrary FHIR object (Bundle, Resource, dict, FHIRResource) and returns
+        either the first resource found of said type
+        :param obj: A bundle or list or resource as a dict or FHIRResource
+        :param resource_type: The resource type we are looking for
+        :return: object
+        """
+        return next(iter(FHIR._find_resources(obj, resource_type)), None)
+
+    @staticmethod
     def _get_resources(bundle, resource_type, query=None):
         """
         Searches through a bundle for the resource matching the given resourceType
@@ -233,7 +313,7 @@ class FHIR:
                     if type(value) is dict and value.get('reference') and resource_type in value.get('reference'):
                         return value['reference'].replace(f'{resource_type}/', '')
 
-        except (KeyError, IndexError):
+        except (KeyError, IndexError) as e:
             logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={
                 'resource_type': resource_type, 'key': key,
             })
@@ -1034,7 +1114,7 @@ class FHIR:
                 if link['relation'] == 'next':
                     url = link['url']
 
-        return total_bundle.get('entry', []) if total_bundle else []
+        return [entry['resource'] for entry in total_bundle.get('entry', [])]
 
     @staticmethod
     def _query_bundle(resource_type, query=None):
@@ -1268,6 +1348,7 @@ class FHIR:
 
         return None
 
+    # TODO: Remove this method
     @staticmethod
     def query_patient(patient, flatten_return=False):
 
@@ -1447,10 +1528,6 @@ class FHIR:
         :rtype: list
         """
 
-        # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append('Device')
-
         # Check item type
         if item:
             query = {
@@ -1470,33 +1547,16 @@ class FHIR:
         if patient:
             query.update(FHIR._patient_resource_query(patient))
 
-        # Make the call
-        content = None
-        try:
-            # Make the FHIR request.
-            response = requests.get(url.url, params=query)
-            content = response.content
+        # Get the devices
+        devices = FHIR._query_resources('Device', query=query)
 
-            if flatten_return:
-                return [FHIR.flatten_ppm_device(resource['resource']) for
-                        resource in response.json().get('entry', [])]
-            else:
-                return [entry['resource'] for entry in response.json().get('entry', [])]
-
-        except requests.HTTPError as e:
-            logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
-
-        except KeyError as e:
-            logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={'response': content})
-
-        return None
+        if flatten_return:
+            return [FHIR.flatten_ppm_device(resource) for resource in devices]
+        else:
+            return devices
 
     @staticmethod
-    def query_ppm_research_subjects(patient, flatten_return=False):
-
-        # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append('ResearchSubject')
+    def query_ppm_research_subjects(patient=None, flatten_return=False):
 
         # Get flags for current user
         query = {
@@ -1504,64 +1564,36 @@ class FHIR:
         }
 
         # Update for the patient query
-        query.update(FHIR._patient_resource_query(patient))
+        if patient:
+            query = FHIR._patient_resource_query(patient)
 
-        # Make the call
-        content = None
-        try:
-            # Make the FHIR request.
-            response = requests.get(url.url, params=query)
-            content = response.content
+        # Get the resources
+        resources = FHIR._query_resources('ResearchSubject', query=query)
 
-            if flatten_return:
-                return [FHIR.flatten_research_subject(resource['resource']) for
-                        resource in response.json().get('entry', [])]
-            else:
-                return [entry['resource'] for entry in response.json().get('entry', [])]
-
-        except requests.HTTPError as e:
-            logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
-
-        except KeyError as e:
-            logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={'response': content})
-
-        return None
+        if flatten_return:
+            return [FHIR.flatten_research_subject(resource) for resource in resources]
+        else:
+            return resources
 
     @staticmethod
-    def query_research_subjects(patient, flatten_return=False):
+    def query_research_subjects(patient=None, flatten_return=False):
 
-        # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append('ResearchSubject')
+        # Build query
+        query = {}
+        if patient:
+            query = FHIR._patient_resource_query(patient)
 
-        # Get flags for current user
-        query = FHIR._patient_resource_query(patient)
+        # Get the resources
+        resources = FHIR._query_resources('ResearchSubject', query=query)
 
-        # Make the call
-        content = None
-        try:
-            # Make the FHIR request.
-            response = requests.get(url.url, params=query)
-            content = response.content
+        # Filter out PPM subjects
+        research_subjects = [entry for entry in resources if entry.get('study', {}).get('reference', None) not in
+                                ['ResearchStudy/ppm-{}'.format(study.value) for study in PPM.Project]]
 
-            # Filter out PPM subjects
-            research_subjects = [entry['resource'] for entry in response.json().get('entry', [])
-                                 if entry['resource'].get('study', {}).get('reference', None) not in
-                                    ['ResearchStudy/ppm-{}'.format(study.value) for study in PPM.Project]]
-
-            if flatten_return:
-                return [FHIR.flatten_research_subject(resource)
-                        for resource in research_subjects]
-            else:
-                return research_subjects
-
-        except requests.HTTPError as e:
-            logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
-
-        except KeyError as e:
-            logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={'response': content})
-
-        return None
+        if flatten_return:
+            return [FHIR.flatten_research_subject(resource) for resource in research_subjects]
+        else:
+            return research_subjects
 
     @staticmethod
     def query_enrollment_flag(patient, flatten_return=False):
@@ -1594,58 +1626,69 @@ class FHIR:
         return None
 
     @staticmethod
-    def get_questionnaire_response(patient, questionnaire_id, flatten_return=False):
+    def query_questionnaire_responses(patient=None, questionnaire_id=None):
 
-        # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append('QuestionnaireResponse')
-        url.query.params.add('questionnaire', 'Questionnaire/{}'.format(questionnaire_id))
+        # Build the query
+        query = {
+            'questionnaire': 'Questionnaire/{}'.format(questionnaire_id),
+            '_include': '*',
+            '_revinclude': '*',
+        }
 
-        for key, value in FHIR._patient_resource_query(patient, 'source').items():
-            url.query.params.add(key, value)
+        # Check patient
+        if patient:
+            query.update(FHIR._patient_query(patient))
 
-        # Make the call
-        content = None
-        try:
-            # Make the FHIR request.
-            response = requests.get(url.url)
-            content = response.content
+        # Query resources
+        bundle = FHIR._query_bundle('QuestionnaireResponse', query=query)
 
-            logger.debug(content)
-
-            if flatten_return:
-                return FHIR.flatten_questionnaire_response(response.json(), questionnaire_id)
-            else:
-                return next((entry['resource'] for entry in response.json().get('entry', [])), None)
-
-        except requests.HTTPError as e:
-            logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
-
-        except KeyError as e:
-            logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={'response': content})
-
-        return None
+        return bundle
 
     @staticmethod
-    def query_document_references(patient=None, query=None):
+    def get_questionnaire_response(patient, questionnaire_id, flatten_return=False):
+
+        # Build the query
+        query = {
+            'questionnaire': 'Questionnaire/{}'.format(questionnaire_id),
+            '_include': '*',
+            '_revinclude': '*',
+        }
+
+        # Check patient
+        query.update(FHIR._patient_query(patient))
+
+        # Query resources
+        bundle = FHIR._query_bundle('QuestionnaireResponse', query=query)
+
+        if flatten_return:
+            return FHIR.flatten_questionnaire_response(bundle, questionnaire_id)
+        else:
+            return bundle
+
+    @staticmethod
+    def query_document_references(patient=None, query=None, flatten_return=False):
         """
         Queries the current user's FHIR record for any DocumentReferences related to this type
         :return: A list of DocumentReference resources
         :rtype: list
         """
         # Build the query
-        _query = {}
+        if query is None:
+            query = {}
 
         if patient:
-            _query.update(FHIR._patient_resource_query(patient))
+            query.update(FHIR._patient_resource_query(patient))
 
-        if query:
-            _query.update(query)
+        # Get resources
+        resources = FHIR._query_resources('DocumentReference', query=query)
 
-        return FHIR._query_resources('DocumentReference', query=_query)
+        if flatten_return:
+            return [FHIR.flatten_document_reference(resource) for resource in resources]
+        else:
+            return resources
 
     @staticmethod
-    def query_data_document_references(patient=None, provider=None, status=None):
+    def query_data_document_references(patient=None, provider=None, status=None, flatten_return=False):
         """
         Queries the current user's FHIR record for any DocumentReferences related to this type
         :return: A list of DocumentReference resources
@@ -1667,7 +1710,13 @@ class FHIR:
         if status:
             query['status'] = status
 
-        return FHIR._query_resources('DocumentReference', query=query)
+        # Get resources
+        resources = FHIR._query_resources('DocumentReference', query=query)
+
+        if flatten_return:
+            return [FHIR.flatten_document_reference(resource) for resource in resources]
+        else:
+            return resources
 
     @staticmethod
     def query_enrollment_status(email):
@@ -1710,16 +1759,8 @@ class FHIR:
         # Get study IDs
         research_study_ids = [subject['study']['reference'].split('/')[1] for subject in research_subjects]
 
-        # Make the query
-        research_study_url = furl(PPM.fhir_url())
-        research_study_url.path.add('ResearchStudy')
-        research_study_url.query.params.add('_id', ','.join(research_study_ids))
-
-        # Fetch them
-        research_study_response = requests.get(research_study_url.url)
-
         # Get the IDs
-        research_studies = research_study_response.json().get('entry', [])
+        research_studies = FHIR._query_resources('ResearchStudy', query={'_id': ','.join(research_study_ids)})
 
         # Return the titles
         if flatten_return:
@@ -1740,22 +1781,14 @@ class FHIR:
         # Get study IDs
         research_study_ids = [subject['study']['reference'].split('/')[1] for subject in research_subjects]
 
-        # Make the query
-        research_study_url = furl(PPM.fhir_url())
-        research_study_url.path.add('ResearchStudy')
-        research_study_url.query.params.add('_id', ','.join(research_study_ids))
-
-        # Fetch them
-        research_study_response = requests.get(research_study_url.url)
-
         # Get the IDs
-        research_studies = research_study_response.json().get('entry', [])
+        research_studies = FHIR._query_resources('ResearchStudy', query={'_id': ','.join(research_study_ids)})
 
         # Return the titles
         if flatten_return:
-            return [research_study['resource']['title'] for research_study in research_studies]
+            return [research_study['title'] for research_study in research_studies]
         else:
-            return [research_study['resource'] for research_study in research_studies]
+            return [research_study for research_study in research_studies]
 
     @staticmethod
     def get_point_of_care_list(patient, flatten_return=False):
@@ -1780,13 +1813,15 @@ class FHIR:
             return next((entry['resource'] for entry in bundle.as_json().get('entry', [])), None)
 
     @staticmethod
-    def query_ppm_communications(patient=None, identifier=None):
+    def query_ppm_communications(patient=None, identifier=None, flatten_return=False):
         """
         Find all Communications filtered by patient, study and/or identifier
         :param patient: The patient to query on (FHIR ID, email, Patient object)
         :type patient: str
         :param identifier: The identifier of the Communications
         :type identifier: str
+        :param flatten_return: Flatten the resources
+        :type flatten_return: bool
         :return: The FHIR bundle
         :rtype: dict
         """
@@ -1802,7 +1837,10 @@ class FHIR:
         # Find all resources
         resources = FHIR._query_resources('Communication', query=query)
 
-        return resources
+        if flatten_return:
+            return [FHIR.flatten_communication(resource) for resource in resources]
+        else:
+            return resources
 
     #
     # UPDATE
@@ -2275,11 +2313,13 @@ class FHIR:
             research_subjects = FHIR._query_resources('ResearchSubject', query=query)
 
             # Iterate studies
-            for research_subject_id in [resource['resource']['id'] for resource in research_subjects]:
+            for research_subject_id in [resource['id'] for resource in research_subjects]:
                 logger.debug(f'{patient_id}: Found ResearchSubject/{research_subject_id} -> {end}')
 
                 # Do the update
-                return FHIR.update_research_subject(patient_id, research_subject_id, start, end)
+                FHIR.update_research_subject(patient_id, research_subject_id, start, end)
+
+            return True
 
         except requests.HTTPError as e:
             logger.error('FHIR Request Error: {}'.format(e), exc_info=True,
@@ -2920,22 +2960,6 @@ class FHIR:
     #
 
     @staticmethod
-    def _find_resources(bundle, resource_type):
-        """
-        Extracts resources for the given type from the Bundle
-        :return: list
-        """
-        # Collect resources
-        resources = []
-
-        # Check entries
-        for entry in bundle.get('entry', []):
-            if entry.get('resource', {}).get('resourceType') == resource_type:
-                resources.append(entry['resource'])
-
-        return resources
-
-    @staticmethod
     def get_ppm_research_studies(bundle, flatten_result=True):
 
         # Find Research subjects (without identifiers, so as to exclude PPM resources)
@@ -3147,12 +3171,13 @@ class FHIR:
             # Flatten consent composition
             participant['devices'] = FHIR.flatten_ppm_devices(bundle)
 
-            if participant['project'] == PPM.Study.NEER.value:
+            # Check for research studies
+            research_studies = FHIR.get_research_studies(bundle)
+            if research_studies:
+                participant['research_studies'] = research_studies
 
-                # Flatten research studies
-                participant['research_studies'] = FHIR.get_research_studies(bundle)
-
-            elif participant['project'] == PPM.Study.ASD.value:
+            # Autism has a special consent with a quiz, get that content and add it
+            if participant['project'] == PPM.Study.ASD.value:
 
                 # Get the questionnaire ID
                 quiz_id = FHIR.consent_questionnaire_id(participant)
@@ -3164,11 +3189,66 @@ class FHIR:
                 if participant.get('consent_quiz'):
                     participant['consent_quiz_answers'] = FHIR.questionnaire_answers(bundle, quiz_id)
 
+            # Get study specific resources
+            if PPM.Study.enum(participant['study']) is PPM.Study.NEER:
+                participant[PPM.Study.NEER.value] = FHIR._flatten_neer_participant(bundle)
+
+            elif PPM.Study.enum(participant['study']) is PPM.Study.ASD:
+                participant[PPM.Study.ASD.value] = FHIR._flatten_neer_participant(bundle)
+
         except Exception as e:
             logger.exception('FHIR error: {}'.format(e), exc_info=True,
                              extra={'ppm_id': ppm_id, 'email': email})
 
         return participant
+
+    @staticmethod
+    def _flatten_neer_participant(bundle):
+        """
+        Continues flattening a participant by adding any study specific data to their record.
+        This will include answers in questionnaires, etc.
+        :param bundle: The participant's entire FHIR record
+        :return: dict
+        """
+        # Put values in a dictionary
+        values = {}
+
+        # Get questionnaire answers
+        questionnaire_response = next((q for q in FHIR._find_resources(bundle, 'QuestionnaireResponse') if
+                                       q['questionnaire']['reference'] == f'Questionnaire/{PPM.Questionnaire.NEERQuestionnaire.value}'), None)
+        if questionnaire_response:
+
+            # Get values
+            values['diagnosis'] = next(i['answer'][0]['valueString'] for i in questionnaire_response['item'] if i['linkId'] == 'question-12')
+            values['pcp'] = next(i['answer'][0]['valueString'] for i in questionnaire_response['item'] if i['linkId'] == 'question-24')
+            values['oncologist'] = next(i['answer'][0]['valueString'] for i in questionnaire_response['item'] if i['linkId'] == 'question-25')
+
+            # Parse dates
+            try:
+                birthdate = next(
+                    i['answer'][0]['valueString'] for i in questionnaire_response['item'] if i['linkId'] == 'question-5')
+                values['birthdate'] = parse(birthdate)
+            except Exception as e:
+                logger.exception(f'FHIR Error: {e}', exc_info=True, extra={'birthdate': birthdate})
+
+            try:
+                date_diagnosis = next(
+                    i['answer'][0]['valueString'] for i in questionnaire_response['item'] if i['linkId'] == 'question-14')
+                values['date_diagnosis'] = parse(date_diagnosis)
+            except Exception as e:
+                logger.exception(f'FHIR Error: {e}', exc_info=True, extra={'date_diagnosis': date_diagnosis})
+
+        return values
+
+    @staticmethod
+    def _flatten_autism_participant(bundle):
+        """
+        Continues flattening a participant by adding any study specific data to their record.
+        This will include answers in questionnaires, etc.
+        :param bundle: The participant's entire FHIR record
+        :return: dict
+        """
+        return {}
 
     @staticmethod
     def flatten_questionnaire_response(bundle_dict, questionnaire_id):
@@ -3452,6 +3532,9 @@ class FHIR:
     @staticmethod
     def flatten_research_subject(resource):
 
+        # Get the actual resource in case we were handed a BundleEntry
+        resource = FHIR._get_or(resource, ['resource'], resource)
+
         # Get the resource.
         record = dict()
 
@@ -3469,6 +3552,9 @@ class FHIR:
 
     @staticmethod
     def flatten_research_study(resource):
+
+        # Get the actual resource in case we were handed a BundleEntry
+        resource = FHIR._get_or(resource, ['resource'], resource)
 
         # Get the resource.
         record = dict()
@@ -3527,6 +3613,9 @@ class FHIR:
     @staticmethod
     def flatten_ppm_device(resource):
 
+        # Get the actual resource in case we were handed a BundleEntry
+        resource = FHIR._get_or(resource, ['resource'], resource)
+
         # Get the resource.
         record = dict()
 
@@ -3560,7 +3649,7 @@ class FHIR:
             record['name'] = ''
 
         # Link back to participant
-        record['ppm_id'] = FHIR._get_referenced_id(resource, 'Patient')
+        record['ppm_id'] = FHIR._get_referenced_id(resource, 'Patient', key='patient')
 
         return record
 
@@ -3584,6 +3673,9 @@ class FHIR:
 
     @staticmethod
     def flatten_enrollment_flag(resource):
+
+        # Get the actual resource in case we were handed a BundleEntry
+        resource = FHIR._get_or(resource, ['resource'], resource)
 
         # Get the resource.
         record = dict()
@@ -3852,16 +3944,7 @@ class FHIR:
     @staticmethod
     def flatten_document_references(bundle):
 
-        # Get the document references
-        references = FHIR._get_resources(bundle, 'DocumentReference')
-
-        # Flatten them
-        flattened = []
-        for reference in references:
-
-            flattened.append(FHIR.flatten_document_reference(reference))
-
-        return flattened
+        return [FHIR.flatten_document_reference(r) for r in FHIR._find_resources(bundle, 'DocumentReference')]
 
     @staticmethod
     def flatten_document_reference(resource):
@@ -3870,7 +3953,9 @@ class FHIR:
         resource = FHIR._get_or(resource, ['resource'], resource)
 
         # Pick out properties and build a dict
-        reference = {'id': FHIR._get_or(resource, ['id'])}
+        reference = dict({
+            'id': FHIR._get_or(resource, ['id'])
+        })
 
         # Get dates
         reference['timestamp'] = FHIR._get_or(resource, ['indexed'])
@@ -3902,6 +3987,25 @@ class FHIR:
         reference['data'] = FHIR._get_or(resource, ['content', 0, 'attachment', 'data'])
 
         return reference
+
+    @staticmethod
+    def flatten_communication(resource):
+
+        # Get the actual resource in case we were handed a BundleEntry
+        resource = FHIR._get_or(resource, ['resource'], resource)
+
+        # Build it out
+        record = dict()
+
+        # Get identifier
+        record['identifier'] = FHIR._get_or(resource, ['identifier', 0, 'value'])
+        record['sent'] = FHIR._get_or(resource, ['sent'])
+        record['payload'] = FHIR._get_or(resource, ['payload', 0, 'contentString'])
+
+        # Get the recipient
+        record['ppm_id'] = FHIR._get_referenced_id(resource, 'Patient')
+
+        return record
 
     @staticmethod
     def questionnaire_answers(bundle_dict, questionnaire_id):
