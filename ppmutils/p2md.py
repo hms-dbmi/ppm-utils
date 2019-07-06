@@ -472,7 +472,7 @@ class P2MD(PPM.Service):
         for document_reference in document_references:
 
             # Flatten it
-            flat = FHIR.flatten_document_reference(document_reference['resource'])
+            flat = FHIR.flatten_document_reference(document_reference)
 
             # Pick out P2MD and Fileservice identifiers
             if P2MD.p2md_identifier_system in flat:
