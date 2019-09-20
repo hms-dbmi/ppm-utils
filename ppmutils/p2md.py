@@ -14,7 +14,7 @@ class P2MD(PPM.Service):
     service = 'P2MD'
 
     # This is the system prefix used for coding DocumentReferences created by P2MD
-    system = 'https://peoplepoweredmedicine.org/document-type'
+    system = FHIR.data_document_reference_identifier_system
 
     # Set identifier systems
     p2md_identifier_system = 'https://peoplepoweredmedicine.org/fhir/p2md/operation'
