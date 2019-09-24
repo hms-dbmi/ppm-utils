@@ -1655,15 +1655,21 @@ class FHIR:
         }
 
         # Check patient
-        query.update(FHIR._patient_query(patient))
+        query.update(FHIR._patient_resource_query(identifier=patient, key='source'))
 
         # Query resources
         bundle = FHIR._query_bundle('QuestionnaireResponse', query=query)
 
         if flatten_return:
+
+            # We need the whole bundle to flatten it
             return FHIR.flatten_questionnaire_response(bundle, questionnaire_id)
         else:
-            return bundle
+
+            # Fetch the questionnaire response from the bundle
+            questionnaire_response = next((r.resource for r in bundle.entry if
+                                           r.resource.resource_type == 'QuestionnaireResponse'), None)
+            return questionnaire_response.as_json()
 
     @staticmethod
     def query_document_references(patient=None, query=None, flatten_return=False):
