@@ -325,6 +325,19 @@ class P2MD(PPM.Service):
         return uuid, upload
 
     @classmethod
+    def get_file_proxy_url(cls, ppm_id, uuid):
+        """
+        Queries P2MD for the download URL for the given file.
+        """
+        url = cls._build_url(path=f'/sources/api/file/{ppm_id}/{uuid}/')
+
+        # Check for local environments
+        if 'local' in os.environ.get('DBMI_ENV'):
+            url = url.replace('://p2md', '://localhost')
+
+        return url
+
+    @classmethod
     def uploaded_file(cls, request, study, ppm_id, document_type, uuid, location, content_type='application/octect-stream'):
         """
         Make a request to P2MD to create a file upload
