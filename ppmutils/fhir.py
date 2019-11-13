@@ -1766,7 +1766,7 @@ class FHIR:
 
         # Update for the patient query
         if patient:
-            query = FHIR._patient_resource_query(patient)
+            query.update(FHIR._patient_resource_query(patient))
 
         # Get the resources
         resources = FHIR._query_resources('ResearchSubject', query=query)
