@@ -1,6 +1,7 @@
 import collections
 import requests
 import json
+from enum import Enum
 import uuid
 from furl import furl, Query
 import random
@@ -18,6 +19,7 @@ from django.utils.safestring import mark_safe
 from fhirclient.models.bundle import Bundle, BundleEntry, BundleEntryRequest
 from fhirclient.models.list import List, ListEntry
 from fhirclient.models.organization import Organization
+from fhirclient.models.documentreference import DocumentReference
 from fhirclient.models.researchstudy import ResearchStudy
 from fhirclient.models.researchsubject import ResearchSubject
 from fhirclient.models.fhirreference import FHIRReference
@@ -58,7 +60,11 @@ class FHIR:
     device_identifier_system = 'https://peoplepoweredmedicine.org/fhir/device'
     device_coding_system = 'https://peoplepoweredmedicine.org/device'
 
+    # Type system for PPM data documents
     data_document_reference_identifier_system = 'https://peoplepoweredmedicine.org/document-type'
+
+    # Type system for PPM documents
+    ppm_document_reference_type_system = 'https://peoplepoweredmedicine.org/fhir/ppm/document-type'
 
     # Point of care codes
     SNOMED_LOCATION_CODE = "SNOMED:43741000"
@@ -75,6 +81,26 @@ class FHIR:
     facebook_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-facebook'
     smart_on_fhir_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-smart-on-fhir'
     referral_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/how-did-you-hear-about-us'
+
+    class DocumentType(Enum):
+        """ This class defines and specifies the FHIR system and values to be used for various PPM document types """
+        Consent = 'consent-pdf'
+
+        @classmethod
+        def system(cls):
+            return FHIR.ppm_document_reference_type_system
+
+        @staticmethod
+        def query(value):
+            return f'{FHIR.DocumentType.system()}|{FHIR.DocumentType.enum(value).value}'
+
+        @classmethod
+        def enum(cls, value):
+            for enum in cls:
+                if enum.name == value or enum.value == value:
+                    return enum
+
+            raise ValueError(f'FHIR.DocumentType: "{value}" is not a valid type')
 
     #
     # META
@@ -1054,6 +1080,125 @@ class FHIR:
 
         return response.ok
 
+    @staticmethod
+    def create_consent_document_reference(study, ppm_id, filename, url, hash, size, composition, identifiers=None):
+        """
+        Accepts details and rendering of a signed PPM consent and saves that data as a DocumentReference
+        to the participant's FHIR record as well as includes a reference to the DocumentReference in the
+        participant's consent Composition resource.
+        :param study: The PPM study for which this consent was signed
+        :type study: str
+        :param ppm_id: The Patient object who owns the consent PDF
+        :type ppm_id: str
+        :param filename: The filename of the file
+        :type filename: str
+        :param url: The URL of the file
+        :type url: str
+        :param hash: The md5 hash of the file
+        :type hash: str
+        :param size: The size of the file
+        :type size: int
+        :param composition: The consent Composition object
+        :type composition: dict
+        :param identifiers: An optional list if identifier objects to attach to the DocumentReference
+        :type identifiers: list
+        :return: The DocumentReference URL
+        """
+        # Retain the response content for debugging
+        content = None
+        try:
+            # Build the resource
+            resource = {
+                'resourceType': 'DocumentReference',
+                'subject': {
+                    'reference': 'Patient/' + ppm_id
+                },
+                'type': {
+                    'coding': [{
+                            'system': FHIR.DocumentType.system(),
+                            'code': FHIR.DocumentType.Consent.value,
+                            'display': 'Consent PDF',
+                    }]
+                },
+                'created': datetime.now().strftime('%Y-%m-%d'),
+                'indexed': datetime.now().isoformat(),
+                'status': 'current',
+                'content': [{
+                    'attachment': {
+                        'contentType': 'application/pdf',
+                        'language': 'en-US',
+                        'url': url,
+                        'creation': datetime.now().isoformat(),
+                        'title': filename,
+                        'hash': hash,
+                        'size': size,
+                    }
+                }],
+                'context': {
+                    'related': [
+                        {
+                            'ref': {'reference': f'ResearchStudy/{PPM.Study.fhir_id(study)}'},
+                        }
+                    ]
+                }
+            }
+
+            # If passed, add identifiers
+            if identifiers:
+                resource.setdefault('identifier', []).extend(identifiers)
+
+            # Start a bundle request
+            bundle = Bundle()
+            bundle.entry = []
+            bundle.type = 'transaction'
+
+            # Create the document reference
+            document_reference = DocumentReference(resource)
+
+            # Create placeholder ID
+            document_reference_id = uuid.uuid1().urn
+
+            # Add Organization objects to bundle.
+            document_reference_request = BundleEntryRequest()
+            document_reference_request.method = "POST"
+            document_reference_request.url = "DocumentReference"
+
+            # Create the organization entry
+            organization_entry = BundleEntry({'resource': document_reference.as_json()})
+            organization_entry.request = document_reference_request
+            organization_entry.fullUrl = document_reference_id
+
+            # Add it
+            bundle.entry.append(organization_entry)
+
+            # Update the composition
+            composition['section'].append({'entry': [{'reference': document_reference_id}]})
+
+            # Add List objects to bundle.
+            composition_request = BundleEntryRequest()
+            composition_request.method = "PUT"
+            composition_request.url = "Composition/{}".format(composition['id'])
+
+            # Create the organization entry
+            composition_entry = BundleEntry({'resource': composition})
+            composition_entry.request = composition_request
+
+            # Add it
+            bundle.entry.append(composition_entry)
+
+            # Post the transaction
+            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+            response.raise_for_status()
+
+            # Check response
+            return response.ok
+
+        except (requests.HTTPError, TypeError, ValueError):
+            logger.error('Create consent DocumentReference failed', exc_info=True,
+                         extra={'study': study, 'ppm_id': ppm_id, 'response': content})
+
+        return False
+
     #
     # READ
     #
@@ -1464,7 +1609,7 @@ class FHIR:
         url.query.params.add('_revinclude', '*')
 
         # Add query for patient
-        for key, value in FHIR._patient_query(patient).items():
+        for key, value in FHIR._patient_resource_query(patient, key='subject').items():
             url.query.params.add(key, value)
 
         # Make the call
@@ -1485,6 +1630,69 @@ class FHIR:
 
         except KeyError as e:
             logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={'response': content})
+
+        return None
+
+    @staticmethod
+    def query_consent_document_references(patient, flatten_return=False):
+        """
+        Gets and returns the DocumentReference storing the user's signed consent PDF
+        :param patient: The Patient object who owns the consent PDF
+        :type patient: str
+        :param flatten_return: Whether to return FHIR JSON or a flattened dict
+        :type flatten_return: bool
+        :return: The DocumentReference object
+        """
+        # Build the query
+        query = {'type': FHIR.DocumentType.query(FHIR.DocumentType.Consent)}
+
+        # Add query for patient
+        query.update(FHIR._patient_resource_query(patient))
+
+        # Get resources
+        resources = FHIR._query_resources('DocumentReference', query=query)
+
+        if flatten_return:
+            return [FHIR.flatten_document_reference(resource) for resource in resources]
+        else:
+            return resources
+
+    @staticmethod
+    def get_consent_document_reference(patient, study, flatten_return=False):
+        """
+        Gets and returns the DocumentReference storing the user's signed consent PDF
+        :param patient: The Patient object who owns the consent PDF
+        :type patient: str
+        :param study: The study for which the consent was signed
+        :type study: str
+        :param flatten_return: Whether to return FHIR JSON or a flattened dict
+        :type flatten_return: bool
+        :return: The DocumentReference object
+        """
+        # Build the query
+        query = {
+            'type': FHIR.DocumentType.query(FHIR.DocumentType.Consent),
+            'related-ref': PPM.Study.fhir_id(study),
+        }
+
+        # Add query for patient
+        query.update(FHIR._patient_resource_query(patient))
+
+        # Get resources
+        resources = FHIR._query_resources('DocumentReference', query=query)
+        if resources:
+
+            # Check for multiple
+            if len(resources) > 1:
+                logger.error(f'FHIR Error: Multiple consent DocumentReferences returned for {study}/{patient}', extra={
+                    'document_references': [f"DocumentReference/{r['id']}" for r in resources],
+                })
+
+            # Handle the format of return
+            if flatten_return:
+                return FHIR.flatten_document_reference(resources[0])
+            else:
+                return resources[0]
 
         return None
 
@@ -2903,6 +3111,16 @@ class FHIR:
             }
         })
 
+        # Add the consent document delete
+        transaction['entry'].append({
+            'request': {
+                'url': 'DocumentReference?subject=Patient/{}&type={}&related-ref={}'.format(
+                    patient_id, FHIR.DocumentType.query(FHIR.DocumentType.Consent), PPM.Study.fhir_id(project),
+                ),
+                'method': 'DELETE',
+            }
+        })
+
         # Check project
         if project == 'autism':
 
@@ -3112,6 +3330,14 @@ class FHIR:
 
     @staticmethod
     def flatten_participant(bundle):
+        """
+        Accepts a Bundle containing everything related to a Patient resource and flattens
+        the data into something easier to build templates/views with.
+        :param bundle: The Patient resource bundle as JSON/dict
+        :type bundle: dict
+        :return: A flattened dictionary of the Participant/Patient's entire FHIR data record
+        :rtype: dict
+        """
 
         # Build a dictionary
         participant = {}
@@ -3789,7 +4015,7 @@ class FHIR:
 
                             # This is a person consenting for themselves.
                             consent_object["type"] = "INDIVIDUAL"
-                            consent_object["signer_signature"] = base64.b64decode(contract.signer[0].signature[0].blob)
+                            consent_object["signer_signature"] = base64.b64decode(contract.signer[0].signature[0].blob).decode()
                             consent_object["participant_name"] = contract.signer[0].signature[0].whoReference.display
 
                             # These don't apply on an Individual consent.
@@ -3815,7 +4041,7 @@ class FHIR:
                             consent_object["signer_relationship"] = related_person.relationship.text
 
                             consent_object["participant_name"] = contract.signer[0].signature[0].onBehalfOfReference.display
-                            consent_object["signer_signature"] = base64.b64decode(contract.signer[0].signature[0].blob)
+                            consent_object["signer_signature"] = base64.b64decode(contract.signer[0].signature[0].blob).decode()
 
                         elif questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-2":
 
@@ -3827,12 +4053,12 @@ class FHIR:
                                 consent_object["participant_acknowledgement_reason"] = next(item.answer[0].valueString for item in questionnaire_response.item if item.linkId == 'question-1-1')
 
                             # This is the Guardian's signature letting us know they tried to explain this study.
-                            consent_object["explained_signature"] = base64.b64decode(contract.signer[0].signature[0].blob)
+                            consent_object["explained_signature"] = base64.b64decode(contract.signer[0].signature[0].blob).decode()
 
                         elif questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-3":
 
                             # A contract without a reference is the assent page.
-                            consent_object["assent_signature"] = base64.b64decode(contract.signer[0].signature[0].blob)
+                            consent_object["assent_signature"] = base64.b64decode(contract.signer[0].signature[0].blob).decode()
                             consent_object["assent_date"] = contract.issued.origval
 
                             # Append the Questionnaire Text if the response is true.
@@ -3844,7 +4070,8 @@ class FHIR:
 
                         # Prepare to parse the questionnaire.
                         questionnaire_object = {
-                            'template': 'dashboard/{}.html'.format(questionnaire.id),
+                            'template': 'dashboard/{}.html'.format(questionnaire.id),  # TODO: Remove this after PPM-603
+                            'questionnaire': questionnaire.id,
                             'questions': []
                         }
 

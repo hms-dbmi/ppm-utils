@@ -12,6 +12,81 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class PPMEnum(Enum):
+    """
+    An extended Enum class with some convenience methods for working with enum values/keys/etc
+    """
+    @classmethod
+    def enum(cls, enum):
+        """Accepts any form of an enum and returns the enum"""
+        for item in cls:
+            if enum is item or enum == item.name or enum == item.value or cls.title(enum) == item:
+                return item
+
+        raise ValueError('Value "{}" is not a valid {}'.format(enum, cls.__name__))
+
+    @classmethod
+    def get(cls, enum):
+        """
+        Returns an instance of the Study enum for the given study value, enum, whatever
+        :param enum: The study value string, name or enum
+        :type enum: Object
+        :return: The instance of PPM Study enum
+        :rtype: PPM.Study
+        """
+        return cls.enum(enum)
+
+    @classmethod
+    def from_value(cls, value):
+        """
+        Returns an instance of the Study enum for the given study value
+        :param study: The study value string
+        :type study: str
+        :return: The instance of PPM Study enum
+        :rtype: PPM.Study
+        """
+        return cls.enum(value)
+
+    @classmethod
+    def equals(cls, this, that):
+        """
+        Compares a reference to an enum and returns whether it is the second
+        passed enum or not
+        :param this: The study object to be compared
+        :type this: object
+        :param that: What we are comparing against
+        :type that: object
+        :return: Whether they are one and the same
+        :rtype: boolean
+        """
+        # Compare
+        return PPMEnum.get(this) is PPMEnum.get(that)
+
+    @classmethod
+    def title(cls, enum):
+        """
+        Returns the title to be used for the given enum.
+        :param enum: The enum identifier/name/value
+        :type enum: object
+        :return: The title for the enum
+        :rtype: str
+        """
+        # Get the value
+        value = PPMEnum.get(enum).value
+
+        # Try choices
+        return dict(PPMEnum.choices())[value] if value in dict(PPMEnum.choices()) else PPMEnum.get(enum).name
+
+    @classmethod
+    def choices(cls):
+        """
+        Returns a choices tuple of tuples. Define enum titles if different from names/values
+        here as this is the source for pulling enum titles.
+        :return: ((str, str), )
+        """
+        return tuple((e.name, e.value) for e in cls)
+
+
 class PPM:
     """
     This class serves mostly to track the PPM project properties across
@@ -59,6 +134,7 @@ class PPM:
     class Study(Enum):
         NEER = 'neer'
         ASD = 'autism'
+        EXAMPLE = 'example'
 
         @staticmethod
         def fhir_id(study):
@@ -77,6 +153,14 @@ class PPM:
             :rtype: list
             """
             return [PPM.Study.fhir_id(study) for study in PPM.Study]
+
+        @staticmethod
+        def testing(study):
+            """
+            Return true if the passed study is testing
+            :rtype: boolean
+            """
+            return PPM.Study.get(study) in [PPM.Study.EXAMPLE]
 
         @staticmethod
         def is_ppm(identifier):
@@ -148,10 +232,18 @@ class PPM:
             return (
                 (PPM.Study.NEER.value, 'NEER'),
                 (PPM.Study.ASD.value, 'Autism'),
+                (PPM.Study.EXAMPLE.value, 'Example'),
             )
 
     # Alias Project as Study until we migrate all usages to Study
     Project = Study
+
+    # Set values for determining environments
+    class Environment(PPMEnum):
+        Local = 'local'
+        Dev = 'dev'
+        Staging = 'staging'
+        Prod = 'prod'
 
     # Set the appropriate participant statuses
     class Enrollment(Enum):
@@ -266,19 +358,51 @@ class PPM:
             """Returns the value to be used as the communication's title"""
             return dict(PPM.Communication.choices())[PPM.Communication.get(communication).value]
 
-    class Questionnaire(Enum):
-        ASDGuardianConsentQuestionnaire = 'ppm-asd-consent-guardian-quiz'
-        ASDIndividualConsentQuestionnaire = 'ppm-asd-consent-individual-quiz'
+    class Questionnaire(PPMEnum):
+
+        # Survey/Questionnaires
+        ExampleQuestionnaire = 'ppm-neer-registration-questionnaire'  # TODO: Update this with an actual questionnaire
         NEERQuestionnaire = 'ppm-neer-registration-questionnaire'
         ASDQuestionnaire = 'ppm-asd-questionnaire'
 
+        # Consents
+        EXAMPLEConsent = 'neer-signature'  # TODO: Update this with an actual consent
+        NEERConsent = 'neer-signature'
+        ASDGuardianConsentQuestionnaire = 'ppm-asd-consent-guardian-quiz'
+        ASDIndividualConsentQuestionnaire = 'ppm-asd-consent-individual-quiz'
+        ASDConsentIndividualSignatureQuestionnaire = 'individual-signature-part-1'
+        ASDConsentGuardianSignature1Questionnaire = 'guardian-signature-part-1'
+        ASDConsentGuardianSignature2Questionnaire = 'guardian-signature-part-2'
+        ASDConsentGuardianSignature3Questionnaire = 'guardian-signature-part-3'
+
         @staticmethod
-        def questionnaire_for_project(study):
+        def consent_questionnaire_for_study(study, **kwargs):
+            if PPM.Study.get(study) is PPM.Study.ASD:
+
+                # We need more info
+                if kwargs.get('type') == 'guardian':
+                    return (PPM.Questionnaire.ASDConsentGuardianSignature1Questionnaire.value,
+                            PPM.Questionnaire.ASDConsentGuardianSignature2Questionnaire.value,
+                            PPM.Questionnaire.ASDConsentGuardianSignature3Questionnaire.value)
+                else:
+                    return PPM.Questionnaire.ASDIndividualConsentQuestionnaire.value
+
+            elif PPM.Study.get(study) is PPM.Study.NEER:
+                return PPM.Questionnaire.NEERConsent.value
+
+            elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
+                return PPM.Questionnaire.EXAMPLEConsent.value
+
+        @staticmethod
+        def questionnaire_for_study(study):
             if PPM.Study.get(study) is PPM.Study.ASD:
                 return PPM.Questionnaire.ASDQuestionnaire.value
 
             elif PPM.Study.get(study) is PPM.Study.NEER:
                 return PPM.Questionnaire.NEERQuestionnaire.value
+
+            elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
+                return PPM.Questionnaire.ExampleQuestionnaire.value
 
         @staticmethod
         def questionnaire_for_consent(composition):
@@ -287,6 +411,10 @@ class PPM:
 
             else:
                 return PPM.Questionnaire.ASDIndividualConsentQuestionnaire.value
+
+        @staticmethod
+        def questionnaire_for_project(project):  # TODO: Deprecated, remove!
+            return PPM.Questionnaire.questionnaire_for_study(project)
 
     class Provider(Enum):
         PPM = 'ppmfhir'

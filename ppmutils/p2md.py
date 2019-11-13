@@ -325,6 +325,48 @@ class P2MD(PPM.Service):
         return uuid, upload
 
     @classmethod
+    def create_consent_file(cls, request, study, ppm_id, hash, size):
+        """
+        Make a request to P2MD to create a file upload for a consent PDF
+        """
+        # Set data
+        data = {'study': study, 'hash': hash, 'size': size}
+
+        # Get the file data
+        upload = cls.post(request, f'/sources/api/consent/{study}/{ppm_id}/', data)
+
+        # Get the UUID
+        uuid = upload.get('uuid')
+
+        # Return True if no errors
+        return uuid, upload
+
+    @classmethod
+    def uploaded_consent(cls, request, study, ppm_id, uuid, location):
+        """
+        Make a request to P2MD to create a file upload
+        """
+        # Set data
+        data = {'study': study, 'uuid': uuid, 'location': location}
+
+        # Return True if no errors
+        return cls.patch(request, f'/sources/api/consent/{study}/{ppm_id}', data)
+
+    @classmethod
+    def get_consent_url(cls, study, ppm_id):
+        """
+        Make a request to P2MD to create a file upload
+        """
+        # Return True if no errors
+        url = cls._build_url(path=f'/sources/api/consent/{study}/{ppm_id}/')
+
+        # Check for local environments
+        if 'local' in os.environ.get('DBMI_ENV'):
+            url = url.replace('://p2md', '://localhost')
+
+        return url
+
+    @classmethod
     def get_file_proxy_url(cls, ppm_id, uuid):
         """
         Queries P2MD for the download URL for the given file.
