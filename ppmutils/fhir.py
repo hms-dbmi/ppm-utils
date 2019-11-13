@@ -30,6 +30,7 @@ from fhirclient.models.device import Device
 from fhirclient.models.resource import Resource
 
 from ppmutils.ppm import PPM
+from ppmutils.ppm import PPMEnum
 
 import logging
 logger = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ class FHIR:
     smart_on_fhir_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-smart-on-fhir'
     referral_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/how-did-you-hear-about-us'
 
-    class DocumentType(Enum):
+    class DocumentType(PPMEnum):
         """ This class defines and specifies the FHIR system and values to be used for various PPM document types """
         Consent = 'consent-pdf'
 
@@ -93,14 +94,6 @@ class FHIR:
         @staticmethod
         def query(value):
             return f'{FHIR.DocumentType.system()}|{FHIR.DocumentType.enum(value).value}'
-
-        @classmethod
-        def enum(cls, value):
-            for enum in cls:
-                if enum.name == value or enum.value == value:
-                    return enum
-
-            raise ValueError(f'FHIR.DocumentType: "{value}" is not a valid type')
 
     #
     # META
