@@ -60,7 +60,7 @@ class PPMEnum(Enum):
         :rtype: boolean
         """
         # Compare
-        return PPMEnum.get(this) is PPMEnum.get(that)
+        return cls.get(this) is cls.get(that)
 
     @classmethod
     def title(cls, enum):
@@ -72,10 +72,10 @@ class PPMEnum(Enum):
         :rtype: str
         """
         # Get the value
-        value = PPMEnum.get(enum).value
+        value = cls.get(enum).value
 
         # Try choices
-        return dict(PPMEnum.choices())[value] if value in dict(PPMEnum.choices()) else PPMEnum.get(enum).name
+        return dict(cls.choices())[value] if value in dict(cls.choices()) else cls.get(enum).name
 
     @classmethod
     def choices(cls):
