@@ -367,6 +367,17 @@ class P2MD(PPM.Service):
         return url
 
     @classmethod
+    def delete_consent(cls, request, study, ppm_id, document_reference_id):
+        """
+        Make a request to P2MD to delete a consent render
+        """
+        # Set data
+        data = {'study': study, 'document_reference_id': document_reference_id}
+
+        # Return True if no errors
+        return cls.delete(request, f'/sources/api/consent/{study}/{ppm_id}', data)
+
+    @classmethod
     def get_file_proxy_url(cls, ppm_id, uuid):
         """
         Queries P2MD for the download URL for the given file.
