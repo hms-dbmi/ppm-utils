@@ -1165,7 +1165,7 @@ class FHIR:
                     break
             else:
                 # Add it
-                logger.error(f'PPM/{study}/{ppm_id}: Adding study reference to composition')
+                logger.debug(f'PPM/{study}/{ppm_id}: Adding study reference to composition')
                 composition['section'].append({'entry': [{'reference': f'ResearchStudy/{PPM.Study.fhir_id(study)}'}]})
 
             # Add List objects to bundle.
@@ -3655,7 +3655,7 @@ class FHIR:
 
         # Ensure resources exist
         if not questionnaire or not questionnaire_response:
-            logger.debug('Missing resources: {}'.format(questionnaire_id))
+            logger.debug('User has no responses for Questionnaire/{}, returning'.format(questionnaire_id))
             return None
 
         # Get questions and answers
@@ -4253,16 +4253,16 @@ class FHIR:
                             questionnaire_object['questions'].append(question_object)
 
                         # Check the type.
-                    if questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-3":
-                        consent_object['assent_questionnaires'].append(questionnaire_object)
-                    else:
-                        consent_object['consent_questionnaires'].append(questionnaire_object)
+                        if questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-3":
+                            consent_object['assent_questionnaires'].append(questionnaire_object)
+                        else:
+                            consent_object['consent_questionnaires'].append(questionnaire_object)
+
+                        # Link back to participant
+                        consent_object['ppm_id'] = FHIR._get_referenced_id(questionnaire_response.as_json(), 'Patient')
 
         consent_object["exceptions"] = consent_exceptions
         consent_object["assent_exceptions"] = assent_exceptions
-
-        # Link back to participant
-        consent_object['ppm_id'] = FHIR._get_referenced_id(questionnaire_response.as_json(), 'Patient')
 
         return consent_object
 
