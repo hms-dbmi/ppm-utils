@@ -4,6 +4,7 @@ from furl import furl
 import json
 import re
 import os
+from functools import total_ordering
 
 from django.conf import settings
 
@@ -246,6 +247,7 @@ class PPM:
         Prod = 'prod'
 
     # Set the appropriate participant statuses
+    @total_ordering
     class Enrollment(Enum):
         Registered = 'registered'
         Consented = 'consented'
@@ -255,6 +257,26 @@ class PPM:
         Pending = 'pending'
         Ineligible = 'ineligible'
         Terminated = 'terminated'
+
+        def __lt__(self, other):
+
+            # Check equality
+            if self is other:
+                return False
+
+            # Compare states of enrollment
+            if self is PPM.Enrollment.Registered:
+                return True
+            elif self is PPM.Enrollment.Consented:
+                return other not in [PPM.Enrollment.Registered]
+            elif self is PPM.Enrollment.Proposed:
+                return other not in [PPM.Enrollment.Registered, PPM.Enrollment.Consented]
+            elif self in [PPM.Enrollment.Pending, PPM.Enrollment.Ineligible]:
+                return other in [PPM.Enrollment.Accepted, PPM.Enrollment.Completed, PPM.Enrollment.Terminated]
+            elif self is PPM.Enrollment.Accepted:
+                return other in [PPM.Enrollment.Completed, PPM.Enrollment.Terminated]
+            elif self in [PPM.Enrollment.Completed, PPM.Enrollment.Terminated]:
+                return False
 
         @classmethod
         def enum(cls, enum):

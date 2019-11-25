@@ -1,7 +1,6 @@
 import collections
 import requests
 import json
-from enum import Enum
 import uuid
 from furl import furl, Query
 import random
@@ -30,7 +29,6 @@ from fhirclient.models.device import Device
 from fhirclient.models.resource import Resource
 
 from ppmutils.ppm import PPM
-from ppmutils.ppm import PPMEnum
 
 import logging
 logger = logging.getLogger(__name__)
@@ -67,6 +65,11 @@ class FHIR:
     # Type system for PPM documents
     ppm_document_reference_type_system = 'https://peoplepoweredmedicine.org/fhir/ppm/document-type'
 
+    # Type system for PPM consent resources
+    ppm_consent_type_system = 'http://loinc.org'
+    ppm_consent_type_value = '83930-8'
+    ppm_consent_type_display = 'Research Consent'
+
     # Point of care codes
     SNOMED_LOCATION_CODE = "SNOMED:43741000"
     SNOMED_VERSION_URI = "http://snomed.info/sct/900000000000207008"
@@ -82,18 +85,6 @@ class FHIR:
     facebook_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-facebook'
     smart_on_fhir_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-smart-on-fhir'
     referral_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/how-did-you-hear-about-us'
-
-    class DocumentType(PPMEnum):
-        """ This class defines and specifies the FHIR system and values to be used for various PPM document types """
-        Consent = 'consent-pdf'
-
-        @classmethod
-        def system(cls):
-            return FHIR.ppm_document_reference_type_system
-
-        @staticmethod
-        def query(value):
-            return f'{FHIR.DocumentType.system()}|{FHIR.DocumentType.enum(value).value}'
 
     #
     # META
@@ -1108,9 +1099,9 @@ class FHIR:
                 },
                 'type': {
                     'coding': [{
-                            'system': FHIR.DocumentType.system(),
-                            'code': FHIR.DocumentType.Consent.value,
-                            'display': 'Consent PDF',
+                        'system': FHIR.ppm_consent_type_system,
+                        'code': FHIR.ppm_consent_type_value,
+                        'display': FHIR.ppm_consent_type_display,
                     }]
                 },
                 'created': datetime.now().strftime('%Y-%m-%d'),
@@ -1166,6 +1157,16 @@ class FHIR:
 
             # Update the composition
             composition['section'].append({'entry': [{'reference': document_reference_id}]})
+
+            # Ensure it's related to a study
+            for entry in [section['entry'][0] for section in composition['section'] if
+                          'entry' in section and len(section['entry'])]:
+                if entry.get('reference') and PPM.Study.fhir_id(study) in entry['reference']:
+                    break
+            else:
+                # Add it
+                logger.error(f'PPM/{study}/{ppm_id}: Adding study reference to composition')
+                composition['section'].append({'entry': [{'reference': f'ResearchStudy/{PPM.Study.fhir_id(study)}'}]})
 
             # Add List objects to bundle.
             composition_request = BundleEntryRequest()
@@ -1592,63 +1593,110 @@ class FHIR:
 
         return None
 
+    # TODO: This method is deprecated
     @staticmethod
     def get_composition(patient, flatten_return=False):
+        """
+        Gets and returns the Composition storing the user's signed consent resources
+        :param patient: The Patient object who owns the consent
+        :type patient: str
+        :param flatten_return: Whether to return FHIR JSON or a flattened dict
+        :type flatten_return: bool
+        :return: The Composition object
+        """
+        logger.warning('DEPRECATED: This method should not be used for fetching consent composition resources')
 
-        # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append('Composition')
-        url.query.params.add('_include', '*')
-        url.query.params.add('_revinclude', '*')
-
-        # Add query for patient
-        for key, value in FHIR._patient_resource_query(patient, key='subject').items():
-            url.query.params.add(key, value)
-
-        # Make the call
-        content = None
-        try:
-            # Make the FHIR request.
-            response = requests.get(url.url)
-            content = response.content
-            response.raise_for_status()
-
-            if flatten_return:
-                return FHIR.flatten_consent_composition(response.json())
-            else:
-                return response.json()
-
-        except requests.HTTPError as e:
-            logger.exception('FHIR Connection Error: {}'.format(e), exc_info=True, extra={'response': content})
-
-        except KeyError as e:
-            logger.exception('FHIR Error: {}'.format(e), exc_info=True, extra={'response': content})
+        # Just return the first from querying
+        compositions = FHIR.query_consent_compositions(patient=patient, flatten_return=flatten_return)
+        if compositions:
+            return compositions[0]
 
         return None
 
     @staticmethod
-    def query_consent_document_references(patient, flatten_return=False):
+    def query_consent_compositions(patient, study=None, flatten_return=False):
         """
-        Gets and returns the DocumentReference storing the user's signed consent PDF
-        :param patient: The Patient object who owns the consent PDF
+        Gets and returns any Compositions storing the user's signed consent resources
+        :param patient: The Patient object who owns the consent
         :type patient: str
+        :param study: The study for which the consent was signed
+        :type study: str
         :param flatten_return: Whether to return FHIR JSON or a flattened dict
         :type flatten_return: bool
-        :return: The DocumentReference object
+        :return: The Composition object
         """
         # Build the query
-        query = {'type': FHIR.DocumentType.query(FHIR.DocumentType.Consent)}
+        query = {'type': f'{FHIR.ppm_consent_type_system}|{FHIR.ppm_consent_type_value}'}
 
-        # Add query for patient
+        # Check study
+        if study:
+            query['related-ref'] = f'ResearchStudy/{PPM.Study.fhir_id(study)}'
+
+        # Build the query
         query.update(FHIR._patient_resource_query(patient))
 
         # Get resources
-        resources = FHIR._query_resources('DocumentReference', query=query)
+        resources = FHIR._query_resources('Composition', query=query)
+        if resources:
 
-        if flatten_return:
-            return [FHIR.flatten_document_reference(resource) for resource in resources]
-        else:
-            return resources
+            # Handle the format of return
+            if flatten_return:
+                # If flattening, we need to query all related resources per Composition
+                bundles = [FHIR._query_bundle('Composition', query={
+                    'id': resource['id'],
+                    '_include': '*',
+                    '_revinclude': '*',
+                }) for resource in resources]
+                return [FHIR.flatten_consent_composition(bundle) for bundle in bundles]
+            else:
+                return resources
+
+        return None
+
+    @staticmethod
+    def get_consent_composition(patient, study, flatten_return=False):
+        """
+        Gets and returns the Composition storing the user's signed consent resources
+        :param patient: The Patient object who owns the consent
+        :type patient: str
+        :param study: The study for which the consent was signed
+        :type study: str
+        :param flatten_return: Whether to return FHIR JSON or a flattened dict
+        :type flatten_return: bool
+        :return: The Composition object
+        """
+        # Build the query
+        query = {
+            'type': f'{FHIR.ppm_consent_type_system}|{FHIR.ppm_consent_type_value}',
+            'related-ref': f'ResearchStudy/{PPM.Study.fhir_id(study)}'
+        }
+
+        # Build the query
+        query.update(FHIR._patient_resource_query(patient))
+
+        # Get resources
+        resources = FHIR._query_resources('Composition', query=query)
+        if resources:
+
+            # Check for multiple
+            if len(resources) > 1:
+                logger.error(f'FHIR Error: Multiple consent Compositions returned for {study}/{patient}', extra={
+                    'compositions': [f"Composition/{r['id']}" for r in resources],
+                })
+
+            # Handle the format of return
+            if flatten_return:
+                # If flattening, we need all related resources
+                bundle = FHIR._query_bundle('Composition', query={
+                    'id': resources[0]['id'],
+                    '_include': '*',
+                    '_revinclude': '*',
+                })
+                return FHIR.flatten_consent_composition(bundle)
+            else:
+                return resources[0]
+
+        return None
 
     @staticmethod
     def get_consent_document_reference(patient, study, flatten_return=False):
@@ -1664,7 +1712,7 @@ class FHIR:
         """
         # Build the query
         query = {
-            'type': FHIR.DocumentType.query(FHIR.DocumentType.Consent),
+            'type': f'{FHIR.ppm_consent_type_system}|{FHIR.ppm_consent_type_value}',
             'related-ref': PPM.Study.fhir_id(study),
         }
 
@@ -1688,6 +1736,30 @@ class FHIR:
                 return resources[0]
 
         return None
+
+    @staticmethod
+    def query_consent_document_references(patient, flatten_return=False):
+        """
+        Gets and returns the DocumentReference storing the user's signed consent PDF
+        :param patient: The Patient object who owns the consent PDF
+        :type patient: str
+        :param flatten_return: Whether to return FHIR JSON or a flattened dict
+        :type flatten_return: bool
+        :return: The DocumentReference object
+        """
+        # Build the query
+        query = {'type': f'{FHIR.ppm_consent_type_system}|{FHIR.ppm_consent_type_value}'}
+
+        # Add query for patient
+        query.update(FHIR._patient_resource_query(patient))
+
+        # Get resources
+        resources = FHIR._query_resources('DocumentReference', query=query)
+
+        if flatten_return:
+            return [FHIR.flatten_document_reference(resource) for resource in resources]
+        else:
+            return resources
 
     @staticmethod
     def query_patient_id(email):
@@ -2445,6 +2517,91 @@ class FHIR:
             raise
 
     @staticmethod
+    def update_consent_composition(patient, study, document_reference_id=None, composition=None):
+        """
+        Updates a participant's consent Composition resource for changes in related references, e.g.
+        the DocumentReference referencing a rendered PDF of the signed consent.
+        :param patient: The patient's identifier
+        :param study: The study for which this consent was signed
+        :param document_reference_id: An updated document reference ID, if any
+        :param composition: The Composition resource, if available
+        :return:
+        """
+        logger.debug("Patient: {}, Composition: {}, Study: {}, DocumentReference: {}".format(
+            patient, composition['id'] if composition else None, study, document_reference_id
+        ))
+
+        content = None
+        try:
+            # If not composition, get it
+            if not composition:
+                composition = FHIR.get_consent_composition(patient=patient, study=study)
+
+            # Get references
+            references = [s['entry'][0]['reference'] for s in composition['section'] if s.get('entry')
+                          and s['entry'] is list and len(s['entry']) and 'reference' in s['entry'][0]]
+            if document_reference_id:
+                for reference in references:
+                    # Check type
+                    if 'DocumentReference' in reference:
+
+                        # Update it
+                        reference = {
+                            'reference': f'DocumentReference/{document_reference_id}',
+                            'display': FHIR.ppm_consent_type_display,
+                        }
+                        logger.debug(f'{study}/Patient/{patient}: Updated Composition DocumentReference: {reference}')
+            else:
+                # Remove it if included
+                sections = []
+                for section in composition['section']:
+                    if 'entry' in section:
+                        for entry in section.get('entry', []):
+                            if 'reference' in entry and 'DocumentReference' in entry['reference']:
+                                # Nothing to do as we want to leave it out
+                                pass
+                            else:
+                                sections.append(section)
+                    else:
+                        sections.append(section)
+
+                # Set the new sections
+                composition['section'] = sections
+
+            for reference in references:
+                # Ensure study is set
+                if 'ResearchStudy' in reference:
+                    break
+            else:
+                # Add it
+                composition['section'].append({
+                    'reference': f'ResearchStudy/{PPM.Study.fhir_id(study)}'
+                })
+
+            # Build the URL
+            url = furl(PPM.fhir_url())
+            url.path.segments.append('Composition')
+            url.path.segments.append(composition['id'])
+
+            # Put it
+            response = requests.put(url.url, json=composition)
+            content = response.content
+            response.raise_for_status()
+
+            return response.ok
+
+        except requests.HTTPError as e:
+            logger.error('FHIR Request Error: {}'.format(e), exc_info=True,
+                         extra={'patient': patient, 'response': content, 'document_reference_id': document_reference_id})
+
+        except Exception as e:
+            logger.error('FHIR Error: {}'.format(e), exc_info=True, extra={
+                'patient': patient, 'document_reference_id': document_reference_id
+            })
+
+        return False
+
+    @staticmethod
     def update_research_subject(patient_id, research_subject_id, start=None, end=None):
         logger.debug("Patient: {}, ResearchSubject: {}, Start: {}, End: {}".format(
             patient_id, research_subject_id, start, end
@@ -3107,8 +3264,8 @@ class FHIR:
         # Add the consent document delete
         transaction['entry'].append({
             'request': {
-                'url': 'DocumentReference?subject=Patient/{}&type={}&related-ref={}'.format(
-                    patient_id, FHIR.DocumentType.query(FHIR.DocumentType.Consent), PPM.Study.fhir_id(project),
+                'url': 'DocumentReference?subject=Patient/{}&type={}|{}&related-ref={}'.format(
+                    patient_id, FHIR.ppm_consent_type_system, FHIR.ppm_consent_type_value, PPM.Study.fhir_id(project),
                 ),
                 'method': 'DELETE',
             }
