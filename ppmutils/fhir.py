@@ -121,17 +121,6 @@ class FHIR:
         return FHIRClient(settings=settings)
 
     @staticmethod
-    def questionnaire_id(project):
-        return PPM.Questionnaire.questionnaire_for_project(project)
-
-    @staticmethod
-    def consent_questionnaire_id(patient):
-        if not patient.get('composition') or patient.get('project') != PPM.Project.ASD.value:
-            return None
-
-        return PPM.Questionnaire.questionnaire_for_consent(patient.get('composition'))
-
-    @staticmethod
     def _bundle_get(bundle, resource_type, query={}):
         """
         Searches through a bundle for the resource matching the given resourceType
@@ -3214,7 +3203,7 @@ class FHIR:
         logger.debug('Deleting questionnaire response: Patient/{} - {}'.format(patient_id, project))
 
         # Get the questionnaire ID
-        questionnaire_id = FHIR.questionnaire_id(project)
+        questionnaire_id = PPM.Questionnaire.questionnaire_for_study(study=project)
 
         # Find it
         questionnaire_response = FHIR.get_questionnaire_response(patient_id, questionnaire_id)
@@ -3310,14 +3299,15 @@ class FHIR:
         elif project == 'neer':
 
             # Delete questionnaire responses
-            questionnaire_id = 'neer-signature'
-            transaction['entry'].append({
-                'request': {
-                    'url': 'QuestionnaireResponse?questionnaire=Questionnaire/{}&source=Patient/{}'
-                        .format(questionnaire_id, patient_id),
-                    'method': 'DELETE',
-                }
-            })
+            questionnaire_ids = ['neer-signature', 'neer-signature-v2']
+            for questionnaire_id in questionnaire_ids:
+                transaction['entry'].append({
+                    'request': {
+                        'url': 'QuestionnaireResponse?questionnaire=Questionnaire/{}&source=Patient/{}'
+                            .format(questionnaire_id, patient_id),
+                        'method': 'DELETE',
+                    }
+                })
 
         else:
             logger.error('Unsupported project: {}'.format(project), extra={
@@ -3542,7 +3532,7 @@ class FHIR:
             participant['composition'] = FHIR.flatten_consent_composition(bundle)
 
             # Get the project
-            _questionnaire_id = FHIR.questionnaire_id(participant['project'])
+            _questionnaire_id = PPM.Questionnaire.questionnaire_for_study(study=participant['project'])
 
             # Parse out the responses
             participant['questionnaire'] = FHIR.flatten_questionnaire_response(bundle, _questionnaire_id)
@@ -3561,15 +3551,23 @@ class FHIR:
             # Autism has a special consent with a quiz, get that content and add it
             if participant['project'] == PPM.Study.ASD.value:
 
-                # Get the questionnaire ID
-                quiz_id = FHIR.consent_questionnaire_id(participant)
+                # Initially none
+                participant['consent_quiz'] = None
+                participant['consent_quiz_answers'] = None
 
-                # Sort it.
-                participant['consent_quiz'] = FHIR.flatten_questionnaire_response(bundle, quiz_id)
+                # Check if they've even consented
+                if participant.get('composition'):
 
-                # Set the correct answers if the user has a quiz
-                if participant.get('consent_quiz'):
-                    participant['consent_quiz_answers'] = FHIR.questionnaire_answers(bundle, quiz_id)
+                    # Get the Questionnaire ID used for the quiz portion of the consent
+                    quiz_id = PPM.Questionnaire.questionnaire_for_consent(participant.get('composition'))
+
+                    # Flatten the Q's and A's for output
+                    quiz = FHIR.flatten_questionnaire_response(bundle, quiz_id)
+                    if quiz:
+
+                        # Add it
+                        participant['consent_quiz'] = quiz
+                        participant['consent_quiz_answers'] = FHIR.questionnaire_answers(bundle, quiz_id)
 
             # Get study specific resources
             if PPM.Study.enum(participant['study']) is PPM.Study.NEER:
@@ -4161,7 +4159,7 @@ class FHIR:
 
                         # The reference refers to a Questionnaire which is linked to a part of the consent form.
                         if questionnaire_response.questionnaire.reference == "Questionnaire/individual-signature-part-1"\
-                                or questionnaire_response.questionnaire.reference == "Questionnaire/neer-signature":
+                                or questionnaire_response.questionnaire.reference.startswith("Questionnaire/neer-signature"):
 
                             # This is a person consenting for themselves.
                             consent_object["type"] = "INDIVIDUAL"

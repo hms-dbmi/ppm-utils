@@ -389,7 +389,7 @@ class PPM:
 
         # Consents
         EXAMPLEConsent = 'neer-signature'  # TODO: Update this with an actual consent
-        NEERConsent = 'neer-signature'
+        NEERConsent = 'neer-signature-v2'
         ASDGuardianConsentQuestionnaire = 'ppm-asd-consent-guardian-quiz'
         ASDIndividualConsentQuestionnaire = 'ppm-asd-consent-individual-quiz'
         ASDConsentIndividualSignatureQuestionnaire = 'individual-signature-part-1'
@@ -399,6 +399,12 @@ class PPM:
 
         @staticmethod
         def consent_questionnaire_for_study(study, **kwargs):
+            """
+            Returns the FHIR ID of the Questionnaire resource that is used as the signature to be
+            filled out by participants during the consent step of the sign up process.
+            :param study: The PPM study
+            :return: str
+            """
             if PPM.Study.get(study) is PPM.Study.ASD:
 
                 # We need more info
@@ -417,6 +423,12 @@ class PPM:
 
         @staticmethod
         def questionnaire_for_study(study):
+            """
+            Returns the FHIR ID of the Questionnaire resource that is used as the survey to be
+            filled out by participants during sign up.
+            :param study: The PPM study
+            :return: str
+            """
             if PPM.Study.get(study) is PPM.Study.ASD:
                 return PPM.Questionnaire.ASDQuestionnaire.value
 
@@ -428,6 +440,12 @@ class PPM:
 
         @staticmethod
         def questionnaire_for_consent(composition):
+            """
+            Returns the FHIR ID of the Questionnaire resource that is used as the quiz to be
+            filled out by participants during the consent process.
+            :param composition: The consent composition resource
+            :return: str
+            """
             if composition.get('type', '').lower() == 'guardian':
                 return PPM.Questionnaire.ASDGuardianConsentQuestionnaire.value
 
