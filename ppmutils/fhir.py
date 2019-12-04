@@ -3602,6 +3602,8 @@ class FHIR:
         :param ppm_id: The PPM ID of the participant
         :return: dict
         """
+        logger.debug(f'PPM/{ppm_id}/FHIR: Flattening NEER participant')
+
         # Put values in a dictionary
         values = {}
 
@@ -3610,6 +3612,7 @@ class FHIR:
                                        q['questionnaire']['reference'] ==
                                        f'Questionnaire/{PPM.Questionnaire.NEERQuestionnaire.value}'), None)
         if questionnaire_response:
+            logger.debug(f'PPM/{ppm_id}/FHIR: Flattening QuestionnaireResponse/{questionnaire_response["id"]}')
 
             # Map linkIds to keys
             text_answers = {
@@ -3655,7 +3658,7 @@ class FHIR:
                         answer_date = parse(answer)
 
                         # Assign it
-                        values[key] = answer_date
+                        values[key] = answer_date.isoformat()
 
                     except ValueError:
                         logger.debug(f'PPM/{ppm_id}/Questionnaire/{link_id}: Invalid date: {answer}')
