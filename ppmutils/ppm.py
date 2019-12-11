@@ -496,6 +496,7 @@ class PPM:
                 (PPM.Provider.PicnicHealth.value, 'PicnicHealth'),
                 (PPM.Provider.SMART.value, 'SMART on FHIR'),
                 (PPM.Provider.File.value, 'PPM Files'),
+                (PPM.Provider.Qualtrics.value, 'Qualtrics Surveys'),
             )
 
         @classmethod
