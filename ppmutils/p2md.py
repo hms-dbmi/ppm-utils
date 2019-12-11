@@ -378,6 +378,48 @@ class P2MD(PPM.Service):
         return cls.delete(request, f'/sources/api/consent/{study}/{ppm_id}', data)
 
     @classmethod
+    def get_qualtrics_surveys(cls, request, study):
+        """
+        Make a request to P2MD to get available Qualtrics surveys
+        :param request: The current request
+        :param study: The study for which the surveys should be returned
+        :return: list
+        """
+        # Return response
+        return cls.get(request, f'/sources/api/qualtrics/surveys/{study}/')
+
+    @classmethod
+    def check_qualtrics_survey(cls, request, study, ppm_id, survey):
+        """
+        Checks the passed survey to see if it has been completed by the passed participant or not.
+        :param request: The current request
+        :param study: The study for which the survey is being used
+        :param ppm_id: The participant
+        :param survey: The ID of the survey to check
+        :return: bool
+        """
+        # Make the request
+        response = cls.head(request, f'/sources/api/qualtrics/survey/{study}/{ppm_id}/{survey}/', raw=True)
+        if response:
+            return response.ok
+
+        return False
+
+    @classmethod
+    def get_qualtrics_survey_url(cls, study, ppm_id, survey):
+        """
+        Return the URL to send the participant to for taking the survey
+        """
+        # Return True if no errors
+        url = cls._build_url(path=f'/sources/api/qualtrics/survey/{study}/{ppm_id}/{survey}/')
+
+        # Check for local environments
+        if 'local' in os.environ.get('DBMI_ENV'):
+            url = url.replace('://p2md', '://localhost')
+
+        return url
+
+    @classmethod
     def get_file_proxy_url(cls, ppm_id, uuid):
         """
         Queries P2MD for the download URL for the given file.

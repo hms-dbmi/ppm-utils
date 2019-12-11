@@ -467,6 +467,7 @@ class PPM:
         Broad = 'broad'
         SMART = 'smart'
         File = 'file'
+        Qualtrics = 'qualtrics'
 
         @classmethod
         def enum(cls, enum):
