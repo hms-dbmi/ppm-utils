@@ -86,6 +86,10 @@ class FHIR:
     smart_on_fhir_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-smart-on-fhir'
     referral_extension_url = 'https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/how-did-you-hear-about-us'
 
+    # Qualtrics IDs
+    qualtrics_survey_identifier_system = 'https://peoplepoweredmedicine.org/fhir/qualtrics/survey'
+    qualtrics_response_identifier_system = 'https://peoplepoweredmedicine.org/fhir/qualtrics/response'
+
     #
     # META
     #
