@@ -617,6 +617,55 @@ class FHIR:
         else:
             raise ValueError('Unhandled instance of a Patient identifier: {}'.format(identifier))
 
+    @staticmethod
+    def get_created_resource_id(response, resource_type):
+        """
+        Accepts a response from a FHIR operation to create a resource and returns the ID and URL of the newly created
+        resource in FHIR
+        :param response: The raw HTTP response object from FHIR
+        :param resource_type: The resource type of the created resource
+        :return: str, str
+        """
+        # Check status
+        if not response.ok:
+            logger.error(f'FHIR Error: Cannot get resource details from a failed response: '
+                         f'{response.status_code} : {response.content.decode()}')
+            return None, None
+
+        try:
+            # Get the URL from headers
+            url = furl(response.headers.get('Location'))
+
+            # Get ID
+            resource_id = url.path.segments[2]
+
+            # Trim off history part
+            if len(url.path.segments) > 3:
+                url.path.segments = url.path.segments[:3]
+
+            # Return
+            return resource_id, url.url
+
+        except Exception as e:
+            logger.exception(f'FHIR Error: {e}', exc_info=True, extra={
+                'response': response.content.decode(), 'headers': response.headers, 'status': response.status_code
+            })
+
+        # Try based off the body of the response
+        pattern = rf'{resource_type}\/([0-9]+)\/'
+        matches = re.findall(pattern, response.content.decode())
+        if matches:
+            logger.error(f'FHIR ERROR: Could not determine resource ID from response: {response.content.decode()}')
+
+            # Build URL
+            url = furl(PPM.fhir_url())
+            url.path.segments.extend([resource_type, matches[0]])
+
+            return matches[0], url.url
+
+        # Could not figure it out
+        return None, None
+
     #
     # CREATE
     #
