@@ -3807,6 +3807,17 @@ class FHIR(PPM.Service):
         return values
 
     @staticmethod
+    def _flatten_example_participant(bundle, ppm_id):
+        """
+        Continues flattening a participant by adding any study specific data to their record.
+        This will include answers in questionnaires, etc.
+        :param bundle: The participant's entire FHIR record
+        :param ppm_id: The PPM ID of the participant
+        :return: dict
+        """
+        raise NotImplementedError('Flattening EXAMPLE participant has not yet been implemented')
+
+    @staticmethod
     def _flatten_neer_participant(bundle, ppm_id):
         """
         Continues flattening a participant by adding any study specific data to their
