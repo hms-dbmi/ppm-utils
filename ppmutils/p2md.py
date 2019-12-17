@@ -512,7 +512,7 @@ class P2MD(PPM.Service):
         :return: The user's entire dataset
         """
         # Build the URL
-        url = furl(P2MD._build_url(f'/sources/api/ppm/{ppm_id}/archive/'))
+        url = furl(P2MD._build_url(f'/sources/api/archive/{ppm_id}/download/'))
 
         # If providers, include them in query
         if providers:
