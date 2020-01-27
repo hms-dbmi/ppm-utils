@@ -138,6 +138,21 @@ class PPM:
         EXAMPLE = 'example'
 
         @staticmethod
+        def equals(this, that):
+            """
+            Compares a reference to a study and returns whether it is the second
+            passed PPM.Study enum
+            :param this: The study object to be compared
+            :type this: object
+            :param that: What we are comparing against
+            :type that: object
+            :return: Whether they are one and the same
+            :rtype: boolean
+            """
+            # Compare
+            return PPM.Study.get(this) is PPM.Study.get(that)
+
+        @staticmethod
         def fhir_id(study):
             """
             Return the FHIR identifier for the passed study
@@ -453,6 +468,55 @@ class PPM:
                 return PPM.Questionnaire.ASDIndividualConsentQuestionnaire.value
 
         @staticmethod
+        def exceptions(questionnaire_id):
+            """
+            Returns a dictionary mapping the question link ID to the SNOMED code to use for the
+            exclusion item
+            :param questionnaire_id: The Questionnaire ID
+            :return: dict
+            """
+            if questionnaire_id == PPM.Questionnaire.NEERConsent.value:
+                return {
+                    'question-1': '82078001',
+                    'question-2': '258435002',
+                    'question-3': '284036006',
+                    'question-4': '702475000',
+                }
+
+            elif questionnaire_id == PPM.Questionnaire.EXAMPLEConsent.value:
+                return {
+                    'question-1': '82078001',
+                    'question-2': '165334004',
+                    'question-3': '258435002',
+                    'question-4': '284036006',
+                    'question-5': '702475000',
+                }
+
+            elif questionnaire_id == PPM.Questionnaire.ASDConsentIndividualSignatureQuestionnaire.value:
+                return {
+                    'question-1': '225098009',
+                    'question-2': '284036006',
+                    'question-3': '702475000',
+                }
+
+            elif questionnaire_id == PPM.Questionnaire.ASDGuardianConsentQuestionnaire.value:
+                return {
+                    'question-1': '225098009',
+                    'question-2': '284036006',
+                    'question-3': '702475000',
+                }
+
+            elif questionnaire_id == PPM.Questionnaire.ASDConsentIndividualSignatureQuestionnaire.value:
+                return {
+                    'question-1': '225098009',
+                    'question-2': '284036006',
+                }
+
+            else:
+                raise ValueError(f'Questionnaire ID "{questionnaire_id}" is either not a valid PPM '
+                                 f'consent Questionnaire, or its exception mappings has not yet been added.')
+
+        @staticmethod
         def questionnaire_for_project(project):  # TODO: Deprecated, remove!
             return PPM.Questionnaire.questionnaire_for_study(project)
 
@@ -558,7 +622,12 @@ class PPM:
                                        PPM.TrackedItem.BloodSampleKit.value],
 
                 PPM.Study.ASD.value: [PPM.TrackedItem.Fitbit.value,
-                                      PPM.TrackedItem.SalivaSampleKit.value]
+                                      PPM.TrackedItem.SalivaSampleKit.value],
+
+                PPM.Study.EXAMPLE.value: [PPM.TrackedItem.Fitbit.value,
+                                          PPM.TrackedItem.uBiomeFecalSampleKit.value,
+                                          PPM.TrackedItem.BloodSampleKit.value,
+                                          PPM.TrackedItem.SalivaSampleKit.value],
             }
 
             return devices[study] if study else devices

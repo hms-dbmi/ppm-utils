@@ -4259,32 +4259,15 @@ class FHIR:
                             break
 
                         # The reference refers to a Questionnaire which is linked to a part of the consent form.
-                        if questionnaire_response.questionnaire.reference == "Questionnaire/individual-signature-part-1"\
-                                or questionnaire_response.questionnaire.reference.startswith("Questionnaire/neer-signature"):
-
-                            # This is a person consenting for themselves.
-                            consent_object["type"] = "INDIVIDUAL"
-                            consent_object["signer_signature"] = base64.b64decode(contract.signer[0].signature[0].blob).decode()
-                            consent_object["participant_name"] = contract.signer[0].signature[0].whoReference.display
-
-                            # These don't apply on an Individual consent.
-                            consent_object["participant_acknowledgement_reason"] = "N/A"
-                            consent_object["participant_acknowledgement"] = "N/A"
-                            consent_object["signer_name"] = "N/A"
-                            consent_object["signer_relationship"] = "N/A"
-                            consent_object["assent_signature"] = "N/A"
-                            consent_object["assent_date"] = "N/A"
-                            consent_object["explained_signature"] = "N/A"
-
-                        elif questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-1":
+                        if questionnaire_response.questionnaire.reference == "Questionnaire/guardian-signature-part-1":
 
                             # This is a person consenting for someone else.
                             consent_object["type"] = "GUARDIAN"
 
                             related_id = contract.signer[0].party.reference.split('/')[1]
                             related_person = [entry.resource for entry in incoming_bundle.entry if
-                                             entry.resource.resource_type == 'RelatedPerson'
-                                         and entry.resource.id == related_id][0]
+                                              entry.resource.resource_type == 'RelatedPerson'
+                                              and entry.resource.id == related_id][0]
 
                             consent_object["signer_name"] = related_person.name[0].text
                             consent_object["signer_relationship"] = related_person.relationship.text
@@ -4316,6 +4299,26 @@ class FHIR:
                                 if current_response.answer[0].valueBoolean:
                                     answer = [item for item in questionnaire.item if item.linkId == current_response.linkId][0]
                                     assent_exceptions.append(FHIR._exception_description(answer.text))
+
+                        # The default is a standard signature Questionnaire. Used for ASD-I, NEER, and Example studies
+                        else:
+
+                            # These all use the standard signature template
+                            signature_type = 'signature'
+
+                            # This is a person consenting for themselves.
+                            consent_object["type"] = "INDIVIDUAL"
+                            consent_object["signer_signature"] = base64.b64decode(contract.signer[0].signature[0].blob).decode()
+                            consent_object["participant_name"] = contract.signer[0].signature[0].whoReference.display
+
+                            # These don't apply on an Individual consent.
+                            consent_object["participant_acknowledgement_reason"] = "N/A"
+                            consent_object["participant_acknowledgement"] = "N/A"
+                            consent_object["signer_name"] = "N/A"
+                            consent_object["signer_relationship"] = "N/A"
+                            consent_object["assent_signature"] = "N/A"
+                            consent_object["assent_date"] = "N/A"
+                            consent_object["explained_signature"] = "N/A"
 
                         # Prepare to parse the questionnaire.
                         questionnaire_object = {
