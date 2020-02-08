@@ -420,6 +420,20 @@ class P2MD(PPM.Service):
         return url
 
     @classmethod
+    def get_qualtrics_survey_data_url(cls, study, ppm_id, survey):
+        """
+        Return the URL to manage survey data
+        """
+        # Return True if no errors
+        url = cls._build_url(path=f'/sources/api/qualtrics/{study}/{ppm_id}/{survey}/')
+
+        # Check for local environments
+        if 'local' in os.environ.get('DBMI_ENV'):
+            url = url.replace('://p2md', '://localhost')
+
+        return url
+
+    @classmethod
     def get_file_proxy_url(cls, ppm_id, uuid):
         """
         Queries P2MD for the download URL for the given file.
