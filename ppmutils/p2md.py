@@ -389,29 +389,29 @@ class P2MD(PPM.Service):
         return cls.get(request, f'/sources/api/qualtrics/surveys/{study}/')
 
     @classmethod
-    def check_qualtrics_survey(cls, request, study, ppm_id, survey):
+    def check_qualtrics_survey(cls, request, study, ppm_id, survey_id):
         """
         Checks the passed survey to see if it has been completed by the passed participant or not.
         :param request: The current request
         :param study: The study for which the survey is being used
         :param ppm_id: The participant
-        :param survey: The ID of the survey to check
+        :param survey_id: The ID of the survey to check
         :return: bool
         """
         # Make the request
-        response = cls.head(request, f'/sources/api/qualtrics/survey/{study}/{ppm_id}/{survey}/', raw=True)
+        response = cls.head(request, f'/sources/api/qualtrics/survey/{study}/{ppm_id}/{survey_id}/', raw=True)
         if response:
             return response.ok
 
         return False
 
     @classmethod
-    def get_qualtrics_survey_url(cls, study, ppm_id, survey):
+    def get_qualtrics_survey_url(cls, study, ppm_id, survey_id):
         """
         Return the URL to send the participant to for taking the survey
         """
         # Return True if no errors
-        url = cls._build_url(path=f'/sources/api/qualtrics/survey/{study}/{ppm_id}/{survey}/')
+        url = cls._build_url(path=f'/sources/api/qualtrics/survey/{study}/{ppm_id}/{survey_id}/')
 
         # Check for local environments
         if 'local' in os.environ.get('DBMI_ENV'):
@@ -420,18 +420,44 @@ class P2MD(PPM.Service):
         return url
 
     @classmethod
-    def get_qualtrics_survey_data_url(cls, study, ppm_id, survey):
+    def get_qualtrics_survey_data_url(cls, study, ppm_id, survey_id):
         """
         Return the URL to manage survey data
         """
         # Return True if no errors
-        url = cls._build_url(path=f'/sources/api/qualtrics/{study}/{ppm_id}/{survey}/')
+        url = cls._build_url(path=f'/sources/api/qualtrics/{study}/{ppm_id}/{survey_id}/')
 
         # Check for local environments
         if 'local' in os.environ.get('DBMI_ENV'):
             url = url.replace('://p2md', '://localhost')
 
         return url
+
+    @classmethod
+    def get_qualtrics_survey_data(cls, request, study, ppm_id, survey_id, response_id=None, older_than=None):
+        """
+        Make a call to P2MD to look for a survey response
+        """
+        # Return True if no errors
+        url = furl(cls.get_qualtrics_survey_data_url(study=study, ppm_id=ppm_id, survey_id=survey_id))
+
+        # Check for local environments (change back to 'p2md' since this is a container-to-container call)
+        if 'local' in os.environ.get('DBMI_ENV'):
+            url.host = 'p2md'
+
+        data = {}
+        if response_id:
+            data['response_id'] = response_id
+
+        if older_than:
+            data['older_than'] = older_than
+
+        # Make the request
+        response = cls.post(request, url.pathstr, data, raw=True)
+        if response:
+            return response.ok
+
+        return False
 
     @classmethod
     def get_file_proxy_url(cls, ppm_id, uuid):
