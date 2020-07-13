@@ -28,6 +28,7 @@ PPM_ENVIRONMENTS = {
             'neer': 'https://neer.ppm.aws.dbmi.hms.harvard.edu',
             'autism': 'https://autism.ppm.aws.dbmi.hms.harvard.edu',
             'example': 'https://example.ppm.aws.dbmi.hms.harvard.edu',
+            'rant': 'https://rant.ppm.aws.dbmi.hms.harvard.edu',
         }
     },
     'dev': {
@@ -41,19 +42,21 @@ PPM_ENVIRONMENTS = {
             'neer': 'https://neer.ppm.aws.dbmi-dev.hms.harvard.edu',
             'autism': 'https://autism.ppm.aws.dbmi-dev.hms.harvard.edu',
             'example': 'https://example.ppm.aws.dbmi-dev.hms.harvard.edu',
+            'rant': 'https://rant.ppm.aws.dbmi-dev.hms.harvard.edu',
         }
     },
     'local': {
-        'API_URL': 'http://ppm-api:8007',
-        'ADMIN_URL': 'http://localhost:8011',
-        'QUESTIONNAIRE_URL': 'http://localhost:8021/questionnaire',
-        'DATA_URL': 'http://p2md:8020',
-        'FHIR_URL': 'http://fhir:8080/baseDstu3',
-        'FILESERVICE_URL': 'http://dbmi-fileservice:8012',
+        'API_URL': 'https://api.ppm.aws.dbmi-loc.hms.harvard.edu',
+        'ADMIN_URL': 'https://p2m2a.aws.dbmi-loc.hms.harvard.edu',
+        'QUESTIONNAIRE_URL': 'https://questionnaire.ppm.aws.dbmi-loc.hms.harvard.edu/questionnaire',
+        'DATA_URL': 'https://p2m2.aws.dbmi-loc.hms.harvard.edu',
+        'FHIR_URL': 'https://fhir.ppm.aws.dbmi-loc.hms.harvard.edu',
+        'FILESERVICE_URL': 'https://fileservice.ppm.aws.dbmi-loc.hms.harvard.edu',
         'DASHBOARD_URL': {
-            'neer': 'http://localhost:8015',
-            'autism': 'http://localhost:8004',
-            'example': 'http://localhost:8014',
+            'neer': 'https://neer.ppm.aws.dbmi-loc.hms.harvard.edu',
+            'autism': 'https://autism.ppm.aws.dbmi-loc.hms.harvard.edu',
+            'example': 'https://example.ppm.aws.dbmi-loc.hms.harvard.edu',
+            'rant': 'https://rant.ppm.aws.dbmi-loc.hms.harvard.edu',
         }
     }
 }
