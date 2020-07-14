@@ -1419,7 +1419,8 @@ class FHIR:
         # Build a dictionary keyed by FHIR IDs containing enrollment status
         patient_enrollments = {entry.resource.subject.reference.split('/')[1]:
                                {'status': entry.resource.code.coding[0].code,
-                                'date_accepted': entry.resource.period.start.origval if entry.resource.period else ''}
+                                'date_accepted': entry.resource.period.start.origval if entry.resource.period else '',
+                                'date_updated': entry.resource.meta.lastUpdated.origval}
                                 for entry in bundle.entry if entry.resource.resource_type == 'Flag'}
 
         # Build a dictionary keyed by FHIR IDs containing flattened study objects
@@ -1451,8 +1452,11 @@ class FHIR:
                 if studies and patient_study.get('study').lower() not in studies:
                     continue
 
-                # Format date registered
+                # Pull out dates, both formatted and raw
                 date_registered = FHIR._format_date(patient_study.get('date_registered'), '%m/%d/%Y')
+                datetime_registered = patient_study.get('date_registered')
+                date_enrollment_updated = FHIR._format_date(patient_enrollment.get('date_updated'), '%m/%d/%Y')
+                datetime_enrollment_updated = patient_enrollment.get('date_updated')
 
                 # Build the dict
                 patient_dict = {
@@ -1464,11 +1468,15 @@ class FHIR:
                     'study': patient_study.get('study'),
                     'project': patient_study.get('study'),
                     'date_registered': date_registered,
+                    'datetime_registered': datetime_registered,
+                    'date_enrollment_updated': date_enrollment_updated,
+                    'datetime_enrollment_updated': datetime_enrollment_updated,
                 }
 
                 # Check acceptance
                 if patient_enrollment.get('date_accepted'):
                     patient_dict['date_accepted'] = FHIR._format_date(patient_enrollment['date_accepted'], '%m/%d/%Y')
+                    patient_dict['datetime_accepted'] = patient_enrollment['date_accepted']
 
                 # Wrap the patient resource in a fake bundle and flatten them
                 flattened_patient = FHIR.flatten_patient({'entry': [{'resource': patient.as_json()}]})
@@ -3558,12 +3566,15 @@ class FHIR:
             # Check for accepted and a start date
             participant['project'] = participant['study'] = studies[0]['study']
             participant['date_registered'] = FHIR._format_date(studies[0]['start'], '%m/%d/%Y')
+            participant['datetime_registered'] = studies[0]['start']
 
             # Get the enrollment properties
             enrollment = FHIR.flatten_enrollment(bundle)
 
             # Set status and dates
             participant['enrollment'] = enrollment['enrollment']
+            participant['date_enrollment_updated'] = FHIR._format_date(enrollment['updated'], '%m/%d/%Y')
+            participant['datetime_enrollment_updated'] = enrollment['updated']
             if enrollment.get('start'):
 
                 # Convert time zone to assumed ET
@@ -4262,6 +4273,7 @@ class FHIR:
         record['status'] = FHIR._get_or(resource, ['status'])
         record['start'] = FHIR._get_or(resource, ['period', 'start'])
         record['end'] = FHIR._get_or(resource, ['period', 'end'])
+        record['updated'] = FHIR._get_or(resource, ['meta', 'lastUpdated'])
 
         # Link back to participant
         record['ppm_id'] = FHIR._get_referenced_id(resource, 'Patient')
