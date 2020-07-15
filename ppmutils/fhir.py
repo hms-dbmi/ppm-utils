@@ -4655,6 +4655,7 @@ class FHIR:
 
             data = {
                 'resourceType': 'Flag',
+                'meta': {'lastUpdated': datetime.now().isoformat()},
                 'status': 'active' if status == 'accepted' else 'inactive',
                 'category': {
                     'coding': [{
