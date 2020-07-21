@@ -35,7 +35,7 @@ class P2MD(PPM.Service):
         :return: A URL, if any
         """
         if 'local' in environment:
-            return 'http://p2md:8020'
+            return 'https://data.ppm.aws.dbmi-loc.hms.harvard.edu'
         elif 'dev' in environment:
             return 'https://p2m2.aws.dbmi-dev.hms.harvard.edu'
         elif 'prod' in environment:
@@ -68,10 +68,6 @@ class P2MD(PPM.Service):
         # Add the operation name
         url.query.params.add('task', 'authorize_{}'.format(provider))
 
-        # Patch for local
-        if os.environ.get('DBMI_ENV') == 'local':
-            url.set(host='localhost')
-
         return url.url
 
     @classmethod
@@ -96,10 +92,6 @@ class P2MD(PPM.Service):
 
         # Add the operation name
         url.query.params.add('task', 'authorize_smart_{}'.format(provider))
-
-        # Patch for local
-        if os.environ.get('DBMI_ENV') == 'local':
-            url.set(host='localhost')
 
         return url.url
 
@@ -360,10 +352,6 @@ class P2MD(PPM.Service):
         # Return True if no errors
         url = cls._build_url(path=f'/sources/api/consent/{study}/{ppm_id}/')
 
-        # Check for local environments
-        if 'local' in os.environ.get('DBMI_ENV'):
-            url = url.replace('://p2md', '://localhost')
-
         return url
 
     @classmethod
@@ -413,10 +401,6 @@ class P2MD(PPM.Service):
         # Return True if no errors
         url = cls._build_url(path=f'/sources/api/qualtrics/survey/{study}/{ppm_id}/{survey_id}/')
 
-        # Check for local environments
-        if 'local' in os.environ.get('DBMI_ENV'):
-            url = url.replace('://p2md', '://localhost')
-
         return url
 
     @classmethod
@@ -426,10 +410,6 @@ class P2MD(PPM.Service):
         """
         # Return True if no errors
         url = cls._build_url(path=f'/sources/api/qualtrics/{study}/{ppm_id}/{survey_id}/')
-
-        # Check for local environments
-        if 'local' in os.environ.get('DBMI_ENV'):
-            url = url.replace('://p2md', '://localhost')
 
         return url
 
@@ -465,10 +445,6 @@ class P2MD(PPM.Service):
         Queries P2MD for the download URL for the given file.
         """
         url = cls._build_url(path=f'/sources/api/file/{ppm_id}/{uuid}/')
-
-        # Check for local environments
-        if 'local' in os.environ.get('DBMI_ENV'):
-            url = url.replace('://p2md', '://localhost')
 
         return url
 
@@ -561,10 +537,6 @@ class P2MD(PPM.Service):
         # Add the return URL
         if filename:
             url.query.params.add('filename', filename)
-
-        # Patch for local
-        if os.environ.get('DBMI_ENV') == 'local':
-            url.set(host='localhost')
 
         return url.url
 
@@ -696,10 +668,6 @@ class P2MD(PPM.Service):
         :return: The user's entire dataset
         """
         url = furl(cls._build_url(f'/sources/api/ppm/{provider.value}/{ppm_id}/export'))
-
-        # Patch for local
-        if os.environ.get('DBMI_ENV') == 'local':
-            url.set(host='localhost')
 
         return url.url
 
