@@ -448,6 +448,75 @@ class PPM:
                     },
                     {"step": "picnichealth", "blocking": False, "required": True, "enabled": True,},
                 ]
+            elif _study is PPM.Study.RANT:
+                steps = [
+                    {
+                        'step': 'email-confirm',
+                        'blocking': True,
+                        'required': True,
+                    },
+                    {
+                        'step': 'registration',
+                        'blocking': True,
+                        'required': True,
+                        'post_enrollment': PPM.Enrollment.Registered.value
+                    },
+                    {
+                        'step': 'consent',
+                        'blocking': True,
+                        'required': True,
+                        'pre_enrollment': PPM.Enrollment.Registered.value,
+                        'post_enrollment': PPM.Enrollment.Consented.value
+                    },
+                    {
+                        'step': 'questionnaire',
+                        'blocking': True,
+                        'required': True,
+                        'pre_enrollment': PPM.Enrollment.Consented.value,
+                        'post_enrollment': PPM.Enrollment.Proposed.value
+                    },
+                    {
+                        'step': 'approval',
+                        'blocking': True,
+                        'required': True
+                    },
+                    {
+                        'step': 'poc',
+                        'blocking': True,
+                        'required': True
+                    },
+                    {
+                        'step': 'research-studies',
+                        'blocking': False,
+                        'required': False
+                    },
+                    {
+                        'step': 'twitter',
+                        'blocking': False,
+                        'required': False
+                    },
+                    {
+                        'step': 'fitbit',
+                        'blocking': False,
+                        'required': False
+                    },
+                    {
+                        'step': 'facebook',
+                        'blocking': False,
+                        'required': False
+                    },
+                    {
+                        'step': 'ehr',
+                        'blocking': False,
+                        'required': False,
+                        'multiple': True
+                    },
+                    {
+                        'step': 'picnichealth',
+                        'blocking': False,
+                        'required': True
+                    },
+                ]
 
             return steps
 
@@ -698,6 +767,9 @@ class PPM:
             elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
                 return PPM.Questionnaire.EXAMPLEConsent.value
 
+            elif PPM.Study.get(study) is PPM.Study.RANT:
+                return PPM.Questionnaire.RANTConsent.value
+
         @staticmethod
         def questionnaire_for_study(study):
             """
@@ -717,6 +789,9 @@ class PPM:
 
             elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
                 return PPM.Questionnaire.ExampleQuestionnaire.value
+
+            elif PPM.Study.get(study) is PPM.Study.RANT:
+                return PPM.Questionnaire.RANTQuestionnaire.value
 
         @staticmethod
         def questionnaire_for_consent(composition):
@@ -765,6 +840,16 @@ class PPM:
                     "question-5": "702475000",
                 }
 
+            elif questionnaire_id == PPM.Questionnaire.RANTConsent.value:
+                return {
+                    'question-1': '82078001',
+                    'question-2': '165334004',
+                    'question-3': '258435002',
+                    'question-4': '284036006',
+                    'question-5': '702475000',
+                }
+
+
             elif questionnaire_id == PPM.Questionnaire.ASDConsentIndividualSignatureQuestionnaire.value:
                 return {
                     "question-1": "225098009",
@@ -808,6 +893,7 @@ class PPM:
         SMART = "smart"
         File = "file"
         Qualtrics = "qualtrics"
+        ImmunoSEQ = 'immunoseq'
 
         @classmethod
         def enum(cls, enum):
@@ -837,6 +923,7 @@ class PPM:
                 (PPM.Provider.SMART.value, "SMART on FHIR"),
                 (PPM.Provider.File.value, "PPM Files"),
                 (PPM.Provider.Qualtrics.value, "Qualtrics Surveys"),
+                (PPM.Provider.ImmunoSEQ.value, 'immunoSEQ'),
             )
 
         @classmethod
