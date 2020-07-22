@@ -136,6 +136,7 @@ class PPM:
         NEER = 'neer'
         ASD = 'autism'
         EXAMPLE = 'example'
+        RANT = 'rant'
 
         @staticmethod
         def equals(this, that):
@@ -249,6 +250,7 @@ class PPM:
                 (PPM.Study.NEER.value, 'NEER'),
                 (PPM.Study.ASD.value, 'Autism'),
                 (PPM.Study.EXAMPLE.value, 'Example'),
+                (PPM.Study.RANT.value, 'RANT'),
             )
 
     # Alias Project as Study until we migrate all usages to Study
@@ -398,13 +400,15 @@ class PPM:
     class Questionnaire(PPMEnum):
 
         # Survey/Questionnaires
-        ExampleQuestionnaire = 'ppm-neer-registration-questionnaire'  # TODO: Update this with an actual questionnaire
+        ExampleQuestionnaire = 'ppm-example-registration-questionnaire'  # TODO: Update this with an actual questionnaire
         NEERQuestionnaire = 'ppm-neer-registration-questionnaire'
         ASDQuestionnaire = 'ppm-asd-questionnaire'
+        RANTQuestionnaire = 'ppm-rant-questionnaire'
 
         # Consents
-        EXAMPLEConsent = 'neer-signature'  # TODO: Update this with an actual consent
+        EXAMPLEConsent = 'example-signature'  # TODO: Update this with an actual consent
         NEERConsent = 'neer-signature-v2'
+        RANTConsent = 'rant-signature'
         ASDGuardianConsentQuestionnaire = 'ppm-asd-consent-guardian-quiz'
         ASDIndividualConsentQuestionnaire = 'ppm-asd-consent-individual-quiz'
         ASDConsentIndividualSignatureQuestionnaire = 'individual-signature-part-1'
@@ -433,6 +437,9 @@ class PPM:
             elif PPM.Study.get(study) is PPM.Study.NEER:
                 return PPM.Questionnaire.NEERConsent.value
 
+            elif PPM.Study.get(study) is PPM.Study.RANT:
+                return PPM.Questionnaire.RANTConsent.value
+
             elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
                 return PPM.Questionnaire.EXAMPLEConsent.value
 
@@ -449,6 +456,9 @@ class PPM:
 
             elif PPM.Study.get(study) is PPM.Study.NEER:
                 return PPM.Questionnaire.NEERQuestionnaire.value
+
+            elif PPM.Study.get(study) is PPM.Study.RANT:
+                return PPM.Questionnaire.RANTQuestionnaire.value
 
             elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
                 return PPM.Questionnaire.ExampleQuestionnaire.value
@@ -476,6 +486,14 @@ class PPM:
             :return: dict
             """
             if questionnaire_id == PPM.Questionnaire.NEERConsent.value:
+                return {
+                    'question-1': '82078001',
+                    'question-2': '258435002',
+                    'question-3': '284036006',
+                    'question-4': '702475000',
+                }
+
+            elif questionnaire_id == PPM.Questionnaire.RANTConsent.value:
                 return {
                     'question-1': '82078001',
                     'question-2': '258435002',
@@ -618,6 +636,10 @@ class PPM:
             """
             devices = {
                 PPM.Study.NEER.value: [PPM.TrackedItem.Fitbit.value,
+                                       PPM.TrackedItem.uBiomeFecalSampleKit.value,
+                                       PPM.TrackedItem.BloodSampleKit.value],
+
+                PPM.Study.RANT.value: [PPM.TrackedItem.Fitbit.value,
                                        PPM.TrackedItem.uBiomeFecalSampleKit.value,
                                        PPM.TrackedItem.BloodSampleKit.value],
 
