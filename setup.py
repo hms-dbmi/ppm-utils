@@ -44,6 +44,10 @@ setup(
     license='Creative Commons Attribution-Noncommercial-Share Alike license',
     install_requires=read('requirements.txt').splitlines(),
     tests_require=read('requirements-test.txt').splitlines(),
+    extras_require={
+        "test": read("requirements-test.txt").splitlines(),
+        "dev": read("requirements-dev.txt").splitlines()
+    },
     include_package_data=True,
     classifiers=[
         'Environment :: Web Environment',
