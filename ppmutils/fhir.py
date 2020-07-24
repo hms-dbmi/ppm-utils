@@ -3637,6 +3637,9 @@ class FHIR:
             if PPM.Study.enum(participant['study']) is PPM.Study.NEER:
                 participant[PPM.Study.NEER.value] = FHIR._flatten_neer_participant(bundle=bundle, ppm_id=ppm_id)
 
+            elif PPM.Study.enum(participant['study']) is PPM.Study.RANT:
+                participant[PPM.Study.RANT.value] = FHIR._flatten_rant_participant(bundle=bundle, ppm_id=ppm_id)
+
             elif PPM.Study.enum(participant['study']) is PPM.Study.ASD:
                 participant[PPM.Study.ASD.value] = FHIR._flatten_asd_participant(bundle=bundle, ppm_id=ppm_id)
 
@@ -3754,6 +3757,91 @@ class FHIR:
         return values
 
     @staticmethod
+    def _flatten_rant_participant(bundle, ppm_id):
+        """
+        Continues flattening a participant by adding any study specific data to their record.
+        This will include answers in questionnaires, etc.
+        :param bundle: The participant's entire FHIR record
+        :param ppm_id: The PPM ID of the participant
+        :return: dict
+        """
+        logger.debug(f'PPM/{ppm_id}/FHIR: Flattening RANT participant')
+
+        # Put values in a dictionary
+        values = {}
+
+        # Get questionnaire answers
+        questionnaire_response = next((q for q in FHIR._find_resources(bundle, 'QuestionnaireResponse') if
+                                       q['questionnaire']['reference'] ==
+                                       f'Questionnaire/{PPM.Questionnaire.RANTQuestionnaire.value}'), None)
+        if questionnaire_response:
+            logger.debug(f'PPM/{ppm_id}/FHIR: Flattening QuestionnaireResponse/{questionnaire_response["id"]}')
+
+            # Map linkIds to keys
+            text_answers = {
+                'question-12': 'diagnosis',
+                'question-24': 'pcp',
+                'question-25': 'oncologist',
+            }
+
+            date_answers = {
+                'question-5': 'birthdate',
+                'question-14': 'date_diagnosis',
+            }
+
+            # Iterate items
+            for link_id, key in text_answers.items():
+                try:
+                    # Get the answer
+                    answer = next(i['answer'][0]['valueString'] for i in
+                                  questionnaire_response['item'] if i['linkId'] == link_id)
+
+                    # Assign it
+                    values[key] = answer
+                except Exception as e:
+                    logger.exception(f'PPM/{ppm_id}/Questionnaire/{link_id}: {e}', exc_info=True, extra={
+                        'ppm_id': ppm_id, 'link_id': link_id, 'key': key,
+                        'questionnaire_response': f'QuestionnaireResponse/{questionnaire_response["id"]}',
+                        'item': next((i for i in questionnaire_response['item'] if i['linkId'] == link_id), ''),
+                    })
+
+                    # Assign default value
+                    values[key] = '---'
+
+            # Iterate date items and attempt to parse dates, otherwise treat as text
+            for link_id, key in date_answers.items():
+
+                try:
+                    # Get the answer
+                    answer = next(i['answer'][0]['valueString'] for i in
+                                  questionnaire_response['item'] if i['linkId'] == link_id)
+
+                    try:
+                        # Attempt to parse it
+                        answer_date = parse(answer)
+
+                        # Assign it
+                        values[key] = answer_date.isoformat()
+
+                    except ValueError:
+                        logger.debug(f'PPM/{ppm_id}/Questionnaire/{link_id}: Invalid date: {answer}')
+
+                        # Assign the raw value
+                        values[key] = answer
+
+                except Exception as e:
+                    logger.exception(f'PPM/{ppm_id}/Questionnaire/{link_id}: {e}', exc_info=True, extra={
+                        'ppm_id': ppm_id, 'link_id': link_id, 'key': key,
+                        'questionnaire_response': f'QuestionnaireResponse/{questionnaire_response["id"]}',
+                        'item': next((i for i in questionnaire_response['item'] if i['linkId'] == link_id), ''),
+                    })
+
+                    # Assign default value
+                    values[key] = '---'
+
+        return values
+
+    @staticmethod
     def _flatten_example_participant(bundle, ppm_id):
         """
         Continues flattening a participant by adding any study specific data to their record.
@@ -3770,7 +3858,7 @@ class FHIR:
         # Get questionnaire answers
         questionnaire_response = next((q for q in FHIR._find_resources(bundle, 'QuestionnaireResponse') if
                                        q['questionnaire']['reference'] ==
-                                       f'Questionnaire/{PPM.Questionnaire.NEERQuestionnaire.value}'), None)
+                                       f'Questionnaire/{PPM.Questionnaire.EXAMPLEQuestionnaire.value}'), None)
         if questionnaire_response:
             logger.debug(f'PPM/{ppm_id}/FHIR: Flattening QuestionnaireResponse/{questionnaire_response["id"]}')
 
