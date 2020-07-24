@@ -49,21 +49,6 @@ class PPMEnum(Enum):
         return cls.enum(value)
 
     @classmethod
-    def equals(cls, this, that):
-        """
-        Compares a reference to an enum and returns whether it is the second
-        passed enum or not
-        :param this: The study object to be compared
-        :type this: object
-        :param that: What we are comparing against
-        :type that: object
-        :return: Whether they are one and the same
-        :rtype: boolean
-        """
-        # Compare
-        return cls.get(this) is cls.get(that)
-
-    @classmethod
     def title(cls, enum):
         """
         Returns the title to be used for the given enum.
@@ -93,6 +78,13 @@ class PPM:
     This class serves mostly to track the PPM project properties across
     studies and consolidate functionality common amongst all services.
     """
+    # Set values for determining environments
+    class Environment(PPMEnum):
+        Local = 'local'
+        Dev = 'dev'
+        Staging = 'staging'
+        Prod = 'prod'
+
     @staticmethod
     def fhir_url():
         if hasattr(settings, 'FHIR_URL'):
@@ -132,25 +124,11 @@ class PPM:
 
         return False
 
-    class Study(Enum):
+    class Study(PPMEnum):
         NEER = 'neer'
         ASD = 'autism'
         EXAMPLE = 'example'
-
-        @staticmethod
-        def equals(this, that):
-            """
-            Compares a reference to a study and returns whether it is the second
-            passed PPM.Study enum
-            :param this: The study object to be compared
-            :type this: object
-            :param that: What we are comparing against
-            :type that: object
-            :return: Whether they are one and the same
-            :rtype: boolean
-            """
-            # Compare
-            return PPM.Study.get(this) is PPM.Study.get(that)
+        RANT = 'rant'
 
         @staticmethod
         def fhir_id(study):
@@ -161,14 +139,14 @@ class PPM:
             """
             return 'ppm-{}'.format(PPM.Study.get(study).value)
 
-        @staticmethod
-        def identifiers():
+        @classmethod
+        def identifiers(cls):
             """
             Return a list of all PPM study identifiers to be used in FHIR resources
             :return: A list of PPM study identifiers
             :rtype: list
             """
-            return [PPM.Study.fhir_id(study) for study in PPM.Study]
+            return [PPM.Study.fhir_id(study) for study in cls]
 
         @staticmethod
         def testing(study):
@@ -249,21 +227,358 @@ class PPM:
                 (PPM.Study.NEER.value, 'NEER'),
                 (PPM.Study.ASD.value, 'Autism'),
                 (PPM.Study.EXAMPLE.value, 'Example'),
+                (PPM.Study.RANT.value, 'RANT'),
             )
+
+        @classmethod
+        def dashboard(cls, study, environment):
+            """
+            This method returns the dashboard step description for the given study
+            :param study: The study for which the dashboard will be generated
+            :param environment: The environment in which PPM is running
+            :return: dict
+            """
+            # Get the enum
+            _study = PPM.Study.get(study)
+
+            steps = None
+            if _study is PPM.Study.ASD:
+                steps = [
+                    {
+                        'step': 'email-confirm',
+                        'blocking': True,
+                        'required': True,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'registration',
+                        'blocking': True,
+                        'required': True,
+                        'post_enrollment': PPM.Enrollment.Registered.value,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'consent',
+                        'blocking': True,
+                        'required': True,
+                        'pre_enrollment': PPM.Enrollment.Registered.value,
+                        'post_enrollment': PPM.Enrollment.Consented.value,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'poc',
+                        'blocking': True,
+                        'required': True,
+                        'pre_enrollment': PPM.Enrollment.Consented.value,
+                        'post_enrollment': PPM.Enrollment.Proposed.value,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'approval',
+                        'blocking': True,
+                        'required': True,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'questionnaire',
+                        'blocking': True,
+                        'required': True,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'twitter',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'fitbit',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'facebook',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': PPM.Environment.get(environment) is not PPM.Environment.Prod
+                    },
+                    {
+                        'step': 'ehr',
+                        'blocking': False,
+                        'required': False,
+                        'multiple': True,
+                        'enabled': PPM.Environment.get(environment) is not PPM.Environment.Prod
+                    },
+                ]
+            elif _study is PPM.Study.EXAMPLE:
+                steps = [
+                    {
+                        'step': 'email-confirm',
+                        'blocking': True,
+                        'required': True,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'registration',
+                        'blocking': True,
+                        'required': True,
+                        'post_enrollment': PPM.Enrollment.Registered.value,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'consent',
+                        'blocking': True,
+                        'required': True,
+                        'pre_enrollment': PPM.Enrollment.Registered.value,
+                        'post_enrollment': PPM.Enrollment.Consented.value
+                    },
+                    {
+                        'step': 'questionnaire',
+                        'blocking': True,
+                        'required': True,
+                        'pre_enrollment': PPM.Enrollment.Consented.value,
+                        'post_enrollment': PPM.Enrollment.Proposed.value,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'approval',
+                        'blocking': True,
+                        'required': True,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'poc',
+                        'blocking': True,
+                        'required': True,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'research-studies',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'twitter',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'fitbit',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'facebook',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': PPM.Environment.get(environment) is not PPM.Environment.Prod
+                    },
+                    {
+                        'step': 'ehr',
+                        'blocking': False,
+                        'required': False,
+                        'multiple': True,
+                        'enabled': PPM.Environment.get(environment) is not PPM.Environment.Prod
+                    },
+                    {
+                        'step': 'picnichealth',
+                        'blocking': False,
+                        'required': True,
+                        'enabled': True
+                    },
+                ]
+            elif _study is PPM.Study.NEER:
+                steps = [
+                    {
+                        'step': 'email-confirm',
+                        'blocking': True,
+                        'required': True,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'registration',
+                        'blocking': True,
+                        'required': True,
+                        'post_enrollment': PPM.Enrollment.Registered.value,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'consent',
+                        'blocking': True,
+                        'required': True,
+                        'pre_enrollment': PPM.Enrollment.Registered.value,
+                        'post_enrollment': PPM.Enrollment.Consented.value,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'questionnaire',
+                        'blocking': True,
+                        'required': True,
+                        'pre_enrollment': PPM.Enrollment.Consented.value,
+                        'post_enrollment': PPM.Enrollment.Proposed.value,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'approval',
+                        'blocking': True,
+                        'required': True,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'poc',
+                        'blocking': True,
+                        'required': True,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'research-studies',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'twitter',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'fitbit',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'facebook',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': PPM.Environment.get(environment) is not PPM.Environment.Prod
+                    },
+                    {
+                        'step': 'ehr',
+                        'blocking': False,
+                        'required': False,
+                        'multiple': True,
+                        'enabled': PPM.Environment.get(environment) is not PPM.Environment.Prod
+                    },
+                    {
+                        'step': 'picnichealth',
+                        'blocking': False,
+                        'required': True,
+                        'enabled': True
+                    },
+                ]
+            elif _study is PPM.Study.RANT:
+                steps = [
+                    {
+                        'step': 'email-confirm',
+                        'blocking': True,
+                        'required': True,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'registration',
+                        'blocking': True,
+                        'required': True,
+                        'post_enrollment': PPM.Enrollment.Registered.value,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'consent',
+                        'blocking': True,
+                        'required': True,
+                        'pre_enrollment': PPM.Enrollment.Registered.value,
+                        'post_enrollment': PPM.Enrollment.Consented.value,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'questionnaire',
+                        'blocking': True,
+                        'required': True,
+                        'pre_enrollment': PPM.Enrollment.Consented.value,
+                        'post_enrollment': PPM.Enrollment.Proposed.value,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'approval',
+                        'blocking': True,
+                        'required': True,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'poc',
+                        'blocking': True,
+                        'required': True,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'research-studies',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'twitter',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'fitbit',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': True
+                    },
+                    {
+                        'step': 'facebook',
+                        'blocking': False,
+                        'required': False,
+                        'enabled': PPM.Environment.get(environment) is not PPM.Environment.Prod
+                    },
+                    {
+                        'step': 'ehr',
+                        'blocking': False,
+                        'required': False,
+                        'multiple': True,
+                        'enabled': PPM.Environment.get(environment) is not PPM.Environment.Prod
+                    },
+                    {
+                        'step': 'picnichealth',
+                        'blocking': False,
+                        'required': True,
+                        'enabled': True
+                    },
+                ]
+
+            return steps
+
+        @staticmethod
+        def is_dashboard_step_enabled(step, study, environment):
+            """
+            Returns whether the given step for the current study and environment should be enabled or not.
+            :param step: The code for the step to check
+            :param study: The current PPM study
+            :param environment: The current PPM environment
+            :return: bool
+            """
+            step_dict = next(s for s in PPM.Study.dashboard(study, environment) if s['step'] == step.lower())
+
+            # Check if enabled
+            if step_dict.get('enabled'):
+                return True
+
+            return False
 
     # Alias Project as Study until we migrate all usages to Study
     Project = Study
 
-    # Set values for determining environments
-    class Environment(PPMEnum):
-        Local = 'local'
-        Dev = 'dev'
-        Staging = 'staging'
-        Prod = 'prod'
-
     # Set the appropriate participant statuses
     @total_ordering
-    class Enrollment(Enum):
+    class Enrollment(PPMEnum):
         Registered = 'registered'
         Consented = 'consented'
         Proposed = 'proposed'
@@ -359,7 +674,7 @@ class PPM:
 
             return None
 
-    class Communication(Enum):
+    class Communication(PPMEnum):
         ParticipantProposed = 'participant-proposed'
         ParticipantPending = 'participant-pending'
         ParticipantIneligible = 'participant-ineligible'
@@ -398,19 +713,49 @@ class PPM:
     class Questionnaire(PPMEnum):
 
         # Survey/Questionnaires
-        ExampleQuestionnaire = 'ppm-neer-registration-questionnaire'  # TODO: Update this with an actual questionnaire
+        EXAMPLEQuestionnaire = 'ppm-example-registration-questionnaire'  # TODO: Update this with an actual questionnaire
         NEERQuestionnaire = 'ppm-neer-registration-questionnaire'
         ASDQuestionnaire = 'ppm-asd-questionnaire'
+        RANTQuestionnaire = 'ppm-rant-registration-questionnaire'
 
         # Consents
-        EXAMPLEConsent = 'neer-signature'  # TODO: Update this with an actual consent
+        EXAMPLEConsent = 'example-signature'  # TODO: Update this with an actual consent
         NEERConsent = 'neer-signature-v2'
+        RANTConsent = 'rant-signature'
         ASDGuardianConsentQuestionnaire = 'ppm-asd-consent-guardian-quiz'
         ASDIndividualConsentQuestionnaire = 'ppm-asd-consent-individual-quiz'
         ASDConsentIndividualSignatureQuestionnaire = 'individual-signature-part-1'
         ASDConsentGuardianSignature1Questionnaire = 'guardian-signature-part-1'
         ASDConsentGuardianSignature2Questionnaire = 'guardian-signature-part-2'
         ASDConsentGuardianSignature3Questionnaire = 'guardian-signature-part-3'
+
+        @staticmethod
+        def questionnaire_url_for_study(study):
+            """
+            Returns the URL of the Questionnaire to be taken by participants during registration.
+            :param study: The PPM study
+            :return: str
+            """
+            url = furl(os.environ['PPM_QUESTIONNAIRE_URL'])
+
+            # Add components
+            url.path.set('fhirquestionnaire/questionnaire/p/{}/'.format(study.value))
+
+            return url.url
+
+        @staticmethod
+        def consent_url_for_study(study):
+            """
+            Returns the URL of the consent to be taken by participants during registration.
+            :param study: The PPM study
+            :return: str
+            """
+            url = furl(os.environ['PPM_QUESTIONNAIRE_URL'])
+
+            # Add components
+            url.path.set('fhirquestionnaire/consent/p/{}/'.format(study.value))
+
+            return url.url
 
         @staticmethod
         def consent_questionnaire_for_study(study, **kwargs):
@@ -433,6 +778,9 @@ class PPM:
             elif PPM.Study.get(study) is PPM.Study.NEER:
                 return PPM.Questionnaire.NEERConsent.value
 
+            elif PPM.Study.get(study) is PPM.Study.RANT:
+                return PPM.Questionnaire.RANTConsent.value
+
             elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
                 return PPM.Questionnaire.EXAMPLEConsent.value
 
@@ -449,6 +797,9 @@ class PPM:
 
             elif PPM.Study.get(study) is PPM.Study.NEER:
                 return PPM.Questionnaire.NEERQuestionnaire.value
+
+            elif PPM.Study.get(study) is PPM.Study.RANT:
+                return PPM.Questionnaire.RANTQuestionnaire.value
 
             elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
                 return PPM.Questionnaire.ExampleQuestionnaire.value
@@ -476,6 +827,14 @@ class PPM:
             :return: dict
             """
             if questionnaire_id == PPM.Questionnaire.NEERConsent.value:
+                return {
+                    'question-1': '82078001',
+                    'question-2': '258435002',
+                    'question-3': '284036006',
+                    'question-4': '702475000',
+                }
+
+            elif questionnaire_id == PPM.Questionnaire.RANTConsent.value:
                 return {
                     'question-1': '82078001',
                     'question-2': '258435002',
@@ -618,6 +977,10 @@ class PPM:
             """
             devices = {
                 PPM.Study.NEER.value: [PPM.TrackedItem.Fitbit.value,
+                                       PPM.TrackedItem.uBiomeFecalSampleKit.value,
+                                       PPM.TrackedItem.BloodSampleKit.value],
+
+                PPM.Study.RANT.value: [PPM.TrackedItem.Fitbit.value,
                                        PPM.TrackedItem.uBiomeFecalSampleKit.value,
                                        PPM.TrackedItem.BloodSampleKit.value],
 

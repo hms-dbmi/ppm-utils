@@ -1419,7 +1419,8 @@ class FHIR:
         # Build a dictionary keyed by FHIR IDs containing enrollment status
         patient_enrollments = {entry.resource.subject.reference.split('/')[1]:
                                {'status': entry.resource.code.coding[0].code,
-                                'date_accepted': entry.resource.period.start.origval if entry.resource.period else ''}
+                                'date_accepted': entry.resource.period.start.origval if entry.resource.period else '',
+                                'date_updated': entry.resource.meta.lastUpdated.origval}
                                 for entry in bundle.entry if entry.resource.resource_type == 'Flag'}
 
         # Build a dictionary keyed by FHIR IDs containing flattened study objects
@@ -1451,8 +1452,11 @@ class FHIR:
                 if studies and patient_study.get('study').lower() not in studies:
                     continue
 
-                # Format date registered
+                # Pull out dates, both formatted and raw
                 date_registered = FHIR._format_date(patient_study.get('date_registered'), '%m/%d/%Y')
+                datetime_registered = patient_study.get('date_registered')
+                date_enrollment_updated = FHIR._format_date(patient_enrollment.get('date_updated'), '%m/%d/%Y')
+                datetime_enrollment_updated = patient_enrollment.get('date_updated')
 
                 # Build the dict
                 patient_dict = {
@@ -1464,11 +1468,15 @@ class FHIR:
                     'study': patient_study.get('study'),
                     'project': patient_study.get('study'),
                     'date_registered': date_registered,
+                    'datetime_registered': datetime_registered,
+                    'date_enrollment_updated': date_enrollment_updated,
+                    'datetime_enrollment_updated': datetime_enrollment_updated,
                 }
 
                 # Check acceptance
                 if patient_enrollment.get('date_accepted'):
                     patient_dict['date_accepted'] = FHIR._format_date(patient_enrollment['date_accepted'], '%m/%d/%Y')
+                    patient_dict['datetime_accepted'] = patient_enrollment['date_accepted']
 
                 # Wrap the patient resource in a fake bundle and flatten them
                 flattened_patient = FHIR.flatten_patient({'entry': [{'resource': patient.as_json()}]})
@@ -3558,12 +3566,15 @@ class FHIR:
             # Check for accepted and a start date
             participant['project'] = participant['study'] = studies[0]['study']
             participant['date_registered'] = FHIR._format_date(studies[0]['start'], '%m/%d/%Y')
+            participant['datetime_registered'] = studies[0]['start']
 
             # Get the enrollment properties
             enrollment = FHIR.flatten_enrollment(bundle)
 
             # Set status and dates
             participant['enrollment'] = enrollment['enrollment']
+            participant['date_enrollment_updated'] = FHIR._format_date(enrollment['updated'], '%m/%d/%Y')
+            participant['datetime_enrollment_updated'] = enrollment['updated']
             if enrollment.get('start'):
 
                 # Convert time zone to assumed ET
@@ -3625,6 +3636,9 @@ class FHIR:
             # Get study specific resources
             if PPM.Study.enum(participant['study']) is PPM.Study.NEER:
                 participant[PPM.Study.NEER.value] = FHIR._flatten_neer_participant(bundle=bundle, ppm_id=ppm_id)
+
+            elif PPM.Study.enum(participant['study']) is PPM.Study.RANT:
+                participant[PPM.Study.RANT.value] = FHIR._flatten_rant_participant(bundle=bundle, ppm_id=ppm_id)
 
             elif PPM.Study.enum(participant['study']) is PPM.Study.ASD:
                 participant[PPM.Study.ASD.value] = FHIR._flatten_asd_participant(bundle=bundle, ppm_id=ppm_id)
@@ -3743,6 +3757,91 @@ class FHIR:
         return values
 
     @staticmethod
+    def _flatten_rant_participant(bundle, ppm_id):
+        """
+        Continues flattening a participant by adding any study specific data to their record.
+        This will include answers in questionnaires, etc.
+        :param bundle: The participant's entire FHIR record
+        :param ppm_id: The PPM ID of the participant
+        :return: dict
+        """
+        logger.debug(f'PPM/{ppm_id}/FHIR: Flattening RANT participant')
+
+        # Put values in a dictionary
+        values = {}
+
+        # Get questionnaire answers
+        questionnaire_response = next((q for q in FHIR._find_resources(bundle, 'QuestionnaireResponse') if
+                                       q['questionnaire']['reference'] ==
+                                       f'Questionnaire/{PPM.Questionnaire.RANTQuestionnaire.value}'), None)
+        if questionnaire_response:
+            logger.debug(f'PPM/{ppm_id}/FHIR: Flattening QuestionnaireResponse/{questionnaire_response["id"]}')
+
+            # Map linkIds to keys
+            text_answers = {
+                'question-12': 'diagnosis',
+                'question-24': 'pcp',
+                'question-25': 'oncologist',
+            }
+
+            date_answers = {
+                'question-5': 'birthdate',
+                'question-14': 'date_diagnosis',
+            }
+
+            # Iterate items
+            for link_id, key in text_answers.items():
+                try:
+                    # Get the answer
+                    answer = next(i['answer'][0]['valueString'] for i in
+                                  questionnaire_response['item'] if i['linkId'] == link_id)
+
+                    # Assign it
+                    values[key] = answer
+                except Exception as e:
+                    logger.exception(f'PPM/{ppm_id}/Questionnaire/{link_id}: {e}', exc_info=True, extra={
+                        'ppm_id': ppm_id, 'link_id': link_id, 'key': key,
+                        'questionnaire_response': f'QuestionnaireResponse/{questionnaire_response["id"]}',
+                        'item': next((i for i in questionnaire_response['item'] if i['linkId'] == link_id), ''),
+                    })
+
+                    # Assign default value
+                    values[key] = '---'
+
+            # Iterate date items and attempt to parse dates, otherwise treat as text
+            for link_id, key in date_answers.items():
+
+                try:
+                    # Get the answer
+                    answer = next(i['answer'][0]['valueString'] for i in
+                                  questionnaire_response['item'] if i['linkId'] == link_id)
+
+                    try:
+                        # Attempt to parse it
+                        answer_date = parse(answer)
+
+                        # Assign it
+                        values[key] = answer_date.isoformat()
+
+                    except ValueError:
+                        logger.debug(f'PPM/{ppm_id}/Questionnaire/{link_id}: Invalid date: {answer}')
+
+                        # Assign the raw value
+                        values[key] = answer
+
+                except Exception as e:
+                    logger.exception(f'PPM/{ppm_id}/Questionnaire/{link_id}: {e}', exc_info=True, extra={
+                        'ppm_id': ppm_id, 'link_id': link_id, 'key': key,
+                        'questionnaire_response': f'QuestionnaireResponse/{questionnaire_response["id"]}',
+                        'item': next((i for i in questionnaire_response['item'] if i['linkId'] == link_id), ''),
+                    })
+
+                    # Assign default value
+                    values[key] = '---'
+
+        return values
+
+    @staticmethod
     def _flatten_example_participant(bundle, ppm_id):
         """
         Continues flattening a participant by adding any study specific data to their record.
@@ -3759,7 +3858,7 @@ class FHIR:
         # Get questionnaire answers
         questionnaire_response = next((q for q in FHIR._find_resources(bundle, 'QuestionnaireResponse') if
                                        q['questionnaire']['reference'] ==
-                                       f'Questionnaire/{PPM.Questionnaire.NEERQuestionnaire.value}'), None)
+                                       f'Questionnaire/{PPM.Questionnaire.EXAMPLEQuestionnaire.value}'), None)
         if questionnaire_response:
             logger.debug(f'PPM/{ppm_id}/FHIR: Flattening QuestionnaireResponse/{questionnaire_response["id"]}')
 
@@ -4262,6 +4361,7 @@ class FHIR:
         record['status'] = FHIR._get_or(resource, ['status'])
         record['start'] = FHIR._get_or(resource, ['period', 'start'])
         record['end'] = FHIR._get_or(resource, ['period', 'end'])
+        record['updated'] = FHIR._get_or(resource, ['meta', 'lastUpdated'])
 
         # Link back to participant
         record['ppm_id'] = FHIR._get_referenced_id(resource, 'Patient')
@@ -4643,6 +4743,7 @@ class FHIR:
 
             data = {
                 'resourceType': 'Flag',
+                'meta': {'lastUpdated': datetime.now().isoformat()},
                 'status': 'active' if status == 'accepted' else 'inactive',
                 'category': {
                     'coding': [{
