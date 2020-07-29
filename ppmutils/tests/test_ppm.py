@@ -79,21 +79,15 @@ class TestPPMService(unittest.TestCase):
     def test_ppm_study_meta_1(self):
 
         # Compare methods for determining study meta
-        self.assertEqual(
-            PPM.Study.title(PPM.Study.NEER), PPM.Study.title(PPM.Study.NEER.value)
-        )
-        self.assertEqual(
-            PPM.Study.title(PPM.Study.ASD), PPM.Study.title(PPM.Study.ASD.value)
-        )
+        self.assertEqual(PPM.Study.title(PPM.Study.NEER), PPM.Study.title(PPM.Study.NEER.value))
+        self.assertEqual(PPM.Study.title(PPM.Study.ASD), PPM.Study.title(PPM.Study.ASD.value))
 
         # Use FHIR codes
         self.assertEqual(
-            PPM.Study.title(PPM.Study.ASD),
-            PPM.Study.title(PPM.Study.fhir_id(PPM.Study.ASD)),
+            PPM.Study.title(PPM.Study.ASD), PPM.Study.title(PPM.Study.fhir_id(PPM.Study.ASD)),
         )
         self.assertEqual(
-            PPM.Study.title(PPM.Study.ASD),
-            PPM.Study.title(PPM.Study.fhir_id(PPM.Study.ASD.value)),
+            PPM.Study.title(PPM.Study.ASD), PPM.Study.title(PPM.Study.fhir_id(PPM.Study.ASD.value)),
         )
 
     def test_ppm_study_meta_2(self):

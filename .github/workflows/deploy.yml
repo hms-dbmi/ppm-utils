@@ -1,4 +1,4 @@
-name: Test and Deploy Prerelease
+name: Deploy
 
 on:
   push:

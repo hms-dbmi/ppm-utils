@@ -38,29 +38,18 @@ class TestFHIR(unittest.TestCase):
 
         # Build a patient with a lastname
         patient = FHIRData.patient(
-            email,
-            firstname="User",
-            lastname="Patient",
-            street2="Unit 500",
-            contact_email="user@email.org",
+            email, firstname="User", lastname="Patient", street2="Unit 500", contact_email="user@email.org",
         )
         study = FHIRData.research_study(PPM.Study.NEER)
-        subject = FHIRData.research_subject(
-            "Patient/{}".format(patient["id"]), PPM.Study.NEER
-        )
+        subject = FHIRData.research_subject("Patient/{}".format(patient["id"]), PPM.Study.NEER)
         enrollment = FHIRData.enrollment_flag("Patient/{}".format(patient["id"]))
 
         # Put them in a bundle
-        bundle = FHIRData.create_bundle(
-            [patient, study, subject, enrollment], self.fhir_url
-        )
+        bundle = FHIRData.create_bundle([patient, study, subject, enrollment], self.fhir_url)
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient.*"),
-            json=bundle,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient.*"), json=bundle, status=200,
         )
 
         # Do the query
@@ -78,11 +67,7 @@ class TestFHIR(unittest.TestCase):
 
         # Build a patient with a lastname
         patient = FHIRData.patient(
-            email,
-            firstname="User",
-            lastname="Patient",
-            street2="Unit 500",
-            contact_email="user@email.org",
+            email, firstname="User", lastname="Patient", street2="Unit 500", contact_email="user@email.org",
         )
 
         # Put them in a bundle
@@ -90,10 +75,7 @@ class TestFHIR(unittest.TestCase):
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient.*"),
-            json=bundle,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient.*"), json=bundle, status=200,
         )
 
         # Do the query
@@ -111,29 +93,18 @@ class TestFHIR(unittest.TestCase):
 
         # Build a patient with a lastname
         patient = FHIRData.patient(
-            email,
-            firstname="User",
-            lastname="Patient",
-            street2="Unit 500",
-            contact_email="user@email.org",
+            email, firstname="User", lastname="Patient", street2="Unit 500", contact_email="user@email.org",
         )
         study = FHIRData.research_study(PPM.Study.NEER)
-        subject = FHIRData.research_subject(
-            "Patient/{}".format(patient["id"]), PPM.Study.NEER
-        )
+        subject = FHIRData.research_subject("Patient/{}".format(patient["id"]), PPM.Study.NEER)
         enrollment = FHIRData.enrollment_flag("Patient/{}".format(patient["id"]))
 
         # Put them in a bundle
-        bundle = FHIRData.create_bundle(
-            [patient, study, subject, enrollment], self.fhir_url
-        )
+        bundle = FHIRData.create_bundle([patient, study, subject, enrollment], self.fhir_url)
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient.*"),
-            json=bundle,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient.*"), json=bundle, status=200,
         )
 
         # Do the query
@@ -153,31 +124,18 @@ class TestFHIR(unittest.TestCase):
 
         # Build a patient with a lastname
         patient = FHIRData.patient(
-            email,
-            firstname="User",
-            lastname="Patient",
-            street2="Unit 500",
-            contact_email="user@email.org",
+            email, firstname="User", lastname="Patient", street2="Unit 500", contact_email="user@email.org",
         )
         study = FHIRData.research_study(PPM.Study.NEER)
-        subject = FHIRData.research_subject(
-            "Patient/{}".format(patient["id"]), PPM.Study.NEER
-        )
-        enrollment = FHIRData.enrollment_flag(
-            "Patient/{}".format(patient["id"]), PPM.Enrollment.Proposed.value
-        )
+        subject = FHIRData.research_subject("Patient/{}".format(patient["id"]), PPM.Study.NEER)
+        enrollment = FHIRData.enrollment_flag("Patient/{}".format(patient["id"]), PPM.Enrollment.Proposed.value)
 
         # Put them in a bundle
-        bundle = FHIRData.create_bundle(
-            [patient, study, subject, enrollment], self.fhir_url
-        )
+        bundle = FHIRData.create_bundle([patient, study, subject, enrollment], self.fhir_url)
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Flag.*"),
-            json=bundle,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Flag.*"), json=bundle, status=200,
         )
 
         # Do the query
@@ -195,10 +153,7 @@ class TestFHIR(unittest.TestCase):
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient.*"),
-            json=data.bundle,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient.*"), json=data.bundle, status=200,
         )
 
         # Do the query
@@ -211,27 +166,20 @@ class TestFHIR(unittest.TestCase):
         # Check some properties
         self.assertTrue(PPM.Study.enum(participants[2]["study"]) in PPM.Study)
         self.assertTrue(participants[1]["email"] is not None)
-        self.assertTrue(
-            PPM.Enrollment.enum(participants[2]["enrollment"]) in PPM.Enrollment
-        )
+        self.assertTrue(PPM.Enrollment.enum(participants[2]["enrollment"]) in PPM.Enrollment)
 
     @responses.activate
     def test_patient_update_lastname(self):
 
         # Build a patient with a lastname
-        patient = FHIRData.patient(
-            "patient@email.org", firstname="User", lastname="Patient"
-        )
+        patient = FHIRData.patient("patient@email.org", firstname="User", lastname="Patient")
 
         # Set an example form
         form = {"firstname": "Newer", "lastname": None}
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient/.*"),
-            json=patient,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient/.*"), json=patient, status=200,
         )
 
         def update_callback(request):
@@ -261,19 +209,14 @@ class TestFHIR(unittest.TestCase):
     def test_patient_update_add_address2(self):
 
         # Build a patient with a lastname
-        patient = FHIRData.patient(
-            "patient@email.org", firstname="User", lastname="Patient"
-        )
+        patient = FHIRData.patient("patient@email.org", firstname="User", lastname="Patient")
 
         # Set an example form
         form = {"street_address1": "3100 Some Address", "street_address2": "Unit 401"}
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient/.*"),
-            json=patient,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient/.*"), json=patient, status=200,
         )
 
         def update_callback(request):
@@ -303,22 +246,14 @@ class TestFHIR(unittest.TestCase):
     def test_patient_update_remove_address2(self):
 
         # Build a patient with a lastname
-        patient = FHIRData.patient(
-            "patient@email.org",
-            firstname="User",
-            lastname="Patient",
-            street2="Unit 500",
-        )
+        patient = FHIRData.patient("patient@email.org", firstname="User", lastname="Patient", street2="Unit 500",)
 
         # Set an example form
         form = {"street_address1": "3100 Some Address", "street_address2": None}
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient/.*"),
-            json=patient,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient/.*"), json=patient, status=200,
         )
 
         def update_callback(request):
@@ -348,22 +283,14 @@ class TestFHIR(unittest.TestCase):
     def test_patient_update_add_contact_email(self):
 
         # Build a patient with a lastname
-        patient = FHIRData.patient(
-            "patient@email.org",
-            firstname="User",
-            lastname="Patient",
-            street2="Unit 500",
-        )
+        patient = FHIRData.patient("patient@email.org", firstname="User", lastname="Patient", street2="Unit 500",)
 
         # Set an example form
         form = {"contact_email": "user@email.org"}
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient/.*"),
-            json=patient,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient/.*"), json=patient, status=200,
         )
 
         def update_callback(request):
@@ -387,16 +314,7 @@ class TestFHIR(unittest.TestCase):
         payload = json.loads(responses.calls[1].request.body)
 
         # Ensure last name was removed
-        self.assertTrue(
-            next(
-                (
-                    telecom
-                    for telecom in payload["telecom"]
-                    if telecom["system"] == "email"
-                ),
-                False,
-            )
-        )
+        self.assertTrue(next((telecom for telecom in payload["telecom"] if telecom["system"] == "email"), False,))
 
     @responses.activate
     def test_patient_update_contact_email(self):
@@ -405,22 +323,14 @@ class TestFHIR(unittest.TestCase):
         contact_email = "somenewemail@email.com"
 
         # Build a patient with a lastname
-        patient = FHIRData.patient(
-            "patient@email.org",
-            firstname="User",
-            lastname="Patient",
-            street2="Unit 500",
-        )
+        patient = FHIRData.patient("patient@email.org", firstname="User", lastname="Patient", street2="Unit 500",)
 
         # Set an example form
         form = {"contact_email": contact_email}
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient/.*"),
-            json=patient,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient/.*"), json=patient, status=200,
         )
 
         def update_callback(request):
@@ -445,12 +355,7 @@ class TestFHIR(unittest.TestCase):
 
         # Ensure last name was removed
         self.assertEqual(
-            next(
-                telecom
-                for telecom in payload["telecom"]
-                if telecom["system"] == "email"
-            )["value"],
-            contact_email,
+            next(telecom for telecom in payload["telecom"] if telecom["system"] == "email")["value"], contact_email,
         )
 
     @responses.activate
@@ -470,10 +375,7 @@ class TestFHIR(unittest.TestCase):
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient/.*"),
-            json=patient,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient/.*"), json=patient, status=200,
         )
 
         def update_callback(request):
@@ -497,37 +399,20 @@ class TestFHIR(unittest.TestCase):
         payload = json.loads(responses.calls[1].request.body)
 
         # Ensure last name was removed
-        self.assertFalse(
-            next(
-                (
-                    telecom
-                    for telecom in payload["telecom"]
-                    if telecom["system"] == "email"
-                ),
-                False,
-            )
-        )
+        self.assertFalse(next((telecom for telecom in payload["telecom"] if telecom["system"] == "email"), False,))
 
     @responses.activate
     def test_patient_update_add_referral(self):
 
         # Build a patient with a lastname
-        patient = FHIRData.patient(
-            "patient@email.org",
-            firstname="User",
-            lastname="Patient",
-            street2="Unit 500",
-        )
+        patient = FHIRData.patient("patient@email.org", firstname="User", lastname="Patient", street2="Unit 500",)
 
         # Set an example form
         form = {"how_did_you_hear_about_us": "I was referred by John Smith"}
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient/.*"),
-            json=patient,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient/.*"), json=patient, status=200,
         )
 
         def update_callback(request):
@@ -551,16 +436,7 @@ class TestFHIR(unittest.TestCase):
         payload = json.loads(responses.calls[1].request.body)
 
         # Ensure last name was removed
-        self.assertTrue(
-            next(
-                (
-                    e
-                    for e in payload["extension"]
-                    if e["url"] == FHIR.referral_extension_url
-                ),
-                False,
-            )
-        )
+        self.assertTrue(next((e for e in payload["extension"] if e["url"] == FHIR.referral_extension_url), False,))
 
     @responses.activate
     def test_patient_update_referral(self):
@@ -569,25 +445,15 @@ class TestFHIR(unittest.TestCase):
         referral = "new_referral"
 
         # Build a patient with a lastname
-        patient = FHIRData.patient(
-            "patient@email.org",
-            firstname="User",
-            lastname="Patient",
-            street2="Unit 500",
-        )
-        patient.setdefault("extension", []).append(
-            {"url": FHIR.referral_extension_url, "valueString": "old_referral"}
-        )
+        patient = FHIRData.patient("patient@email.org", firstname="User", lastname="Patient", street2="Unit 500",)
+        patient.setdefault("extension", []).append({"url": FHIR.referral_extension_url, "valueString": "old_referral"})
 
         # Set an example form
         form = {"how_did_you_hear_about_us": referral}
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient/.*"),
-            json=patient,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient/.*"), json=patient, status=200,
         )
 
         def update_callback(request):
@@ -612,14 +478,7 @@ class TestFHIR(unittest.TestCase):
 
         # Ensure last name was removed
         self.assertEqual(
-            next(
-                (
-                    e
-                    for e in payload["extension"]
-                    if e["url"] == FHIR.referral_extension_url
-                ),
-                False,
-            )["valueString"],
+            next((e for e in payload["extension"] if e["url"] == FHIR.referral_extension_url), False,)["valueString"],
             referral,
         )
 
@@ -640,10 +499,7 @@ class TestFHIR(unittest.TestCase):
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient/.*"),
-            json=patient,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient/.*"), json=patient, status=200,
         )
 
         def update_callback(request):
@@ -667,16 +523,7 @@ class TestFHIR(unittest.TestCase):
         payload = json.loads(responses.calls[1].request.body)
 
         # Ensure last name was removed
-        self.assertFalse(
-            next(
-                (
-                    e
-                    for e in payload["extension"]
-                    if e["url"] == FHIR.referral_extension_url
-                ),
-                False,
-            )
-        )
+        self.assertFalse(next((e for e in payload["extension"] if e["url"] == FHIR.referral_extension_url), False,))
 
     @responses.activate
     def test_patient_update_requirements(self):
@@ -695,10 +542,7 @@ class TestFHIR(unittest.TestCase):
 
         # Build the response handler
         responses.add(
-            responses.GET,
-            re.compile(self.fhir_url + r"/Patient/.*"),
-            json=patient,
-            status=200,
+            responses.GET, re.compile(self.fhir_url + r"/Patient/.*"), json=patient, status=200,
         )
 
         def update_callback(request):
@@ -724,25 +568,11 @@ class TestFHIR(unittest.TestCase):
         # Ensure properties still exist
         self.assertTrue(len(payload["name"][0]["given"]) > 0)
         self.assertTrue(
-            next(
-                (
-                    id["value"]
-                    for id in payload["identifier"]
-                    if id["system"] == "http://schema.org/email"
-                ),
-                False,
-            )
+            next((id["value"] for id in payload["identifier"] if id["system"] == "http://schema.org/email"), False,)
         )
         self.assertTrue(payload["address"][0].get("city", False))
         self.assertTrue(
-            next(
-                (
-                    telecom["value"]
-                    for telecom in payload["telecom"]
-                    if telecom["system"] == "phone"
-                ),
-                False,
-            )
+            next((telecom["value"] for telecom in payload["telecom"] if telecom["system"] == "phone"), False,)
         )
 
     @responses.activate
@@ -752,9 +582,7 @@ class TestFHIR(unittest.TestCase):
         deceased = datetime.now()
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         def update_callback(request):
 
@@ -787,9 +615,7 @@ class TestFHIR(unittest.TestCase):
         deceased = None
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         def update_callback(request):
 
@@ -821,9 +647,7 @@ class TestFHIR(unittest.TestCase):
         deceased = datetime.now()
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         def update_callback(request):
 
@@ -860,9 +684,7 @@ class TestFHIR(unittest.TestCase):
         deceased = None
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         def update_callback(request):
 
@@ -899,9 +721,7 @@ class TestFHIR(unittest.TestCase):
         uses_twitter = None
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Build the response handler
         responses.add(
@@ -932,17 +752,11 @@ class TestFHIR(unittest.TestCase):
         payload = json.loads(responses.calls[1].request.body)
 
         # Get telecom
-        telecom = next(
-            t
-            for t in payload["telecom"]
-            if t["system"] == FHIR.patient_twitter_telecom_system
-        )
+        telecom = next(t for t in payload["telecom"] if t["system"] == FHIR.patient_twitter_telecom_system)
         self.assertEqual(telecom["value"], "https://twitter.com/" + handle)
 
         # Get extension
-        extension = next(
-            e for e in payload["extension"] if e["url"] == FHIR.twitter_extension_url
-        )
+        extension = next(e for e in payload["extension"] if e["url"] == FHIR.twitter_extension_url)
         self.assertEqual(extension["valueBoolean"], True)
 
     @responses.activate
@@ -953,9 +767,7 @@ class TestFHIR(unittest.TestCase):
         uses_twitter = None
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Build the response handler
         responses.add(
@@ -986,21 +798,11 @@ class TestFHIR(unittest.TestCase):
         payload = json.loads(responses.calls[1].request.body)
 
         # Get telecom
-        telecom = next(
-            (
-                t
-                for t in payload["telecom"]
-                if t["system"] == FHIR.patient_twitter_telecom_system
-            ),
-            None,
-        )
+        telecom = next((t for t in payload["telecom"] if t["system"] == FHIR.patient_twitter_telecom_system), None,)
         self.assertIsNone(telecom)
 
         # Get extension
-        extension = next(
-            (e for e in payload["extension"] if e["url"] == FHIR.twitter_extension_url),
-            None,
-        )
+        extension = next((e for e in payload["extension"] if e["url"] == FHIR.twitter_extension_url), None,)
         self.assertIsNone(extension)
 
     @responses.activate
@@ -1011,9 +813,7 @@ class TestFHIR(unittest.TestCase):
         uses_twitter = False
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Build the response handler
         responses.add(
@@ -1044,21 +844,11 @@ class TestFHIR(unittest.TestCase):
         payload = json.loads(responses.calls[1].request.body)
 
         # Get telecom
-        telecom = next(
-            (
-                t
-                for t in payload["telecom"]
-                if t["system"] == FHIR.patient_twitter_telecom_system
-            ),
-            None,
-        )
+        telecom = next((t for t in payload["telecom"] if t["system"] == FHIR.patient_twitter_telecom_system), None,)
         self.assertIsNone(telecom)
 
         # Get extension
-        extension = next(
-            (e for e in payload["extension"] if e["url"] == FHIR.twitter_extension_url),
-            None,
-        )
+        extension = next((e for e in payload["extension"] if e["url"] == FHIR.twitter_extension_url), None,)
         self.assertEqual(extension["valueBoolean"], uses_twitter)
 
     @responses.activate
@@ -1069,20 +859,13 @@ class TestFHIR(unittest.TestCase):
         uses_twitter = False
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Set an initial handle and extension
         patient["telecom"].append(
-            {
-                "system": FHIR.patient_twitter_telecom_system,
-                "value": "https://twitter.com/somehandle",
-            }
+            {"system": FHIR.patient_twitter_telecom_system, "value": "https://twitter.com/somehandle",}
         )
-        patient["extension"].append(
-            {"url": FHIR.twitter_extension_url, "valueBoolean": True}
-        )
+        patient["extension"].append({"url": FHIR.twitter_extension_url, "valueBoolean": True})
 
         # Build the response handler
         responses.add(
@@ -1110,21 +893,11 @@ class TestFHIR(unittest.TestCase):
         payload = json.loads(responses.calls[1].request.body)
 
         # Get telecom
-        telecom = next(
-            (
-                t
-                for t in payload["telecom"]
-                if t["system"] == FHIR.patient_twitter_telecom_system
-            ),
-            None,
-        )
+        telecom = next((t for t in payload["telecom"] if t["system"] == FHIR.patient_twitter_telecom_system), None,)
         self.assertIsNone(telecom)
 
         # Get extension
-        extension = next(
-            (e for e in payload["extension"] if e["url"] == FHIR.twitter_extension_url),
-            None,
-        )
+        extension = next((e for e in payload["extension"] if e["url"] == FHIR.twitter_extension_url), None,)
         self.assertEqual(extension["valueBoolean"], uses_twitter)
 
     @responses.activate
@@ -1135,9 +908,7 @@ class TestFHIR(unittest.TestCase):
         value = False
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Build the response handler
         responses.add(
@@ -1179,9 +950,7 @@ class TestFHIR(unittest.TestCase):
         value = False
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Set an initial handle and extension
         patient["extension"].append({"url": url, "valueBoolean": not value})
@@ -1226,9 +995,7 @@ class TestFHIR(unittest.TestCase):
         value = "somestring"
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Set an initial handle and extension
         patient["extension"].append({"url": url, "valueString": "someotherstring"})
@@ -1273,9 +1040,7 @@ class TestFHIR(unittest.TestCase):
         value = False
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Build the response handler
         responses.add(
@@ -1317,9 +1082,7 @@ class TestFHIR(unittest.TestCase):
         value = True
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Set an initial handle and extension
         patient["extension"].append({"url": url, "valueBoolean": not value})
@@ -1363,9 +1126,7 @@ class TestFHIR(unittest.TestCase):
         enrollment = PPM.Enrollment.Consented.value
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Build the response handler
         responses.add(
@@ -1396,9 +1157,7 @@ class TestFHIR(unittest.TestCase):
         payload = json.loads(responses.calls[1].request.body)
 
         # Ensure properties still exist
-        self.assertEqual(
-            payload["subject"]["reference"], "Patient/{}".format(patient["id"])
-        )
+        self.assertEqual(payload["subject"]["reference"], "Patient/{}".format(patient["id"]))
         self.assertEqual(payload["code"]["coding"][0]["code"], enrollment)
         self.assertEqual(payload["code"]["text"], PPM.Enrollment.title(enrollment))
         self.assertEqual(payload["status"], "inactive")
@@ -1411,9 +1170,7 @@ class TestFHIR(unittest.TestCase):
         enrollment = PPM.Enrollment.Proposed.value
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Build the response handler
         responses.add(
@@ -1444,9 +1201,7 @@ class TestFHIR(unittest.TestCase):
         payload = json.loads(responses.calls[1].request.body)
 
         # Ensure properties still exist
-        self.assertEqual(
-            payload["subject"]["reference"], "Patient/{}".format(patient["id"])
-        )
+        self.assertEqual(payload["subject"]["reference"], "Patient/{}".format(patient["id"]))
         self.assertEqual(payload["code"]["coding"][0]["code"], enrollment)
         self.assertEqual(payload["code"]["text"], PPM.Enrollment.title(enrollment))
         self.assertNotEqual(payload["status"], "active")
@@ -1459,9 +1214,7 @@ class TestFHIR(unittest.TestCase):
         enrollment = PPM.Enrollment.Accepted.value
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Build the response handler
         responses.add(
@@ -1492,9 +1245,7 @@ class TestFHIR(unittest.TestCase):
         payload = json.loads(responses.calls[1].request.body)
 
         # Ensure properties still exist
-        self.assertEqual(
-            payload["subject"]["reference"], "Patient/{}".format(patient["id"])
-        )
+        self.assertEqual(payload["subject"]["reference"], "Patient/{}".format(patient["id"]))
         self.assertEqual(payload["code"]["coding"][0]["code"], enrollment)
         self.assertEqual(payload["code"]["text"], PPM.Enrollment.title(enrollment))
         self.assertEqual(payload["status"], "active")
@@ -1508,9 +1259,7 @@ class TestFHIR(unittest.TestCase):
         enrollment = PPM.Enrollment.Terminated.value
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Build the response handler
         responses.add(
@@ -1541,9 +1290,7 @@ class TestFHIR(unittest.TestCase):
         payload = json.loads(responses.calls[1].request.body)
 
         # Ensure properties still exist
-        self.assertEqual(
-            payload["subject"]["reference"], "Patient/{}".format(patient["id"])
-        )
+        self.assertEqual(payload["subject"]["reference"], "Patient/{}".format(patient["id"]))
         self.assertEqual(payload["code"]["coding"][0]["code"], enrollment)
         self.assertEqual(payload["code"]["text"], PPM.Enrollment.title(enrollment))
         self.assertEqual(payload["status"], "inactive")
@@ -1557,9 +1304,7 @@ class TestFHIR(unittest.TestCase):
         enrollment = PPM.Enrollment.Completed.value
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Build the response handler
         responses.add(
@@ -1590,9 +1335,7 @@ class TestFHIR(unittest.TestCase):
         payload = json.loads(responses.calls[1].request.body)
 
         # Ensure properties still exist
-        self.assertEqual(
-            payload["subject"]["reference"], "Patient/{}".format(patient["id"])
-        )
+        self.assertEqual(payload["subject"]["reference"], "Patient/{}".format(patient["id"]))
         self.assertEqual(payload["code"]["coding"][0]["code"], enrollment)
         self.assertEqual(payload["code"]["text"], PPM.Enrollment.title(enrollment))
         self.assertEqual(payload["status"], "inactive")
@@ -1606,9 +1349,7 @@ class TestFHIR(unittest.TestCase):
         end = datetime.now()
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         def update_callback(request):
 
@@ -1622,9 +1363,7 @@ class TestFHIR(unittest.TestCase):
         )
 
         # Do the update
-        updated = FHIR.update_research_subject(
-            patient["id"], research_subject["id"], end=end
-        )
+        updated = FHIR.update_research_subject(patient["id"], research_subject["id"], end=end)
 
         # Check it
         self.assertGreaterEqual(len(responses.calls), 1)
@@ -1643,9 +1382,7 @@ class TestFHIR(unittest.TestCase):
         end = None
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         def update_callback(request):
 
@@ -1659,9 +1396,7 @@ class TestFHIR(unittest.TestCase):
         )
 
         # Do the update
-        updated = FHIR.update_research_subject(
-            patient["id"], research_subject["id"], end=end
-        )
+        updated = FHIR.update_research_subject(patient["id"], research_subject["id"], end=end)
 
         # Check it
         self.assertGreaterEqual(len(responses.calls), 1)
@@ -1679,9 +1414,7 @@ class TestFHIR(unittest.TestCase):
         end = datetime.now()
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Build the response handler
         responses.add(
@@ -1703,9 +1436,7 @@ class TestFHIR(unittest.TestCase):
         )
 
         # Do the update
-        updated = FHIR.update_ppm_research_subject(
-            patient["id"], PPM.Study.NEER.value, end=end
-        )
+        updated = FHIR.update_ppm_research_subject(patient["id"], PPM.Study.NEER.value, end=end)
 
         # Check it
         self.assertGreaterEqual(len(responses.calls), 2)
@@ -1724,9 +1455,7 @@ class TestFHIR(unittest.TestCase):
         end = None
 
         # Start a data set
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Build the response handler
         responses.add(
@@ -1748,9 +1477,7 @@ class TestFHIR(unittest.TestCase):
         )
 
         # Do the update
-        updated = FHIR.update_ppm_research_subject(
-            patient["id"], PPM.Study.NEER.value, end=end
-        )
+        updated = FHIR.update_ppm_research_subject(patient["id"], PPM.Study.NEER.value, end=end)
 
         # Check it
         self.assertGreaterEqual(len(responses.calls), 2)
@@ -1765,9 +1492,7 @@ class TestFHIR(unittest.TestCase):
     def test_delete_participant(self):
 
         # Create our participant to be deleted
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         # Collect IDs
         resource_ids = [
@@ -1780,9 +1505,7 @@ class TestFHIR(unittest.TestCase):
         responses.add(
             responses.GET,
             re.compile(self.fhir_url + r"/Patient.*"),
-            json=FHIRData.create_bundle(
-                [patient, flag, research_subject, research_study], self.fhir_url
-            ),
+            json=FHIRData.create_bundle([patient, flag, research_subject, research_study], self.fhir_url),
             status=200,
         )
 
@@ -1818,9 +1541,7 @@ class TestFHIR(unittest.TestCase):
     def test_delete_patient(self):
 
         # Create our participant to be deleted
-        research_study, patient, flag, research_subject = FHIRData.participant(
-            PPM.Study.NEER
-        )
+        research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
 
         def delete_callback(request):
 
@@ -1861,18 +1582,11 @@ class FHIRData(object):
             # If not study, randomize it
             if not study:
                 study = PPM.Study(
-                    list(dict(PPM.Study.choices()).keys())[
-                        random.randint(1, len(PPM.Study.choices())) - 1
-                    ]
+                    list(dict(PPM.Study.choices()).keys())[random.randint(1, len(PPM.Study.choices())) - 1]
                 )
 
             # Create the resources
-            (
-                research_study,
-                patient,
-                enrollment,
-                research_subject,
-            ) = FHIRData.participant(study)
+            (research_study, patient, enrollment, research_subject,) = FHIRData.participant(study)
 
             # Add the study if not already there
             if not self.bundle:
@@ -1880,22 +1594,14 @@ class FHIRData(object):
                 # Start it
                 self.bundle = FHIRData.create_bundle([research_study], fhir_url)
 
-            elif not next(
-                r
-                for r in self.bundle["entry"]
-                if r["resource"]["id"] == research_study["id"]
-            ):
+            elif not next(r for r in self.bundle["entry"] if r["resource"]["id"] == research_study["id"]):
 
                 # Add it
-                self.bundle["entry"].extend(
-                    FHIRData.create_bundle([research_study], fhir_url)["entry"]
-                )
+                self.bundle["entry"].extend(FHIRData.create_bundle([research_study], fhir_url)["entry"])
 
             # Add remaining resources
             self.bundle["entry"].extend(
-                FHIRData.create_bundle(
-                    [patient, enrollment, research_subject], fhir_url
-                )["entry"]
+                FHIRData.create_bundle([patient, enrollment, research_subject], fhir_url)["entry"]
             )
 
     def add_participant(self, patient, enrollment, research_subject, research_study):
@@ -1913,25 +1619,14 @@ class FHIRData(object):
             # Start it
             self.bundle = FHIRData.create_bundle([research_study], self.fhir_url)
 
-        elif not next(
-            (
-                r
-                for r in self.bundle["entry"]
-                if r["resource"]["id"] == research_study["id"]
-            ),
-            None,
-        ):
+        elif not next((r for r in self.bundle["entry"] if r["resource"]["id"] == research_study["id"]), None,):
 
             # Add it
-            self.bundle["entry"].extend(
-                FHIRData.create_bundle([research_study], self.fhir_url)["entry"]
-            )
+            self.bundle["entry"].extend(FHIRData.create_bundle([research_study], self.fhir_url)["entry"])
 
         # Add remaining resources
         self.bundle["entry"].extend(
-            FHIRData.create_bundle(
-                [patient, enrollment, research_subject], self.fhir_url
-            )["entry"]
+            FHIRData.create_bundle([patient, enrollment, research_subject], self.fhir_url)["entry"]
         )
 
     @staticmethod
@@ -1963,12 +1658,8 @@ class FHIRData(object):
             contact_email=f"patient-{ppm_id}-{PPM.Study.enum(study).value}@email.org",
         )
         research_study = FHIRData.research_study(study)
-        research_subject = FHIRData.research_subject(
-            "Patient/{}".format(patient["id"]), study
-        )
-        enrollment_flag = FHIRData.enrollment_flag(
-            "Patient/{}".format(patient["id"]), enrollment.value
-        )
+        research_subject = FHIRData.research_subject("Patient/{}".format(patient["id"]), study)
+        enrollment_flag = FHIRData.enrollment_flag("Patient/{}".format(patient["id"]), enrollment.value)
 
         return research_study, patient, enrollment_flag, research_subject
 
@@ -1988,11 +1679,7 @@ class FHIRData(object):
             "total": len(resources),
             "link": [{"relation": "self", "url": fhir_url}],
             "entry": [
-                {
-                    "resource": resource,
-                    "fullUrl": f'{fhir_url}/{resource["resourceType"]}/'
-                    f'{resource["id"]}',
-                }
+                {"resource": resource, "fullUrl": f'{fhir_url}/{resource["resourceType"]}/' f'{resource["id"]}',}
                 for resource in resources
             ],
         }
@@ -2041,17 +1728,13 @@ class FHIRData(object):
         # Replace/set some additional data
         data["id"] = f"{random.randint(1, 9999)}"
         data["identifier"].append(
-            {
-                "system": "https://peoplepoweredmedicine.org/fhir/patient",
-                "value": identifier,
-            }
+            {"system": "https://peoplepoweredmedicine.org/fhir/patient", "value": identifier,}
         )
 
         # Toggle Twitter usage
         data["extension"].append(
             {
-                "url": "https://p2m2.dbmi.hms.harvard.edu/fhir/"
-                "StructureDefinition/uses-twitter",
+                "url": "https://p2m2.dbmi.hms.harvard.edu/fhir/" "StructureDefinition/uses-twitter",
                 "valueBoolean": twitter is not None,
             }
         )
@@ -2104,10 +1787,7 @@ class FHIRData(object):
 
     @staticmethod
     def enrollment_flag(
-        patient,
-        enrollment=PPM.Enrollment.Registered.value,
-        start=datetime.now(),
-        end=None,
+        patient, enrollment=PPM.Enrollment.Registered.value, start=datetime.now(), end=None,
     ):
         """
         Initializes and returns a test ResearchSubject resource using the
@@ -2117,9 +1797,7 @@ class FHIRData(object):
         :rtype: dict
         """
         # Build initial object
-        data = FHIR.Resources.enrollment_flag(
-            patient, status=enrollment, start=start, end=end
-        )
+        data = FHIR.Resources.enrollment_flag(patient, status=enrollment, start=start, end=end)
 
         # Set random id
         data["id"] = f"{random.randint(1, 9999)}"

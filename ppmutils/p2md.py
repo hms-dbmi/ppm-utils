@@ -18,9 +18,7 @@ class P2MD(PPM.Service):
 
     # Set identifier systems
     p2md_identifier_system = "https://peoplepoweredmedicine.org/fhir/p2md/operation"
-    fileservice_identifier_system = (
-        "https://peoplepoweredmedicine.org/fhir/fileservice/file"
-    )
+    fileservice_identifier_system = "https://peoplepoweredmedicine.org/fhir/fileservice/file"
 
     class ExportProviders(Enum):
         Participant = "ppm-participant"
@@ -43,9 +41,7 @@ class P2MD(PPM.Service):
         elif "prod" in environment:
             return "https://p2m2.dbmi.hms.harvard.edu"
         else:
-            logger.error(
-                f"Could not return a default URL for environment: {environment}"
-            )
+            logger.error(f"Could not return a default URL for environment: {environment}")
 
         return None
 
@@ -151,9 +147,7 @@ class P2MD(PPM.Service):
         auths = next(p["authorizations"] for p in data if p["ppm_id"] == ppm_id)
 
         # Get list of SMART providers and filter the user's auths list
-        smart_providers = [
-            p["provider"] for p in P2MD.get_smart_endpoints(request)["smart_endpoints"]
-        ]
+        smart_providers = [p["provider"] for p in P2MD.get_smart_endpoints(request)["smart_endpoints"]]
 
         return [auth for auth in auths if auth in smart_providers]
 
@@ -170,9 +164,7 @@ class P2MD(PPM.Service):
         """
         Make a request to P2MD to fetch Twitter data and store it in PPM.
         """
-        response = cls.post(
-            request, f"/sources/api/twitter/{ppm_id}", {"handle": handle}, raw=True
-        )
+        response = cls.post(request, f"/sources/api/twitter/{ppm_id}", {"handle": handle}, raw=True)
 
         # Return True if no errors
         return response.ok
@@ -222,12 +214,7 @@ class P2MD(PPM.Service):
         """
         Make a request to P2MD to fetch Gencove data and store it in PPM.
         """
-        response = cls.post(
-            request,
-            f"/sources/api/gencove/{ppm_id}",
-            data={"gencove_id": gencove_id},
-            raw=True,
-        )
+        response = cls.post(request, f"/sources/api/gencove/{ppm_id}", data={"gencove_id": gencove_id}, raw=True,)
 
         # Return True if no errors
         return response.ok
@@ -252,9 +239,7 @@ class P2MD(PPM.Service):
         """
         Make a request to P2MD to fetch Facebook data and store it in PPM.
         """
-        response = cls.post(
-            request, f"/sources/api/facebook/{ppm_id}", data={}, raw=True
-        )
+        response = cls.post(request, f"/sources/api/facebook/{ppm_id}", data={}, raw=True)
 
         # Return True if no errors
         return response.ok
@@ -268,9 +253,7 @@ class P2MD(PPM.Service):
         :return: The requested dataset
         """
         # Make the request
-        response = cls.get(
-            request, f"/sources/api/facebook/{ppm_id}/download", raw=True
-        )
+        response = cls.get(request, f"/sources/api/facebook/{ppm_id}/download", raw=True)
         if response:
             return response.content
 
@@ -281,9 +264,7 @@ class P2MD(PPM.Service):
         """
         Make a request to P2MD to fetch SMART on FHIR EHR data and store it in PPM.
         """
-        response = cls.post(
-            request, f"/sources/api/smart/{provider}/{ppm_id}", data={}, raw=True
-        )
+        response = cls.post(request, f"/sources/api/smart/{provider}/{ppm_id}", data={}, raw=True)
 
         # Return True if no errors
         return response.ok
@@ -298,9 +279,7 @@ class P2MD(PPM.Service):
         :return: The requested entire dataset
         """
         # Make the request
-        response = cls.get(
-            request, f"/sources/api/smart/{provider}/{ppm_id}/download", raw=True
-        )
+        response = cls.get(request, f"/sources/api/smart/{provider}/{ppm_id}/download", raw=True)
         if response:
             return response.content
 
@@ -422,11 +401,7 @@ class P2MD(PPM.Service):
         :return: bool
         """
         # Make the request
-        response = cls.head(
-            request,
-            f"/sources/api/qualtrics/survey/{study}/{ppm_id}/{survey_id}/",
-            raw=True,
-        )
+        response = cls.head(request, f"/sources/api/qualtrics/survey/{study}/{ppm_id}/{survey_id}/", raw=True,)
         if response:
             return response.ok
 
@@ -438,9 +413,7 @@ class P2MD(PPM.Service):
         Return the URL to send the participant to for taking the survey
         """
         # Return True if no errors
-        url = cls._build_url(
-            path=f"/sources/api/qualtrics/survey/{study}/{ppm_id}/{survey_id}/"
-        )
+        url = cls._build_url(path=f"/sources/api/qualtrics/survey/{study}/{ppm_id}/{survey_id}/")
 
         return url
 
@@ -450,25 +423,17 @@ class P2MD(PPM.Service):
         Return the URL to manage survey data
         """
         # Return True if no errors
-        url = cls._build_url(
-            path=f"/sources/api/qualtrics/{study}/{ppm_id}/{survey_id}/"
-        )
+        url = cls._build_url(path=f"/sources/api/qualtrics/{study}/{ppm_id}/{survey_id}/")
 
         return url
 
     @classmethod
-    def get_qualtrics_survey_data(
-        cls, request, study, ppm_id, survey_id, response_id=None, older_than=None
-    ):
+    def get_qualtrics_survey_data(cls, request, study, ppm_id, survey_id, response_id=None, older_than=None):
         """
         Make a call to P2MD to look for a survey response
         """
         # Return True if no errors
-        url = furl(
-            cls.get_qualtrics_survey_data_url(
-                study=study, ppm_id=ppm_id, survey_id=survey_id
-            )
-        )
+        url = furl(cls.get_qualtrics_survey_data_url(study=study, ppm_id=ppm_id, survey_id=survey_id))
 
         data = {}
         if response_id:
@@ -495,14 +460,7 @@ class P2MD(PPM.Service):
 
     @classmethod
     def uploaded_file(
-        cls,
-        request,
-        study,
-        ppm_id,
-        document_type,
-        uuid,
-        location,
-        content_type="application/octect-stream",
+        cls, request, study, ppm_id, document_type, uuid, location, content_type="application/octect-stream",
     ):
         """
         Make a request to P2MD to create a file upload
@@ -550,11 +508,7 @@ class P2MD(PPM.Service):
             organization = endpoint.get("organization")
             provider = endpoint.get("provider")
             if not organization or not provider:
-                logger.error(
-                    "Missing properties for SMART endpoint: {} - {}".format(
-                        organization, provider
-                    )
-                )
+                logger.error("Missing properties for SMART endpoint: {} - {}".format(organization, provider))
                 continue
 
             # Build the URL
@@ -616,16 +570,10 @@ class P2MD(PPM.Service):
         :return: The user's entire dataset
         """
         # Build the URL
-        url = furl(
-            P2MD.get_participant_data_url(
-                ppm_id=ppm_id, filename=filename, providers=providers
-            )
-        )
+        url = furl(P2MD.get_participant_data_url(ppm_id=ppm_id, filename=filename, providers=providers))
 
         # Make the request
-        response = cls.get(
-            request=request, path=url.pathstr, data=url.querystr, raw=True
-        )
+        response = cls.get(request=request, path=url.pathstr, data=url.querystr, raw=True)
         if response:
             return response.content
 
@@ -655,13 +603,8 @@ class P2MD(PPM.Service):
         :rtype: list
         """
         # Gather data-related DocumentReferences
-        document_references = FHIR.query_data_document_references(
-            patient=ppm_id, provider=provider
-        )
-        logger.debug(
-            f"{ppm_id}: Found {len(document_references)} DocumentReferences "
-            f"for: {provider}"
-        )
+        document_references = FHIR.query_data_document_references(patient=ppm_id, provider=provider)
+        logger.debug(f"{ppm_id}: Found {len(document_references)} DocumentReferences " f"for: {provider}")
 
         # Flatten resources and pick out relevant identifiers
         flats = []
@@ -702,9 +645,7 @@ class P2MD(PPM.Service):
         """
         # Get all flattened data document references
         document_references = []
-        for document_reference in P2MD.get_data_document_references(
-            ppm_id, provider=None
-        ):
+        for document_reference in P2MD.get_data_document_references(ppm_id, provider=None):
 
             # Check type and filter out non-requested provider documents
             if not providers or document_reference["type"] not in providers:
@@ -712,10 +653,7 @@ class P2MD(PPM.Service):
 
             document_references.append(document_reference)
 
-        logger.debug(
-            f"{ppm_id}: Found {len(document_references)} DocumentReferences "
-            f'for: {", ".join(providers)}'
-        )
+        logger.debug(f"{ppm_id}: Found {len(document_references)} DocumentReferences " f'for: {", ".join(providers)}')
         return document_references
 
     #
@@ -723,9 +661,7 @@ class P2MD(PPM.Service):
     #
 
     @classmethod
-    def check_export(
-        cls, request, ppm_id, provider=ExportProviders.Participant, age=24
-    ):
+    def check_export(cls, request, ppm_id, provider=ExportProviders.Participant, age=24):
         """
         Checks the presence of the PPM dataset for the passed user
         :param request: The original Django request object
@@ -736,12 +672,7 @@ class P2MD(PPM.Service):
         :return: The age of the current dataset in hours, if any
         """
         # Make the request
-        response = cls.head(
-            request,
-            f"/sources/api/ppm/{provider.value}/{ppm_id}/export",
-            {"age": age},
-            raw=True,
-        )
+        response = cls.head(request, f"/sources/api/ppm/{provider.value}/{ppm_id}/export", {"age": age}, raw=True,)
         if response:
             return response.ok
 
@@ -770,9 +701,7 @@ class P2MD(PPM.Service):
         :return: The user's entire dataset
         """
         # Make the request
-        response = cls.get(
-            request, f"/sources/api/ppm/{provider.value}/{ppm_id}/export", raw=True
-        )
+        response = cls.get(request, f"/sources/api/ppm/{provider.value}/{ppm_id}/export", raw=True)
         if response:
             return response.content
 
@@ -788,18 +717,14 @@ class P2MD(PPM.Service):
         :return: The user's entire dataset
         """
         # Make the request
-        response = cls.get(
-            request, f"/sources/api/ppm/{provider.value}/{ppm_id}/download", raw=True
-        )
+        response = cls.get(request, f"/sources/api/ppm/{provider.value}/{ppm_id}/download", raw=True)
         if response:
             return response.content
 
         return None
 
     @classmethod
-    def download_data_notify(
-        cls, request, ppm_id, recipients, provider=ExportProviders.Participant
-    ):
+    def download_data_notify(cls, request, ppm_id, recipients, provider=ExportProviders.Participant):
         """
         Downloads the PPM dataset for the passed user
         :param request: The original Django request object
