@@ -58,3 +58,14 @@ jobs:
         PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
       run: |
         twine upload --non-interactive -u "${PYPI_USERNAME}" -p "${PYPI_PASSWORD}" dist/*
+
+  rebase:
+    needs: deploy
+    if: github.ref == 'refs/heads/beta'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rebase beta on master
+        uses: DeeDeeG/rebase-github-action@main
+        with:
+          base_ref: master
+          head_branch: beta
