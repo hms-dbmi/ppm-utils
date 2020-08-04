@@ -3,15 +3,17 @@ from furl import furl
 
 from ppmutils.ppm import PPM
 from ppmutils.fhir import FHIR
+from ppmutils.settings import ppm_settings
 
+# Get the app logger
 import logging
-
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(ppm_settings.LOGGER_NAME)
 
 
 class P2MD(PPM.Service):
 
-    service = "P2MD"
+    service = 'data'
+    ppm_settings_url_name = 'DATA_URL'
 
     # This is the system prefix used for coding DocumentReferences created by P2MD
     system = FHIR.data_document_reference_identifier_system
@@ -25,25 +27,6 @@ class P2MD(PPM.Service):
         i2b2 = "ppm-i2b2"
         JSON = "ppm-json"
         FHIR = "ppm-fhir"
-
-    @classmethod
-    def default_url_for_env(cls, environment):
-        """
-        Give implementing classes an opportunity to list a default set of URLs based
-        on the DBMI_ENV, if specified. Otherwise, return nothing
-        :param environment: The DBMI_ENV string
-        :return: A URL, if any
-        """
-        if "local" in environment:
-            return "https://data.ppm.aws.dbmi-loc.hms.harvard.edu"
-        elif "dev" in environment:
-            return "https://p2m2.aws.dbmi-dev.hms.harvard.edu"
-        elif "prod" in environment:
-            return "https://p2m2.dbmi.hms.harvard.edu"
-        else:
-            logger.error(f"Could not return a default URL for environment: {environment}")
-
-        return None
 
     @classmethod
     def get_auth_link(cls, request, provider, ppm_id, return_url):

@@ -1,0 +1,18 @@
+{% if first_name %}{{ first_name }},{% else %}Hello,{% endif %}
+
+Thank you for registering for the People-Powered Medicine {{ ppm_study_title }} study.  Before accepting a participant into the study, we need to review the registration answers for each person who registers to determine eligibility.  Because we have many potential participants to review, please allow 8-12 weeks for us to update you on your registration.
+
+In the meantime, if you have any questions or concerns, please do not hesitate to reach out to me.  Thank you again for your interest in our study!
+
+{% if ppm_signature %}
+{{ ppm_signature.name }}
+{{ ppm_signature.title }}
+
+Harvard Medical School
+Department of Biomedical Informatics
+10 Shattuck Street
+Boston, MA 02115
+{{ ppm_signature.email }}
+Ph: {{ ppm_signature.phone }}
+{% endif %}
+

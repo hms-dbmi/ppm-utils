@@ -20,7 +20,7 @@ class TestFHIR(unittest.TestCase):
         cls.fhir_url_pattern = r"{}/.*".format(cls.fhir_url)
 
         # Patch PPM FHIR URL
-        cls.ppm_fhir_url_patcher = mock.patch("ppmutils.ppm.PPM.fhir_url")
+        cls.ppm_fhir_url_patcher = mock.patch('ppmutils.fhir.FHIR.service_url')
         cls.mock_ppm_fhir_url = cls.ppm_fhir_url_patcher.start()
         cls.mock_ppm_fhir_url.return_value = cls.fhir_url
 
