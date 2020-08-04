@@ -4,6 +4,7 @@ import sys
 from io import open
 
 from setuptools import find_packages, setup
+from setuptools.command.test import test as TestCommand
 
 
 def read(f):
@@ -18,6 +19,7 @@ def get_version(package):
         os.path.join(os.path.dirname(os.path.abspath(__file__)), os.path.join(package, "__init__.py"),)
     ).read()
     return re.search("__version__ = ['\"]([^'\"]+)['\"]", init_py).group(1)
+
 
 # Inspired by the example at https://pytest.org/latest/goodpractises.html
 class NoseTestCommand(TestCommand):
