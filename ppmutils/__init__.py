@@ -18,4 +18,4 @@ HTTP_HEADER_ENCODING = "iso-8859-1"
 ISO_8601 = "iso-8601"
 
 # Set the Django app
-default_app_config = 'ppmutils.apps.PPMUtilsConfig'
+default_app_config = "ppmutils.apps.PPMUtilsConfig"

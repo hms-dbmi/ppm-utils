@@ -3,9 +3,10 @@ import json
 import base64
 
 import logging
+
 logger = logging.getLogger(__name__)
 
-__all__ = ['BASE_DIR', 'absolute_path', 'get_int', 'get_bool', 'get_str', 'get_list', 'get_dict']
+__all__ = ["BASE_DIR", "absolute_path", "get_int", "get_bool", "get_str", "get_list", "get_dict"]
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
@@ -17,9 +18,9 @@ def get_int(name, default=0, required=False):
     """
     if name not in os.environ:
         if required:
-            raise SystemError(f'ENV: Required parameter {name} could not be found')
+            raise SystemError(f"ENV: Required parameter {name} could not be found")
         else:
-            logger.error('ENV: Nothing found for: {}'.format(name))
+            logger.error("ENV: Nothing found for: {}".format(name))
             return default
 
     try:
@@ -27,9 +28,9 @@ def get_int(name, default=0, required=False):
         return int(value)
     except ValueError:
         if required:
-            raise SystemError(f'ENV: Required parameter {name} could not be parsed')
+            raise SystemError(f"ENV: Required parameter {name} could not be parsed")
         else:
-            logger.error('ENV: Non-numeric type found for: {}'.format(name))
+            logger.error("ENV: Non-numeric type found for: {}".format(name))
             return default
 
 
@@ -46,16 +47,16 @@ def get_bool(name, default=False, required=False):  # noqa
 
     if name not in os.environ:
         if required:
-            raise SystemError(f'ENV: Required parameter {name} could not be found')
+            raise SystemError(f"ENV: Required parameter {name} could not be found")
         else:
             return default
-    if os.environ[name].lower() in ['true', 'yes', '1', 'y']:
+    if os.environ[name].lower() in ["true", "yes", "1", "y"]:
         return True
-    elif os.environ[name].lower() in ['false', 'no', '0', 'n']:
+    elif os.environ[name].lower() in ["false", "no", "0", "n"]:
         return False
     else:
         if required:
-            raise SystemError(f'ENV: Required parameter {name} could not be found')
+            raise SystemError(f"ENV: Required parameter {name} could not be found")
         else:
             return default
 
@@ -70,15 +71,15 @@ def get_str(name, default=None, required=False):  # noqa
     value = os.environ.get(name, default)
     if value is None:
         if required:
-            raise SystemError(f'ENV: Required parameter {name} could not be found')
+            raise SystemError(f"ENV: Required parameter {name} could not be found")
         else:
-            logger.error('ENV: Nothing found for: {}'.format(name))
+            logger.error("ENV: Nothing found for: {}".format(name))
             return default
 
     return value
 
 
-def get_list(name, separator=',', default=None, required=False):  # noqa
+def get_list(name, separator=",", default=None, required=False):  # noqa
     """
     Get a list of string values from environment variable.
     If the environment variable is not set, the default value is returned
@@ -87,9 +88,9 @@ def get_list(name, separator=',', default=None, required=False):  # noqa
     if name not in os.environ:
         if default is None:
             if required:
-                raise SystemError(f'ENV: Required parameter {name} could not be found')
+                raise SystemError(f"ENV: Required parameter {name} could not be found")
             else:
-                logger.error('ENV: Nothing found for: {}'.format(name))
+                logger.error("ENV: Nothing found for: {}".format(name))
                 default = []
         return default
     return os.environ[name].split(separator)
@@ -103,9 +104,9 @@ def get_dict(name, b64=False, default=None, required=False):
     if name not in os.environ:
         if default is None:
             if required:
-                raise SystemError(f'ENV: Required parameter {name} could not be found')
+                raise SystemError(f"ENV: Required parameter {name} could not be found")
             else:
-                logger.error('Nothing found for: {}'.format(name))
+                logger.error("Nothing found for: {}".format(name))
                 default = {}
         return default
     try:
@@ -117,7 +118,7 @@ def get_dict(name, b64=False, default=None, required=False):
 
     except ValueError:
         if required:
-            raise SystemError(f'ENV: Required parameter {name} could not be found')
+            raise SystemError(f"ENV: Required parameter {name} could not be found")
         else:
-            logger.error('ENV: Failed to parse value for: {}'.format(name))
+            logger.error("ENV: Failed to parse value for: {}".format(name))
             return default

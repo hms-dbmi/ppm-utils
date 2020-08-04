@@ -17,94 +17,103 @@ from ppmutils import environment as env
 
 # Set service URLs based on environment
 PPM_ENVIRONMENTS = {
-    'prod': {
-        'API_URL': 'https://api.ppm.aws.dbmi.hms.harvard.edu',
-        'ADMIN_URL': 'https://p2m2a.dbmi.hms.harvard.edu',
-        'QUESTIONNAIRE_URL': 'https://questionnaire.ppm.dbmi.hms.harvard.edu/questionnaire',
-        'DATA_URL': 'https://data.ppm.dbmi.hms.harvard.edu',
-        'FHIR_URL': 'https://fhir.ppm.aws.dbmi.hms.harvard.edu',
-        'FILESERVICE_URL': 'https://files.ppm.aws.dbmi.hms.harvard.edu',
-        'DASHBOARD_URL': {
-            'neer': 'https://neer.ppm.aws.dbmi.hms.harvard.edu',
-            'autism': 'https://autism.ppm.aws.dbmi.hms.harvard.edu',
-            'example': 'https://example.ppm.aws.dbmi.hms.harvard.edu',
-            'rant': 'https://rant.ppm.aws.dbmi.hms.harvard.edu',
-        }
+    "prod": {
+        "API_URL": "https://api.ppm.aws.dbmi.hms.harvard.edu",
+        "ADMIN_URL": "https://p2m2a.dbmi.hms.harvard.edu",
+        "QUESTIONNAIRE_URL": "https://questionnaire.ppm.dbmi.hms.harvard.edu/questionnaire",
+        "DATA_URL": "https://data.ppm.dbmi.hms.harvard.edu",
+        "FHIR_URL": "https://fhir.ppm.aws.dbmi.hms.harvard.edu",
+        "FILESERVICE_URL": "https://files.ppm.aws.dbmi.hms.harvard.edu",
+        "DASHBOARD_URL": {
+            "neer": "https://neer.ppm.aws.dbmi.hms.harvard.edu",
+            "autism": "https://autism.ppm.aws.dbmi.hms.harvard.edu",
+            "example": "https://example.ppm.aws.dbmi.hms.harvard.edu",
+            "rant": "https://rant.ppm.aws.dbmi.hms.harvard.edu",
+        },
     },
-    'dev': {
-        'API_URL': 'https://api.ppm.aws.dbmi-dev.hms.harvard.edu',
-        'ADMIN_URL': 'https://p2m2a.aws.dbmi-dev.hms.harvard.edu',
-        'QUESTIONNAIRE_URL': 'https://questionnaire.ppm.aws.dbmi-dev.hms.harvard.edu/questionnaire',
-        'DATA_URL': 'https://data.ppm.aws.dbmi-dev.hms.harvard.edu',
-        'FHIR_URL': 'https://fhir.ppm.aws.dbmi-dev.hms.harvard.edu',
-        'FILESERVICE_URL': 'https://files.ppm.aws.dbmi-dev.hms.harvard.edu',
-        'DASHBOARD_URL': {
-            'neer': 'https://neer.ppm.aws.dbmi-dev.hms.harvard.edu',
-            'autism': 'https://autism.ppm.aws.dbmi-dev.hms.harvard.edu',
-            'example': 'https://example.ppm.aws.dbmi-dev.hms.harvard.edu',
-            'rant': 'https://rant.ppm.aws.dbmi-dev.hms.harvard.edu',
-        }
+    "dev": {
+        "API_URL": "https://api.ppm.aws.dbmi-dev.hms.harvard.edu",
+        "ADMIN_URL": "https://p2m2a.aws.dbmi-dev.hms.harvard.edu",
+        "QUESTIONNAIRE_URL": "https://questionnaire.ppm.aws.dbmi-dev.hms.harvard.edu/questionnaire",
+        "DATA_URL": "https://data.ppm.aws.dbmi-dev.hms.harvard.edu",
+        "FHIR_URL": "https://fhir.ppm.aws.dbmi-dev.hms.harvard.edu",
+        "FILESERVICE_URL": "https://files.ppm.aws.dbmi-dev.hms.harvard.edu",
+        "DASHBOARD_URL": {
+            "neer": "https://neer.ppm.aws.dbmi-dev.hms.harvard.edu",
+            "autism": "https://autism.ppm.aws.dbmi-dev.hms.harvard.edu",
+            "example": "https://example.ppm.aws.dbmi-dev.hms.harvard.edu",
+            "rant": "https://rant.ppm.aws.dbmi-dev.hms.harvard.edu",
+        },
     },
-    'local': {
-        'API_URL': 'https://api.ppm.aws.dbmi-loc.hms.harvard.edu',
-        'ADMIN_URL': 'https://p2m2a.aws.dbmi-loc.hms.harvard.edu',
-        'QUESTIONNAIRE_URL': 'https://questionnaire.ppm.aws.dbmi-loc.hms.harvard.edu/questionnaire',
-        'DATA_URL': 'https://data.ppm.aws.dbmi-loc.hms.harvard.edu',
-        'FHIR_URL': 'https://fhir.ppm.aws.dbmi-loc.hms.harvard.edu',
-        'FILESERVICE_URL': 'https://files.ppm.aws.dbmi-loc.hms.harvard.edu',
-        'DASHBOARD_URL': {
-            'neer': 'https://neer.ppm.aws.dbmi-loc.hms.harvard.edu',
-            'autism': 'https://autism.ppm.aws.dbmi-loc.hms.harvard.edu',
-            'example': 'https://example.ppm.aws.dbmi-loc.hms.harvard.edu',
-            'rant': 'https://rant.ppm.aws.dbmi-loc.hms.harvard.edu',
-        }
-    }
+    "local": {
+        "API_URL": "https://api.ppm.aws.dbmi-loc.hms.harvard.edu",
+        "ADMIN_URL": "https://p2m2a.aws.dbmi-loc.hms.harvard.edu",
+        "QUESTIONNAIRE_URL": "https://questionnaire.ppm.aws.dbmi-loc.hms.harvard.edu/questionnaire",
+        "DATA_URL": "https://data.ppm.aws.dbmi-loc.hms.harvard.edu",
+        "FHIR_URL": "https://fhir.ppm.aws.dbmi-loc.hms.harvard.edu",
+        "FILESERVICE_URL": "https://files.ppm.aws.dbmi-loc.hms.harvard.edu",
+        "DASHBOARD_URL": {
+            "neer": "https://neer.ppm.aws.dbmi-loc.hms.harvard.edu",
+            "autism": "https://autism.ppm.aws.dbmi-loc.hms.harvard.edu",
+            "example": "https://example.ppm.aws.dbmi-loc.hms.harvard.edu",
+            "rant": "https://rant.ppm.aws.dbmi-loc.hms.harvard.edu",
+        },
+    },
 }
 
 CONFIG_DEFAULTS = {
-
     # The identifier for this service and/or project
-    'STUDY': None,
-
+    "STUDY": None,
     # Client options, assume production environment
-    'ENVIRONMENT': 'prod',
-
+    "ENVIRONMENT": "prod",
     # Set prod URLs
-    'API_URL': None,
-    'ADMIN_URL': None,
-    'QUESTIONNAIRE_URL': None,
-    'DATA_URL': None,
-    'FHIR_URL': None,
-    'FILESERVICE_URL': None,
-
+    "API_URL": None,
+    "ADMIN_URL": None,
+    "QUESTIONNAIRE_URL": None,
+    "DATA_URL": None,
+    "FHIR_URL": None,
+    "FILESERVICE_URL": None,
     # Optionally disable logging
-    'LOGGER_NAME': 'ppmutils',
-    'ENABLE_LOGGING': True,
-    'LOG_LEVEL': logging.WARNING,
-
+    "LOGGER_NAME": "ppmutils",
+    "ENABLE_LOGGING": True,
+    "LOG_LEVEL": logging.WARNING,
     # Configure email settings
-    'EMAIL_ENABLED': False,
-    'EMAIL_DEFAULT_FROM': 'ppm-no-reply@dbmi.hms.harvard.edu',
-    'EMAIL_TEST_ACCOUNTS': ['tester[\d]?@peoplepoweredmedicine.org:admin@peoplepoweredmedicine.org'],
-    'EMAIL_SIGNATURE': {
-        'name': 'Jane Smith',
-        'email': 'jane_smith@peoplepoweredmedicine.org',
-        'title': 'Manager, People-Powered Medicine',
-        'phone': '617-555-5555'
+    "EMAIL_ENABLED": False,
+    "EMAIL_DEFAULT_FROM": "ppm-no-reply@dbmi.hms.harvard.edu",
+    "EMAIL_TEST_ACCOUNTS": [r"tester[\d]?@peoplepoweredmedicine.org:admin@peoplepoweredmedicine.org"],
+    "EMAIL_SIGNATURE": {
+        "name": "Jane Smith",
+        "email": "jane_smith@peoplepoweredmedicine.org",
+        "title": "Manager, People-Powered Medicine",
+        "phone": "617-555-5555",
     },
 }
 
 # List of settings that cannot be defaulted and must be user-defined
-REQUIRED_SETTINGS = ('FHIR_URL', )
+REQUIRED_SETTINGS = ("FHIR_URL",)
 
 # List of settings that have been removed
 REMOVED_SETTINGS = ()
 
 # List of service URLs
-SERVICE_URLS = ('API_URL', 'FHIR_URL', 'ADMIN_URL', 'QUESTIONNAIRE_URL', 'DATA_URL', 'FILESERVICE_URL', )
+SERVICE_URLS = (
+    "API_URL",
+    "FHIR_URL",
+    "ADMIN_URL",
+    "QUESTIONNAIRE_URL",
+    "DATA_URL",
+    "FILESERVICE_URL",
+)
 
 # List of needed email settings if enabled
-EMAIL_SETTINGS = ('EMAIL_BACKEND', 'EMAIL_HOST', 'EMAIL_HOST_USER', 'EMAIL_HOST_PASSWORD', 'EMAIL_PORT', 'EMAIL_USE_SSL', )
+EMAIL_SETTINGS = (
+    "EMAIL_BACKEND",
+    "EMAIL_HOST",
+    "EMAIL_HOST_USER",
+    "EMAIL_HOST_PASSWORD",
+    "EMAIL_PORT",
+    "EMAIL_USE_SSL",
+)
 
 
 class PPMSettings(object):
@@ -116,6 +125,7 @@ class PPMSettings(object):
     Any setting with string import paths will be automatically resolved
     and return the class, rather than the string literal.
     """
+
     def __init__(self, defaults=None):
         self.defaults = defaults or CONFIG_DEFAULTS
         self._cached_attrs = set()
@@ -124,28 +134,28 @@ class PPMSettings(object):
     def user_settings(self):
 
         # Check to see if user configs have been loaded or not
-        if not hasattr(self, '_user_settings'):
+        if not hasattr(self, "_user_settings"):
 
             try:
                 # Load user-specified configurations
-                user_settings = getattr(settings, 'PPM_CONFIG', {})
+                user_settings = getattr(settings, "PPM_CONFIG", {})
 
                 # Update the client config with pre-defined environment URLs, etc
-                if user_settings.get('ENVIRONMENT') in PPM_ENVIRONMENTS:
-                    env_settings = PPM_ENVIRONMENTS[user_settings.get('ENVIRONMENT')]
+                if user_settings.get("ENVIRONMENT") in PPM_ENVIRONMENTS:
+                    env_settings = PPM_ENVIRONMENTS[user_settings.get("ENVIRONMENT")]
                     user_settings.update({k: v for k, v in env_settings.items() if k not in user_settings})
 
                 else:
                     # Check for them in environment
-                    for key in PPM_ENVIRONMENTS['prod'].keys():
-                        if os.environ.get('PPM_{}'.format(key.upper())):
-                            user_settings[key] = env.get_str('PPM_{}'.format(key.upper()))
+                    for key in PPM_ENVIRONMENTS["prod"].keys():
+                        if os.environ.get("PPM_{}".format(key.upper())):
+                            user_settings[key] = env.get_str("PPM_{}".format(key.upper()))
 
                 # Check them
                 self._user_settings = self.__check_user_settings(user_settings)
 
             except Exception as e:
-                raise SystemError('PPMUtils settings are invalid: {}'.format(e))
+                raise SystemError("PPMUtils settings are invalid: {}".format(e))
 
         return self._user_settings
 
@@ -159,7 +169,7 @@ class PPMSettings(object):
         """
         try:
             # Get environments
-            return PPM_ENVIRONMENTS[self.ENVIRONMENT]['DASHBOARD_URL'][study]
+            return PPM_ENVIRONMENTS[self.ENVIRONMENT]["DASHBOARD_URL"][study]
 
         except (ValueError, IndexError):
             warnings.warn(f'No defined PPM dashboard URL for "{self.ENVIRONMENT}/{study}"')
@@ -187,18 +197,22 @@ class PPMSettings(object):
         return val
 
     def __check_user_settings(self, user_settings):
-        SETTINGS_DOC = 'https://github.com/hms-dbmi/ppmutils'
+        SETTINGS_DOC = "https://github.com/hms-dbmi/ppmutils"
 
         for setting in REMOVED_SETTINGS:
             if setting in user_settings:
-                raise RuntimeError("The '%s' setting has been removed. Please refer to '%s' for available settings."
-                                   % (setting, SETTINGS_DOC))
+                raise RuntimeError(
+                    "The '%s' setting has been removed. Please refer to '%s' for available settings."
+                    % (setting, SETTINGS_DOC)
+                )
 
         # Ensure environment is set and if not prod or dev, ensure service URLs are provided
-        if 'ENVIRONMENT' in user_settings and \
-                user_settings['ENVIRONMENT'].lower() != 'prod' and user_settings['ENVIRONMENT'].lower() != 'dev':
-            warnings.warn(
-                "ENVIRONMENT is not set to production, this should be a test environment", ResourceWarning)
+        if (
+            "ENVIRONMENT" in user_settings
+            and user_settings["ENVIRONMENT"].lower() != "prod"
+            and user_settings["ENVIRONMENT"].lower() != "dev"
+        ):
+            warnings.warn("ENVIRONMENT is not set to production, this should be a test environment", ResourceWarning)
 
             # Check URLs
             self._url_settings(user_settings)
@@ -221,8 +235,8 @@ class PPMSettings(object):
             if url not in user_settings:
 
                 # Check environment
-                if os.environ.get(f'PPM_{url}'):
-                    user_settings[url] = os.environ.get(f'PPM_{url}')
+                if os.environ.get(f"PPM_{url}"):
+                    user_settings[url] = os.environ.get(f"PPM_{url}")
                 elif url in REQUIRED_SETTINGS:
                     missing_urls.append(url)
                 else:
@@ -230,14 +244,14 @@ class PPMSettings(object):
 
         # Error out if needed
         if missing_urls:
-            raise AttributeError('{} configuration(s) must be set'.format(missing_urls))
+            raise AttributeError("{} configuration(s) must be set".format(missing_urls))
 
     def _email_settings(self, user_settings):
         """
         Checks the host settings for properly configured email backends and adds the correct
         configurations if needed.
         """
-        if user_settings.get('EMAIL_ENABLED'):
+        if user_settings.get("EMAIL_ENABLED"):
 
             # Check and remap remaining settings
             missing_settings = []
@@ -248,14 +262,14 @@ class PPMSettings(object):
                     missing_settings.append(email_setting)
 
             if missing_settings:
-                raise AttributeError('PPM Email: Required email settings are missing: {}'.format(missing_settings))
+                raise AttributeError("PPM Email: Required email settings are missing: {}".format(missing_settings))
 
     def reload(self):
         for attr in self._cached_attrs:
             delattr(self, attr)
         self._cached_attrs.clear()
-        if hasattr(self, '_user_settings'):
-            delattr(self, '_user_settings')
+        if hasattr(self, "_user_settings"):
+            delattr(self, "_user_settings")
 
     def __dir__(self):
 
@@ -290,8 +304,8 @@ logger.setLevel(ppm_settings.LOG_LEVEL)
 
 
 def reload_ppm_settings(*args, **kwargs):
-    setting = kwargs['setting']
-    if setting == 'PPM_CONFIG':
+    setting = kwargs["setting"]
+    if setting == "PPM_CONFIG":
         ppm_settings.reload()
 
 

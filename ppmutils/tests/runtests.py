@@ -10,34 +10,27 @@ from django_nose import NoseTestSuiteRunner
 from django.conf import settings
 
 EXTERNAL_APPS = [
-    'django.contrib.admin',
-    'django.contrib.admindocs',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.messages',
-    'django.contrib.sessions',
-    'django.contrib.staticfiles',
-    'django.contrib.sitemaps',
-    'django.contrib.sites',
+    "django.contrib.admin",
+    "django.contrib.admindocs",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.messages",
+    "django.contrib.sessions",
+    "django.contrib.staticfiles",
+    "django.contrib.sitemaps",
+    "django.contrib.sites",
 ]
 INTERNAL_APPS = [
-    'django_nose',
-    'ppmutils',
+    "django_nose",
+    "ppmutils",
 ]
 INSTALLED_APPS = EXTERNAL_APPS + INTERNAL_APPS
 
 if not settings.configured:
     settings.configure(
-        DATABASES={
-            "default": {
-                "ENGINE": "django.db.backends.sqlite3",
-                "NAME": ":memory:",
-            }
-        },
+        DATABASES={"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:",}},
         INSTALLED_APPS=INSTALLED_APPS,
-        PPM_CONFIG={
-            "FHIR_URL": "https://fhir.ppm.dbmi.hms.harvard.edu/baseDstu3"
-        }
+        PPM_CONFIG={"FHIR_URL": "https://fhir.ppm.dbmi.hms.harvard.edu/baseDstu3"},
     )
 
 
@@ -45,5 +38,5 @@ def main(*test_args):
     sys.exit(NoseTestSuiteRunner(verbosity=2, interactive=True).run_tests(test_args))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main(*sys.argv[1:])
