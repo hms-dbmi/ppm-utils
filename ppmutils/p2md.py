@@ -7,13 +7,14 @@ from ppmutils.settings import ppm_settings
 
 # Get the app logger
 import logging
+
 logger = logging.getLogger(ppm_settings.LOGGER_NAME)
 
 
 class P2MD(PPM.Service):
 
-    service = 'data'
-    ppm_settings_url_name = 'DATA_URL'
+    service = "data"
+    ppm_settings_url_name = "DATA_URL"
 
     # This is the system prefix used for coding DocumentReferences created by P2MD
     system = FHIR.data_document_reference_identifier_system

@@ -13,6 +13,7 @@ from ppmutils.settings import ppm_settings
 
 # Get the app logger
 import logging
+
 logger = logging.getLogger(ppm_settings.LOGGER_NAME)
 
 
@@ -450,72 +451,35 @@ class PPM:
                 ]
             elif _study is PPM.Study.RANT:
                 steps = [
+                    {"step": "email-confirm", "blocking": True, "required": True,},
                     {
-                        'step': 'email-confirm',
-                        'blocking': True,
-                        'required': True,
+                        "step": "registration",
+                        "blocking": True,
+                        "required": True,
+                        "post_enrollment": PPM.Enrollment.Registered.value,
                     },
                     {
-                        'step': 'registration',
-                        'blocking': True,
-                        'required': True,
-                        'post_enrollment': PPM.Enrollment.Registered.value
+                        "step": "consent",
+                        "blocking": True,
+                        "required": True,
+                        "pre_enrollment": PPM.Enrollment.Registered.value,
+                        "post_enrollment": PPM.Enrollment.Consented.value,
                     },
                     {
-                        'step': 'consent',
-                        'blocking': True,
-                        'required': True,
-                        'pre_enrollment': PPM.Enrollment.Registered.value,
-                        'post_enrollment': PPM.Enrollment.Consented.value
+                        "step": "questionnaire",
+                        "blocking": True,
+                        "required": True,
+                        "pre_enrollment": PPM.Enrollment.Consented.value,
+                        "post_enrollment": PPM.Enrollment.Proposed.value,
                     },
-                    {
-                        'step': 'questionnaire',
-                        'blocking': True,
-                        'required': True,
-                        'pre_enrollment': PPM.Enrollment.Consented.value,
-                        'post_enrollment': PPM.Enrollment.Proposed.value
-                    },
-                    {
-                        'step': 'approval',
-                        'blocking': True,
-                        'required': True
-                    },
-                    {
-                        'step': 'poc',
-                        'blocking': True,
-                        'required': True
-                    },
-                    {
-                        'step': 'research-studies',
-                        'blocking': False,
-                        'required': False
-                    },
-                    {
-                        'step': 'twitter',
-                        'blocking': False,
-                        'required': False
-                    },
-                    {
-                        'step': 'fitbit',
-                        'blocking': False,
-                        'required': False
-                    },
-                    {
-                        'step': 'facebook',
-                        'blocking': False,
-                        'required': False
-                    },
-                    {
-                        'step': 'ehr',
-                        'blocking': False,
-                        'required': False,
-                        'multiple': True
-                    },
-                    {
-                        'step': 'picnichealth',
-                        'blocking': False,
-                        'required': True
-                    },
+                    {"step": "approval", "blocking": True, "required": True},
+                    {"step": "poc", "blocking": True, "required": True},
+                    {"step": "research-studies", "blocking": False, "required": False},
+                    {"step": "twitter", "blocking": False, "required": False},
+                    {"step": "fitbit", "blocking": False, "required": False},
+                    {"step": "facebook", "blocking": False, "required": False},
+                    {"step": "ehr", "blocking": False, "required": False, "multiple": True},
+                    {"step": "picnichealth", "blocking": False, "required": True},
                 ]
 
             return steps
@@ -842,13 +806,12 @@ class PPM:
 
             elif questionnaire_id == PPM.Questionnaire.RANTConsent.value:
                 return {
-                    'question-1': '82078001',
-                    'question-2': '165334004',
-                    'question-3': '258435002',
-                    'question-4': '284036006',
-                    'question-5': '702475000',
+                    "question-1": "82078001",
+                    "question-2": "165334004",
+                    "question-3": "258435002",
+                    "question-4": "284036006",
+                    "question-5": "702475000",
                 }
-
 
             elif questionnaire_id == PPM.Questionnaire.ASDConsentIndividualSignatureQuestionnaire.value:
                 return {
@@ -893,7 +856,7 @@ class PPM:
         SMART = "smart"
         File = "file"
         Qualtrics = "qualtrics"
-        ImmunoSEQ = 'immunoseq'
+        ImmunoSEQ = "immunoseq"
 
         @classmethod
         def enum(cls, enum):
@@ -923,7 +886,7 @@ class PPM:
                 (PPM.Provider.SMART.value, "SMART on FHIR"),
                 (PPM.Provider.File.value, "PPM Files"),
                 (PPM.Provider.Qualtrics.value, "Qualtrics Surveys"),
-                (PPM.Provider.ImmunoSEQ.value, 'immunoSEQ'),
+                (PPM.Provider.ImmunoSEQ.value, "immunoSEQ"),
             )
 
         @classmethod
@@ -1005,12 +968,12 @@ class PPM:
     Device = TrackedItem
 
     class Email(Enum):
-        AdminProposedNotification = 'admin_proposed_notification'
-        AdminContactNotification = 'admin_contact_notification'
-        UserProposedNotification = 'user_proposed_notification'
-        UserAcceptedNotification = 'user_accepted_notification'
-        UserPendingNotification = 'user_pending_notification'
-        UserQueuedNotification = 'user_queued_notification'
+        AdminProposedNotification = "admin_proposed_notification"
+        AdminContactNotification = "admin_contact_notification"
+        UserProposedNotification = "user_proposed_notification"
+        UserAcceptedNotification = "user_accepted_notification"
+        UserPendingNotification = "user_pending_notification"
+        UserQueuedNotification = "user_queued_notification"
 
         @staticmethod
         def send(email, study, recipients, subject=None, sender=None, context=None, reply_to=None):
@@ -1046,7 +1009,9 @@ class PPM:
                     html, plain = PPM.Email.render(email=email, study=study, context=context, subject=subject)
 
                     # Perform send
-                    msg = EmailMultiAlternatives(subject, plain, ppm_settings.EMAIL_DEFAULT_FROM, [recipient], reply_to=reply_to)
+                    msg = EmailMultiAlternatives(
+                        subject, plain, ppm_settings.EMAIL_DEFAULT_FROM, [recipient], reply_to=reply_to
+                    )
                     msg.attach_alternative(html, "text/html")
                     msg.send()
 
@@ -1055,9 +1020,17 @@ class PPM:
                     return True
 
             except Exception as e:
-                logger.exception('Email error: {}'.format(e), exc_info=True, extra={
-                    'email': email.value, 'study': study, 'subject': subject, 'sender': sender, 'context': context
-                })
+                logger.exception(
+                    "Email error: {}".format(e),
+                    exc_info=True,
+                    extra={
+                        "email": email.value,
+                        "study": study,
+                        "subject": subject,
+                        "sender": sender,
+                        "context": context,
+                    },
+                )
 
             return False
 
@@ -1074,32 +1047,32 @@ class PPM:
 
             # Check for test accounts
             try:
-                if hasattr(ppm_settings, 'EMAIL_TEST_ACCOUNTS'):
+                if hasattr(ppm_settings, "EMAIL_TEST_ACCOUNTS"):
                     test_accounts = ppm_settings.EMAIL_TEST_ACCOUNTS
-                elif hasattr(settings, 'TEST_EMAIL_ACCOUNTS'):
-                    test_accounts = settings.TEST_EMAIL_ACCOUNTS.split(',')
+                elif hasattr(settings, "TEST_EMAIL_ACCOUNTS"):
+                    test_accounts = settings.TEST_EMAIL_ACCOUNTS.split(",")
                 else:
                     return None
 
                 if test_accounts is not None and len(test_accounts) > 0:
-                    logger.info('Test accounts found, checking now...')
+                    logger.info("Test accounts found, checking now...")
 
                     for test_account in test_accounts:
 
                         # Split the test account email from the destination admin email
-                        test_account_parts = test_account.split(':')
+                        test_account_parts = test_account.split(":")
                         regex = re.compile(test_account_parts[0])
                         matches = regex.match(recipient)
                         if matches is not None and matches.group():
-                            logger.info("Email: Test account found: {}, sending to {}".format(
-                                recipient, test_account_parts[1]
-                            ))
+                            logger.info(
+                                "Email: Test account found: {}, sending to {}".format(recipient, test_account_parts[1])
+                            )
 
                             # Return the test admin email
                             return test_account_parts[1]
 
             except Exception as e:
-                logger.warning('Test email lookup failed: {}'.format(e), exc_info=True)
+                logger.warning("Test email lookup failed: {}".format(e), exc_info=True)
 
             return None
 
@@ -1117,28 +1090,29 @@ class PPM:
             _study = PPM.Study.get(study)
 
             # Add study
-            context['ppm_study'] = _study.value
-            context['ppm_study_title'] = PPM.Study.title(study)
+            context["ppm_study"] = _study.value
+            context["ppm_study_title"] = PPM.Study.title(study)
 
             # Add subject
-            context['ppm_subject'] = subject if subject is not None else PPM.Email.subject(email=email, study=study)
+            context["ppm_subject"] = subject if subject is not None else PPM.Email.subject(email=email, study=study)
 
             # Add signature bits
-            context['ppm_signature'] = ppm_settings.EMAIL_SIGNATURE
+            context["ppm_signature"] = ppm_settings.EMAIL_SIGNATURE
 
             try:
                 # Check for study specific templates
-                if os.path.exists(f'ppmutils/{_study.value}/{email.value}.html'):
+                if os.path.exists(f"ppmutils/{_study.value}/{email.value}.html"):
 
                     # These templates are specific to this study
-                    template_paths = f'ppmutils/{_study.value}/{email.value}.html', \
-                                     f'ppmutils/{_study.value}/{email.value}.txt'
+                    template_paths = (
+                        f"ppmutils/{_study.value}/{email.value}.html",
+                        f"ppmutils/{_study.value}/{email.value}.txt",
+                    )
 
                 else:
 
                     # These are generic templates and can be rendered across all studies
-                    template_paths = f'ppmutils/{email.value}.html', \
-                                     f'ppmutils/{email.value}.txt'
+                    template_paths = f"ppmutils/{email.value}.html", f"ppmutils/{email.value}.txt"
 
                 # Render templates
                 html = render_to_string(template_paths[0], context)
@@ -1147,9 +1121,7 @@ class PPM:
                 return html, plain
 
             except Exception as e:
-                logger.exception(f'Email error: {e}', exc_info=True, extra={
-                    'email': email.value, 'study': study,
-                })
+                logger.exception(f"Email error: {e}", exc_info=True, extra={"email": email.value, "study": study,})
 
         @staticmethod
         def subject(email, study):
@@ -1161,12 +1133,12 @@ class PPM:
             """
             # Set email subject lines
             subjects = {
-                'admin_contact_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Support',
-                'admin_proposed_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - New User Signup',
-                'user_proposed_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Registration',
-                'user_accepted_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Approved',
-                'user_queued_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Update',
-                'user_pending_notification': f'People-Powered Medicine - {PPM.Study.title(study)} - Update',
+                "admin_contact_notification": f"People-Powered Medicine - {PPM.Study.title(study)} - Support",
+                "admin_proposed_notification": f"People-Powered Medicine - {PPM.Study.title(study)} - New User Signup",
+                "user_proposed_notification": f"People-Powered Medicine - {PPM.Study.title(study)} - Registration",
+                "user_accepted_notification": f"People-Powered Medicine - {PPM.Study.title(study)} - Approved",
+                "user_queued_notification": f"People-Powered Medicine - {PPM.Study.title(study)} - Update",
+                "user_pending_notification": f"People-Powered Medicine - {PPM.Study.title(study)} - Update",
             }
 
             return subjects[email.value]
@@ -1190,10 +1162,10 @@ class PPM:
 
             # Build the url, chancing on doubling up a slash or two.
             url = furl(cls.service_url())
-            url.path.segments.extend([p for p in path.split('/') if p])
+            url.path.segments.extend([p for p in path.split("/") if p])
 
             # add trailing slash
-            url.path.segments.append('')
+            url.path.segments.append("")
 
             logger.debug(f'Path "{path}" -> "{url.url}"')
 
@@ -1212,12 +1184,12 @@ class PPM:
                 url.query.params.clear()
 
                 # Add API base path
-                url.path.segments.extend(['api', 'v1', cls.service])
+                url.path.segments.extend(["api", "v1", cls.service])
 
             else:
                 # Get from ppm settings
                 if not hasattr(ppm_settings, cls.ppm_settings_url_name):
-                    raise SystemError('Service URL not defined in settings'.format(cls.service.upper()))
+                    raise SystemError("Service URL not defined in settings".format(cls.service.upper()))
 
                 # Get it
                 service_url = getattr(ppm_settings, cls.ppm_settings_url_name)
@@ -1492,7 +1464,7 @@ class PPM:
             return False
 
         @classmethod
-        def request(cls, verb, headers=None, request=None, path='/', data=None, check=True):
+        def request(cls, verb, headers=None, request=None, path="/", data=None, check=True):
             """
             Runs the appropriate REST operation. Request is required for JWT auth,
             not required for token auth.
@@ -1521,7 +1493,7 @@ class PPM:
             try:
                 # Build arguments
                 args = [cls._build_url(path)]
-                kwargs = {'headers': headers}
+                kwargs = {"headers": headers}
 
                 # Check how data should be passed
                 if verb.lower() in ["get", "head"]:

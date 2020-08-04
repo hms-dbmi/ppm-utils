@@ -5,6 +5,7 @@ import io
 from enum import Enum
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,27 +14,30 @@ class PicnicHealth(object):
 
     # Define PicnicHealth resource types
     class Resource(Enum):
-        CareSite = 'careSite'
-        Concept = 'concept'
-        Condition = 'condition'
-        ConditionReadable = 'conditionReadable'
-        DicomStudy = 'dicomStudy'
-        Drug = 'drug'
-        DrugReadable = 'drugReadable'
-        Location = 'location'
-        Measurement = 'measurement'
-        MeasurementReadable = 'measurementReadable'
-        PdfFile = 'pdfFile'
-        Person = 'person'
-        Provider = 'provider'
-        Visit = 'visit'
-        Note = 'note'
+        CareSite = "careSite"
+        Concept = "concept"
+        Condition = "condition"
+        ConditionReadable = "conditionReadable"
+        DicomStudy = "dicomStudy"
+        Drug = "drug"
+        DrugReadable = "drugReadable"
+        Location = "location"
+        Measurement = "measurement"
+        MeasurementReadable = "measurementReadable"
+        PdfFile = "pdfFile"
+        Person = "person"
+        Provider = "provider"
+        Visit = "visit"
+        Note = "note"
 
         @classmethod
         def person_resources(cls):
             """ Return a list of resource types that link to Person objects directly """
-            return [r for r in PicnicHealth.Resource if r not in
-                    PicnicHealth.Resource.visit_resources() + PicnicHealth.Resource.care_site_resources()]
+            return [
+                r
+                for r in PicnicHealth.Resource
+                if r not in PicnicHealth.Resource.visit_resources() + PicnicHealth.Resource.care_site_resources()
+            ]
 
         @classmethod
         def visit_resources(cls):
@@ -43,7 +47,9 @@ class PicnicHealth(object):
         @classmethod
         def care_site_resources(cls):
             """ Return a list of resource types that link to Care Site objects """
-            return [PicnicHealth.Resource.Location, ]
+            return [
+                PicnicHealth.Resource.Location,
+            ]
 
     def __init__(self, directory, output, force=False, dry=False):
         self.directory = directory
@@ -59,7 +65,7 @@ class PicnicHealth(object):
         :return: The path to the CSV
         :rtype: str
         """
-        return os.path.join(self.directory, '{}.csv'.format(resource.value))
+        return os.path.join(self.directory, "{}.csv".format(resource.value))
 
     def prepare_output_path(self, path):
         """
@@ -68,14 +74,16 @@ class PicnicHealth(object):
         :return: Whether the output path is ready or not
         """
         # Check if exists
-        if os.path.exists(path) and \
-                input("File exists at '{}', overwrite contents (n)?".format(path)) not in ['y', 'yes']:
+        if os.path.exists(path) and input("File exists at '{}', overwrite contents (n)?".format(path)) not in [
+            "y",
+            "yes",
+        ]:
             return False
         elif not os.path.exists(os.path.dirname(path)):
             try:
                 if not self.dry:
                     os.mkdir(os.path.dirname(path))
-            except:
+            except Exception:
                 raise ValueError("Could not create owner directory '{}'".format(os.path.dirname(path)))
 
         return True
@@ -96,11 +104,11 @@ class PicnicHealth(object):
                 return None
 
             # Dump the JSON document
-            with open(path, 'r') as f:
+            with open(path, "r") as f:
                 yield csv.DictReader(f)
 
         except Exception as e:
-            print(f'Error: {e}')
+            print(f"Error: {e}")
 
         return None
 
@@ -112,9 +120,11 @@ class PicnicHealth(object):
         :type resource: PicnicHealth.Resource
         :param key: The key or fieldname to perform matching lookups on
         :type key: str
-        :param value: The value that the passed key or fieldname should match in order to confirm a matching row/resource
+        :param value: The value that the passed key or fieldname should match in order to confirm a
+        matching row/resource
         :type value: str
-        :param values: The values that the passed key or fieldname should match in order to confirm a matching row/resource
+        :param values: The values that the passed key or fieldname should match in order to confirm a
+        matching row/resource
         :type values: list
         :return: A list of objects
         :rtype: list
@@ -132,7 +142,7 @@ class PicnicHealth(object):
                 return None
 
             # Dump the JSON document
-            f = open(path, 'r')
+            f = open(path, "r")
             sheet = csv.DictReader(f)
 
             # Collect resources
@@ -167,7 +177,7 @@ class PicnicHealth(object):
             return resources
 
         except Exception as e:
-            logger.exception(f'Error: {e}', exc_info=True)
+            logger.exception(f"Error: {e}", exc_info=True)
             # Clean up
             if f:
                 f.close()
@@ -189,7 +199,7 @@ class PicnicHealth(object):
         output_f = None
         try:
             # Determine output path
-            path = os.path.join(self.output, owner, '{}.csv'.format(resource.value))
+            path = os.path.join(self.output, owner, "{}.csv".format(resource.value))
 
             # Prepare output path
             if not self.prepare_output_path(path=path):
@@ -201,7 +211,7 @@ class PicnicHealth(object):
                 fieldnames = list(set(fieldnames + list(resource.keys())))
 
             # Start the writer
-            output_f = open(path, 'w') if not self.dry else io.StringIO()
+            output_f = open(path, "w") if not self.dry else io.StringIO()
             sheet_writer = csv.DictWriter(output_f, fieldnames=fieldnames)
             sheet_writer.writeheader()
 
@@ -221,7 +231,7 @@ class PicnicHealth(object):
             return True
 
         except Exception as e:
-            logger.exception(f'Error: {e}', exc_info=True)
+            logger.exception(f"Error: {e}", exc_info=True)
             # Clean up
             if output_f:
                 output_f.close()
@@ -238,9 +248,11 @@ class PicnicHealth(object):
         :type owner: str
         :param key: The key or fieldname to perform matching lookups on
         :type key: str
-        :param value: The value that the passed key or fieldname should match in order to confirm a matching row/resource
+        :param value: The value that the passed key or fieldname should match in order to confirm a
+        matching row/resource
         :type value: str
-        :param values: The values that the passed key or fieldname should match in order to confirm a matching row/resource
+        :param values: The values that the passed key or fieldname should match in order to confirm a
+        matching row/resource
         :type values: list
         :return: Whether the write performed successfully or not
         :rtype: bool
@@ -249,7 +261,7 @@ class PicnicHealth(object):
         output_f = None
         try:
             # Determine output path
-            path = os.path.join(self.output, owner, '{}.csv'.format(resource.value))
+            path = os.path.join(self.output, owner, "{}.csv".format(resource.value))
 
             # Prepare output path
             if not self.prepare_output_path(path=path):
@@ -262,11 +274,11 @@ class PicnicHealth(object):
                 return None
 
             # Dump the JSON document
-            f = open(sheet_path, 'r')
+            f = open(sheet_path, "r")
             sheet = csv.DictReader(f)
 
             # Start the writer
-            output_f = open(path, 'w') if not self.dry else io.StringIO()
+            output_f = open(path, "w") if not self.dry else io.StringIO()
             sheet_writer = csv.DictWriter(output_f, fieldnames=sheet.fieldnames)
             sheet_writer.writeheader()
 
@@ -295,7 +307,7 @@ class PicnicHealth(object):
             return True
 
         except Exception as e:
-            logger.exception(f'Error: {e}', exc_info=True)
+            logger.exception(f"Error: {e}", exc_info=True)
             # Clean up
             if output_f:
                 output_f.close()
@@ -319,14 +331,14 @@ class PicnicHealth(object):
         f = None
         try:
             # Get the path
-            path = os.path.join(self.output, owner, '{}.json'.format(resource.value))
+            path = os.path.join(self.output, owner, "{}.json".format(resource.value))
 
             # Prepare output path
             if not self.prepare_output_path(path=path):
                 return False
 
             # Get the file handle to write to
-            f = open(path, 'w') if not self.dry else io.StringIO()
+            f = open(path, "w") if not self.dry else io.StringIO()
 
             # Dump the JSON document
             json.dump(resources, f)
@@ -341,7 +353,7 @@ class PicnicHealth(object):
             return True
 
         except Exception as e:
-            logger.exception(f'Error: {e}', exc_info=True)
+            logger.exception(f"Error: {e}", exc_info=True)
             # Clean up
             if f:
                 f.close()
@@ -358,7 +370,7 @@ class PicnicHealth(object):
         for person in persons:
 
             # Get their ID create a placeholder for visits
-            person_id = person['personId']
+            person_id = person["personId"]
             provider_ids = None
             care_site_ids = None
 
@@ -366,31 +378,37 @@ class PicnicHealth(object):
             for resource in PicnicHealth.Resource.person_resources():
 
                 # Split
-                self.split_csv(resource=resource, owner=person_id, key='personId', value=person_id)
+                self.split_csv(resource=resource, owner=person_id, key="personId", value=person_id)
 
                 # If visits, pull linked resource IDs
                 if resource is PicnicHealth.Resource.Visit:
 
                     # Get resources and extract provider and care site IDs
-                    resources = self.extract_resources(resource=resource, key='personId', value=person_id)
-                    provider_ids = list(set([r.get('performingProviderId') for r in resources if
-                                             r.get('performingProviderId')] +
-                                            [r.get('referringProviderId') for r in resources if
-                                             r.get('referringProviderId')]))
-                    care_site_ids = list(set([r.get('careSiteId') for r in resources if r.get('careSiteId')]))
+                    resources = self.extract_resources(resource=resource, key="personId", value=person_id)
+                    provider_ids = list(
+                        set(
+                            [r.get("performingProviderId") for r in resources if r.get("performingProviderId")]
+                            + [r.get("referringProviderId") for r in resources if r.get("referringProviderId")]
+                        )
+                    )
+                    care_site_ids = list(set([r.get("careSiteId") for r in resources if r.get("careSiteId")]))
 
             # Get location IDs now since we needed care sites to be processed
-            resources = self.extract_resources(resource=PicnicHealth.Resource.CareSite,
-                                               key='careSiteId', values=care_site_ids)
-            location_ids = list(set([r.get('locationId') for r in resources if r.get('locationId')]))
+            resources = self.extract_resources(
+                resource=PicnicHealth.Resource.CareSite, key="careSiteId", values=care_site_ids
+            )
+            location_ids = list(set([r.get("locationId") for r in resources if r.get("locationId")]))
 
             # Split the rest
-            self.split_csv(resource=PicnicHealth.Resource.Provider, owner=person_id,
-                           key='providerId', values=provider_ids)
-            self.split_csv(resource=PicnicHealth.Resource.CareSite, owner=person_id,
-                           key='careSiteId', values=care_site_ids)
-            self.split_csv(resource=PicnicHealth.Resource.Location, owner=person_id,
-                           key='locationId', values=location_ids)
+            self.split_csv(
+                resource=PicnicHealth.Resource.Provider, owner=person_id, key="providerId", values=provider_ids
+            )
+            self.split_csv(
+                resource=PicnicHealth.Resource.CareSite, owner=person_id, key="careSiteId", values=care_site_ids
+            )
+            self.split_csv(
+                resource=PicnicHealth.Resource.Location, owner=person_id, key="locationId", values=location_ids
+            )
 
     def json(self, write=True):
         """
@@ -405,7 +423,7 @@ class PicnicHealth(object):
         for person in persons:
 
             # Get their ID create a placeholder for visits
-            person_id = person['personId']
+            person_id = person["personId"]
             provider_ids = None
             care_site_ids = None
             location_ids = None
@@ -414,7 +432,7 @@ class PicnicHealth(object):
             for resource in PicnicHealth.Resource.person_resources():
 
                 # Extract
-                resources = self.extract_resources(resource=resource, key='personId', value=person_id)
+                resources = self.extract_resources(resource=resource, key="personId", value=person_id)
                 if not resources:
                     continue
 
@@ -425,34 +443,39 @@ class PicnicHealth(object):
                 if resource is PicnicHealth.Resource.Visit:
 
                     # Get provider and care site IDs
-                    provider_ids = list(set([r.get('performingProviderId') for r in resources if
-                                             r.get('performingProviderId')] +
-                                            [r.get('referringProviderId') for r in resources if
-                                             r.get('referringProviderId')]))
-                    care_site_ids = list(set([r.get('careSiteId') for r in resources if r.get('careSiteId')]))
+                    provider_ids = list(
+                        set(
+                            [r.get("performingProviderId") for r in resources if r.get("performingProviderId")]
+                            + [r.get("referringProviderId") for r in resources if r.get("referringProviderId")]
+                        )
+                    )
+                    care_site_ids = list(set([r.get("careSiteId") for r in resources if r.get("careSiteId")]))
 
                 elif resource is PicnicHealth.Resource.CareSite:
 
                     # Get location IDs
-                    location_ids = list(set([r.get('locationId') for r in resources if r.get('locationId')]))
+                    location_ids = list(set([r.get("locationId") for r in resources if r.get("locationId")]))
 
             # Process providers
-            providers = self.extract_resources(resource=PicnicHealth.Resource.Provider,
-                                                       key='providerId', values=provider_ids)
+            providers = self.extract_resources(
+                resource=PicnicHealth.Resource.Provider, key="providerId", values=provider_ids
+            )
 
             # Export to JSON
             self.output_json(resource=PicnicHealth.Resource.Provider, owner=person_id, resources=providers)
 
             # Process care sites
-            care_sites = self.extract_resources(resource=PicnicHealth.Resource.CareSite,
-                                                        key='careSiteId', values=care_site_ids)
+            care_sites = self.extract_resources(
+                resource=PicnicHealth.Resource.CareSite, key="careSiteId", values=care_site_ids
+            )
 
             # Export to JSON
             self.output_json(resource=PicnicHealth.Resource.CareSite, owner=person_id, resources=care_sites)
 
             # Process locations
-            locations = self.extract_resources(resource=PicnicHealth.Resource.Location,
-                                                       key='locationId', values=location_ids)
+            locations = self.extract_resources(
+                resource=PicnicHealth.Resource.Location, key="locationId", values=location_ids
+            )
 
             # Export to JSON
             self.output_json(resource=PicnicHealth.Resource.Location, owner=person_id, resources=locations)
