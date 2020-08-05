@@ -1130,11 +1130,8 @@ class PPM:
         def _build_url(cls, path):
 
             # Build the url, chancing on doubling up a slash or two.
-            url = furl(cls.service_url())
-            url.path.segments.extend([p for p in path.split("/") if p])
-
-            # add trailing slash
-            url.path.segments.append("")
+            scheme, domain = tuple(cls.service_url().strip("/").split("://"))
+            url = furl("{}://{}/{}".format(scheme, domain, path.lstrip("/").replace("//", "/")))
 
             logger.debug(f'Path "{path}" -> "{url.url}"')
 
