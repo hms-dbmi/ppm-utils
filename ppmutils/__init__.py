@@ -3,7 +3,11 @@ PPM Utils
 """
 
 __title__ = "PPM Utils"
+<<<<<<< HEAD
 __version__ = '0.8.1'
+=======
+__version__ = '1.0.0-beta.1'
+>>>>>>> chore(release): 1.0.0-beta.1 [skip ci]
 __author__ = "Bryan Larson"
 __license__ = "BSD 2-Clause"
 __copyright__ = "Copyright 2011-2020 Harvard Medical School Department of Biomedical Informatics"
