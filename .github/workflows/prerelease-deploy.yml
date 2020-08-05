@@ -2,7 +2,7 @@ name: Prerelease Deploy
 
 on:
   push:
-    branches: [ beta, alpha ]
+    branches: [ development, beta, alpha ]
 
 jobs:
   test:

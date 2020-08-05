@@ -5,7 +5,7 @@ name: Test
 
 on:
   push:
-    branches-ignore: [ master, beta, alpha ]
+    branches-ignore: [ master, development, beta, alpha ]
 
 jobs:
   build:
