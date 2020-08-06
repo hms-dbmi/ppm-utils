@@ -4,78 +4,77 @@ from furl import furl
 from ppmutils.ppm import PPM
 
 # Set test data
-SERVICE_URL = 'https://some.test.api.address/'
+SERVICE_URL = "https://some.test.api.address/"
 
 
 class TestPPMService(unittest.TestCase):
-
-    @mock.patch('ppmutils.ppm.PPM.Service.service_url')
+    @mock.patch("ppmutils.ppm.PPM.Service.service_url")
     def test_url_build_1(self, mock_service_url):
 
         # Set the service URL to use
         mock_service_url.return_value = SERVICE_URL
 
         # Set an example path
-        path = '/some/example/path'
+        path = "/some/example/path"
 
         # Build a URL
         url = furl(PPM.Service._build_url(path=path))
 
         # Check it
-        self.assertTrue('//' not in str(url.path))
+        self.assertTrue("//" not in str(url.path))
         self.assertFalse(str(url.query))
-        self.assertEqual('some.test.api.address', url.netloc)
+        self.assertEqual("some.test.api.address", url.netloc)
 
-    @mock.patch('ppmutils.ppm.PPM.Service.service_url')
+    @mock.patch("ppmutils.ppm.PPM.Service.service_url")
     def test_url_build_2(self, mock_service_url):
 
         # Set the service URL to use
         mock_service_url.return_value = SERVICE_URL
 
         # Set an example path
-        path = '/some/example/path?with=query&string=included'
+        path = "/some/example/path?with=query&string=included"
 
         # Build a URL
         url = furl(PPM.Service._build_url(path=path))
 
         # Check it
-        self.assertTrue('//' not in str(url.path))
+        self.assertTrue("//" not in str(url.path))
         self.assertEqual(len(url.query.params.items()), 2)
-        self.assertEqual('some.test.api.address', url.netloc)
+        self.assertEqual("some.test.api.address", url.netloc)
 
-    @mock.patch('ppmutils.ppm.PPM.Service.service_url')
+    @mock.patch("ppmutils.ppm.PPM.Service.service_url")
     def test_url_build_3(self, mock_service_url):
 
         # Set the service URL to use
         mock_service_url.return_value = SERVICE_URL
 
         # Set an example path
-        path = '/some//example//path'
+        path = "/some//example//path"
 
         # Build a URL
         url = furl(PPM.Service._build_url(path=path))
 
         # Check it
-        self.assertTrue('//' not in str(url.path))
+        self.assertTrue("//" not in str(url.path))
         self.assertFalse(str(url.query))
-        self.assertEqual('some.test.api.address', url.netloc)
+        self.assertEqual("some.test.api.address", url.netloc)
 
-    @mock.patch('ppmutils.ppm.PPM.Service.service_url')
+    @mock.patch("ppmutils.ppm.PPM.Service.service_url")
     def test_url_build_4(self, mock_service_url):
 
         # Set the service URL to use
         mock_service_url.return_value = SERVICE_URL
 
         # Set an example path
-        path = '/some//example//path?and=query&params=included+12'
+        path = "/some//example//path?and=query&params=included+12"
 
         # Build a URL
         url = furl(PPM.Service._build_url(path=path))
 
         # Check it
-        self.assertTrue('//' not in str(url.path))
+        self.assertTrue("//" not in str(url.path))
         self.assertEqual(len(url.query.params.items()), 2)
-        self.assertEqual('some.test.api.address', url.netloc)
+        self.assertEqual("some.test.api.address", url.netloc)
 
     def test_ppm_study_meta_1(self):
 
@@ -84,8 +83,12 @@ class TestPPMService(unittest.TestCase):
         self.assertEqual(PPM.Study.title(PPM.Study.ASD), PPM.Study.title(PPM.Study.ASD.value))
 
         # Use FHIR codes
-        self.assertEqual(PPM.Study.title(PPM.Study.ASD), PPM.Study.title(PPM.Study.fhir_id(PPM.Study.ASD)))
-        self.assertEqual(PPM.Study.title(PPM.Study.ASD), PPM.Study.title(PPM.Study.fhir_id(PPM.Study.ASD.value)))
+        self.assertEqual(
+            PPM.Study.title(PPM.Study.ASD), PPM.Study.title(PPM.Study.fhir_id(PPM.Study.ASD)),
+        )
+        self.assertEqual(
+            PPM.Study.title(PPM.Study.ASD), PPM.Study.title(PPM.Study.fhir_id(PPM.Study.ASD.value)),
+        )
 
     def test_ppm_study_meta_2(self):
 
@@ -116,8 +119,8 @@ class TestPPMService(unittest.TestCase):
             self.assertEqual(ppm_enum.enum(ppm_enum.fhir_id(enum)), enum)
 
         # Check edge cases
-        self.assertEqual(ppm_enum.enum('ppm-asd'), PPM.Study.ASD)
-        self.assertEqual(ppm_enum.enum('asd'), PPM.Study.ASD)
+        self.assertEqual(ppm_enum.enum("ppm-asd"), PPM.Study.ASD)
+        self.assertEqual(ppm_enum.enum("asd"), PPM.Study.ASD)
 
     def test_ppm_enrollment_meta_1(self):
 
