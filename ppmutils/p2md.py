@@ -450,6 +450,32 @@ class P2MD(PPM.Service):
         return False
 
     @classmethod
+    def check_procure(cls, request, study, ppm_id):
+        """
+        Checks to see if the current participant has already retrieved EHR data via Procure or not
+        :param request: The current request
+        :param study: The study for which the survey is being used
+        :param ppm_id: The participant
+        :return: bool
+        """
+        # Make the request
+        response = cls.head(request, f"/sources/api/procure/{study}/{ppm_id}/", raw=True,)
+        if response:
+            return response.ok
+
+        return False
+
+    @classmethod
+    def get_procure_manifest_url(cls, study, ppm_id):
+        """
+        Return the URL to query for details on how to handle fetched FHIR data via Procure
+        """
+        # Return True if no errors
+        url = cls._build_url(path=f"/sources/api/procure/manifest/{study}/{ppm_id}/")
+
+        return url
+
+    @classmethod
     def get_file_proxy_url(cls, ppm_id, uuid):
         """
         Queries P2MD for the download URL for the given file.

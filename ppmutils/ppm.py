@@ -245,6 +245,18 @@ class PPM:
             )
 
         @classmethod
+        def dashboard_url_for_study(cls, study):
+            """
+            Accepts a valid PPM study and returns the URL for that study's dashboard
+            :param study: The study
+            :return: str
+            """
+            url = furl(settings.PPM_DASHBOARD_URL)
+            url.path.segments.extend(["dashboard", cls.get(study).value])
+
+            return url.url
+
+        @classmethod
         def dashboard(cls, study, environment):
             """
             This method returns the dashboard step description for the given study
@@ -286,19 +298,7 @@ class PPM:
                     {"step": "questionnaire", "blocking": True, "required": True, "enabled": True,},
                     {"step": "twitter", "blocking": False, "required": False, "enabled": True,},
                     {"step": "fitbit", "blocking": False, "required": False, "enabled": True,},
-                    {
-                        "step": "facebook",
-                        "blocking": False,
-                        "required": False,
-                        "enabled": PPM.Environment.get(environment) is not PPM.Environment.Prod,
-                    },
-                    {
-                        "step": "ehr",
-                        "blocking": False,
-                        "required": False,
-                        "multiple": True,
-                        "enabled": PPM.Environment.get(environment) is not PPM.Environment.Prod,
-                    },
+                    {"step": "facebook", "blocking": False, "required": False, "enabled": True,},
                 ]
             elif _study is PPM.Study.EXAMPLE:
                 steps = [
@@ -330,19 +330,9 @@ class PPM:
                     {"step": "research-studies", "blocking": False, "required": False, "enabled": True,},
                     {"step": "twitter", "blocking": False, "required": False, "enabled": True,},
                     {"step": "fitbit", "blocking": False, "required": False, "enabled": True,},
-                    {
-                        "step": "facebook",
-                        "blocking": False,
-                        "required": False,
-                        "enabled": PPM.Environment.get(environment) is not PPM.Environment.Prod,
-                    },
-                    {
-                        "step": "ehr",
-                        "blocking": False,
-                        "required": False,
-                        "multiple": True,
-                        "enabled": PPM.Environment.get(environment) is not PPM.Environment.Prod,
-                    },
+                    {"step": "facebook", "blocking": False, "required": False, "enabled": True,},
+                    {"step": "procure", "blocking": False, "required": False, "multiple": False, "enabled": True,},
+                    {"step": "ehr", "blocking": False, "required": False, "multiple": True, "enabled": True,},
                     {"step": "picnichealth", "blocking": False, "required": True, "enabled": True,},
                 ]
             elif _study is PPM.Study.NEER:
@@ -376,19 +366,6 @@ class PPM:
                     {"step": "research-studies", "blocking": False, "required": False, "enabled": True,},
                     {"step": "twitter", "blocking": False, "required": False, "enabled": True,},
                     {"step": "fitbit", "blocking": False, "required": False, "enabled": True,},
-                    {
-                        "step": "facebook",
-                        "blocking": False,
-                        "required": False,
-                        "enabled": PPM.Environment.get(environment) is not PPM.Environment.Prod,
-                    },
-                    {
-                        "step": "ehr",
-                        "blocking": False,
-                        "required": False,
-                        "multiple": True,
-                        "enabled": PPM.Environment.get(environment) is not PPM.Environment.Prod,
-                    },
                     {"step": "picnichealth", "blocking": False, "required": True, "enabled": True,},
                 ]
             elif _study is PPM.Study.RANT:
@@ -420,21 +397,7 @@ class PPM:
                     {"step": "approval", "blocking": True, "required": True, "enabled": True,},
                     {"step": "poc", "blocking": True, "required": True, "enabled": True,},
                     {"step": "research-studies", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "twitter", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "fitbit", "blocking": False, "required": False, "enabled": True,},
-                    {
-                        "step": "facebook",
-                        "blocking": False,
-                        "required": False,
-                        "enabled": PPM.Environment.get(environment) is not PPM.Environment.Prod,
-                    },
-                    {
-                        "step": "ehr",
-                        "blocking": False,
-                        "required": False,
-                        "multiple": True,
-                        "enabled": PPM.Environment.get(environment) is not PPM.Environment.Prod,
-                    },
+                    {"step": "procure", "blocking": False, "required": False, "multiple": False, "enabled": True,},
                     {"step": "picnichealth", "blocking": False, "required": True, "enabled": True,},
                 ]
 
@@ -450,11 +413,13 @@ class PPM:
             :param environment: The current PPM environment
             :return: bool
             """
-            step_dict = next(s for s in PPM.Study.dashboard(study, environment) if s["step"] == step.lower())
+            step_dict = next((s for s in PPM.Study.dashboard(study, environment) if s["step"] == step.lower()), None)
 
             # Check if enabled
-            if step_dict.get("enabled"):
+            if step_dict and step_dict.get("enabled"):
                 return True
+            elif not step_dict:
+                logger.warning('Step "{}" does not exist in dashboard spec for study "{}"'.format(step, study))
 
             return False
 
@@ -628,7 +593,7 @@ class PPM:
         ASDConsentGuardianSignature3Questionnaire = "guardian-signature-part-3"
 
         @staticmethod
-        def questionnaire_url_for_study(study):
+        def questionnaire_url_for_study(study, return_url=None):
             """
             Returns the URL of the Questionnaire to be taken by participants
             during registration.
@@ -639,6 +604,10 @@ class PPM:
 
             # Add components
             url.path.set("fhirquestionnaire/questionnaire/p/{}/".format(study.value))
+
+            # Check for return URL
+            if return_url:
+                url.query.params.add("return_url", return_url)
 
             return url.url
 
