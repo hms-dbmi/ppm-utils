@@ -450,6 +450,16 @@ class P2MD(PPM.Service):
         return False
 
     @classmethod
+    def get_procure_url(cls, study, ppm_id):
+        """
+        Return the URL to send users to for Procure data intake
+        """
+        # Return True if no errors
+        url = cls._build_url(path=f"/sources/procure/{study}/{ppm_id}/")
+
+        return url
+
+    @classmethod
     def check_procure(cls, request, study, ppm_id):
         """
         Checks to see if the current participant has already retrieved EHR data via Procure or not
