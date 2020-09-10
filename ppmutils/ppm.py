@@ -444,6 +444,38 @@ class PPM:
                     {"step": "ehr", "blocking": False, "required": False, "multiple": True},
                     {"step": "picnichealth", "blocking": False, "required": True},
                 ]
+            elif _study is PPM.Study.RANT:
+                steps = [
+                    {"step": "email-confirm", "blocking": True, "required": True,},
+                    {
+                        "step": "registration",
+                        "blocking": True,
+                        "required": True,
+                        "post_enrollment": PPM.Enrollment.Registered.value,
+                    },
+                    {
+                        "step": "consent",
+                        "blocking": True,
+                        "required": True,
+                        "pre_enrollment": PPM.Enrollment.Registered.value,
+                        "post_enrollment": PPM.Enrollment.Consented.value,
+                    },
+                    {
+                        "step": "questionnaire",
+                        "blocking": True,
+                        "required": True,
+                        "pre_enrollment": PPM.Enrollment.Consented.value,
+                        "post_enrollment": PPM.Enrollment.Proposed.value,
+                    },
+                    {"step": "approval", "blocking": True, "required": True},
+                    {"step": "poc", "blocking": True, "required": True},
+                    {"step": "research-studies", "blocking": False, "required": False},
+                    {"step": "twitter", "blocking": False, "required": False},
+                    {"step": "fitbit", "blocking": False, "required": False},
+                    {"step": "facebook", "blocking": False, "required": False},
+                    {"step": "ehr", "blocking": False, "required": False, "multiple": True},
+                    {"step": "picnichealth", "blocking": False, "required": True},
+                ]
 
             return steps
 
