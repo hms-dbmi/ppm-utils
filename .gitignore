@@ -1,5 +1,5 @@
-# Ignore old files
-old_*
+# Ignore VS Code files
+.vscode
 
 # Created by https://www.gitignore.io/api/pydev,linux,macos,python,django,windows,virtualenv,pycharm+all,visualstudio,visualstudiocode
 # Edit at https://www.gitignore.io/?templates=pydev,linux,macos,python,django,windows,virtualenv,pycharm+all,visualstudio,visualstudiocode
