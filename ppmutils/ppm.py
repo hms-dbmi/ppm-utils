@@ -118,390 +118,6 @@ class PPM:
 
         return False
 
-    class Study(PPMEnum):
-        NEER = "neer"
-        ASD = "autism"
-        EXAMPLE = "example"
-        RANT = "rant"
-
-        @staticmethod
-        def equals(this, that):
-            """
-            Compares a reference to a study and returns whether it is the second
-            passed PPM.Study enum
-            :param this: The study object to be compared
-            :type this: object
-            :param that: What we are comparing against
-            :type that: object
-            :return: Whether they are one and the same
-            :rtype: boolean
-            """
-            # Compare
-            return PPM.Study.get(this) is PPM.Study.get(that)
-
-        @staticmethod
-        def fhir_id(study):
-            """
-            Return the FHIR identifier for the passed study
-            :return: A PPM study identifier
-            :rtype: str
-            """
-            return "ppm-{}".format(PPM.Study.get(study).value)
-
-        @classmethod
-        def identifiers(cls):
-            """
-            Return a list of all PPM study identifiers to be used in FHIR resources
-            :return: A list of PPM study identifiers
-            :rtype: list
-            """
-            return [PPM.Study.fhir_id(study) for study in cls]
-
-        @staticmethod
-        def testing(study):
-            """
-            Return true if the passed study is testing
-            :rtype: boolean
-            """
-            return PPM.Study.get(study) in [PPM.Study.EXAMPLE]
-
-        @staticmethod
-        def is_ppm(identifier):
-            """
-            Returns whether a study identifier is a PPM one or not
-            :param identifier: The study identifier
-            :type identifier: str
-            :return: Whether it's a PPM study or not
-            :rtype: bool
-            """
-            return identifier.lower() in PPM.Study.identifiers()
-
-        @classmethod
-        def enum(cls, enum):
-            """Accepts any form of an enum and returns the enum"""
-            for item in cls:
-                if (
-                    enum is item
-                    or enum == item.name
-                    or enum == item.value
-                    or enum == cls.title(item)
-                    or enum == cls.fhir_id(item)
-                ):
-                    return item
-
-            # Check edge case
-            if enum == "ppm-asd" or enum == "asd":
-                # An edge case from change in study naming
-                logger.warning('PPM.Study deprecated study identifier used: "{}"'.format(enum))
-                return PPM.Study.ASD
-
-            raise ValueError('Value "{}" is not a valid {}'.format(enum, cls.__name__))
-
-        @classmethod
-        def get(cls, enum):
-            """
-            Returns an instance of the Study enum for the given study value, enum,
-            whatever
-            :param enum: The study value string, name or enum
-            :type enum: Object
-            :return: The instance of PPM Study enum
-            :rtype: PPM.Study
-            """
-            return cls.enum(enum)
-
-        @staticmethod
-        def dashboard_url(study):
-            """
-            Returns the defined dashboard for the passed study
-            :param study: The study we want the dashboard URL for
-            :type study: PPM.Study
-            :return: The dashboard URL
-            :rtype: str
-            """
-            return ppm_settings.dashboard_url(PPM.Study.get(study).value)
-
-        @staticmethod
-        def from_value(study):
-            """
-            Returns an instance of the Study enum for the given study value
-            :param study: The study value string
-            :type study: str
-            :return: The instance of PPM Study enum
-            :rtype: PPM.Study
-            """
-            return PPM.Study.get(study)
-
-        @classmethod
-        def title(cls, study):
-            """
-            Returns the title to be used for the given study.
-            :param study: The study identifier or value
-            :type study: object
-            :return: The title for the study
-            :rtype: str
-            """
-            return dict(PPM.Study.choices())[PPM.Study.get(study).value]
-
-        @classmethod
-        def choices(cls):
-            """
-            Returns a choices tuple of tuples. Define enum titles if different
-            from names/values here as this is the source for pulling enum titles.
-            :return: ((str, str), )
-            """
-            return (
-                (PPM.Study.NEER.value, "NEER"),
-                (PPM.Study.ASD.value, "Autism"),
-                (PPM.Study.EXAMPLE.value, "Example"),
-                (PPM.Study.RANT.value, "RANT"),
-            )
-
-        @classmethod
-        def dashboard_url_for_study(cls, study):
-            """
-            Accepts a valid PPM study and returns the URL for that study's dashboard
-            :param study: The study
-            :return: str
-            """
-            url = furl(settings.PPM_DASHBOARD_URL)
-            url.path.segments.extend(["dashboard", cls.get(study).value])
-
-            return url.url
-
-        @classmethod
-        def dashboard(cls, study, environment):
-            """
-            This method returns the dashboard step description for the given study
-            :param study: The study for which the dashboard will be generated
-            :param environment: The environment in which PPM is running
-            :return: dict
-            """
-            # Get the enum
-            _study = PPM.Study.get(study)
-
-            steps = None
-            if _study is PPM.Study.ASD:
-                steps = [
-                    {"step": "email-confirm", "blocking": True, "required": True, "enabled": True,},
-                    {
-                        "step": "registration",
-                        "blocking": True,
-                        "required": True,
-                        "post_enrollment": PPM.Enrollment.Registered.value,
-                        "enabled": True,
-                    },
-                    {
-                        "step": "consent",
-                        "blocking": True,
-                        "required": True,
-                        "pre_enrollment": PPM.Enrollment.Registered.value,
-                        "post_enrollment": PPM.Enrollment.Consented.value,
-                        "enabled": True,
-                    },
-                    {
-                        "step": "poc",
-                        "blocking": True,
-                        "required": True,
-                        "pre_enrollment": PPM.Enrollment.Consented.value,
-                        "post_enrollment": PPM.Enrollment.Proposed.value,
-                        "enabled": True,
-                    },
-                    {"step": "approval", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "questionnaire", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "twitter", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "fitbit", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "facebook", "blocking": False, "required": False, "enabled": True,},
-                ]
-            elif _study is PPM.Study.EXAMPLE:
-                steps = [
-                    {"step": "email-confirm", "blocking": True, "required": True, "enabled": True,},
-                    {
-                        "step": "registration",
-                        "blocking": True,
-                        "required": True,
-                        "post_enrollment": PPM.Enrollment.Registered.value,
-                        "enabled": True,
-                    },
-                    {
-                        "step": "consent",
-                        "blocking": True,
-                        "required": True,
-                        "pre_enrollment": PPM.Enrollment.Registered.value,
-                        "post_enrollment": PPM.Enrollment.Consented.value,
-                    },
-                    {
-                        "step": "questionnaire",
-                        "blocking": True,
-                        "required": True,
-                        "pre_enrollment": PPM.Enrollment.Consented.value,
-                        "post_enrollment": PPM.Enrollment.Proposed.value,
-                        "enabled": True,
-                    },
-                    {"step": "approval", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "poc", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "research-studies", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "twitter", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "fitbit", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "facebook", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "procure", "blocking": False, "required": False, "multiple": False, "enabled": True,},
-                    {"step": "ehr", "blocking": False, "required": False, "multiple": True, "enabled": True,},
-                    {"step": "picnichealth", "blocking": False, "required": True, "enabled": True,},
-                ]
-            elif _study is PPM.Study.NEER:
-                steps = [
-                    {"step": "email-confirm", "blocking": True, "required": True, "enabled": True,},
-                    {
-                        "step": "registration",
-                        "blocking": True,
-                        "required": True,
-                        "post_enrollment": PPM.Enrollment.Registered.value,
-                        "enabled": True,
-                    },
-                    {
-                        "step": "consent",
-                        "blocking": True,
-                        "required": True,
-                        "pre_enrollment": PPM.Enrollment.Registered.value,
-                        "post_enrollment": PPM.Enrollment.Consented.value,
-                        "enabled": True,
-                    },
-                    {
-                        "step": "questionnaire",
-                        "blocking": True,
-                        "required": True,
-                        "pre_enrollment": PPM.Enrollment.Consented.value,
-                        "post_enrollment": PPM.Enrollment.Proposed.value,
-                        "enabled": True,
-                    },
-                    {"step": "approval", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "poc", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "research-studies", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "twitter", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "fitbit", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "picnichealth", "blocking": False, "required": True, "enabled": True,},
-                ]
-            elif _study is PPM.Study.RANT:
-                steps = [
-                    {"step": "email-confirm", "blocking": True, "required": True, "enabled": True,},
-                    {
-                        "step": "registration",
-                        "blocking": True,
-                        "required": True,
-                        "post_enrollment": PPM.Enrollment.Registered.value,
-                        "enabled": True,
-                    },
-                    {
-                        "step": "consent",
-                        "blocking": True,
-                        "required": True,
-                        "pre_enrollment": PPM.Enrollment.Registered.value,
-                        "post_enrollment": PPM.Enrollment.Consented.value,
-                        "enabled": True,
-                    },
-                    {
-                        "step": "questionnaire",
-                        "blocking": True,
-                        "required": True,
-                        "pre_enrollment": PPM.Enrollment.Consented.value,
-                        "post_enrollment": PPM.Enrollment.Proposed.value,
-                        "enabled": True,
-                    },
-                    {"step": "approval", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "poc", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "research-studies", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "procure", "blocking": False, "required": False, "multiple": False, "enabled": True,},
-                    {"step": "picnichealth", "blocking": False, "required": True, "enabled": True,},
-                ]
-            elif _study is PPM.Study.RANT:
-                steps = [
-                    {"step": "email-confirm", "blocking": True, "required": True,},
-                    {
-                        "step": "registration",
-                        "blocking": True,
-                        "required": True,
-                        "post_enrollment": PPM.Enrollment.Registered.value,
-                    },
-                    {
-                        "step": "consent",
-                        "blocking": True,
-                        "required": True,
-                        "pre_enrollment": PPM.Enrollment.Registered.value,
-                        "post_enrollment": PPM.Enrollment.Consented.value,
-                    },
-                    {
-                        "step": "questionnaire",
-                        "blocking": True,
-                        "required": True,
-                        "pre_enrollment": PPM.Enrollment.Consented.value,
-                        "post_enrollment": PPM.Enrollment.Proposed.value,
-                    },
-                    {"step": "approval", "blocking": True, "required": True},
-                    {"step": "poc", "blocking": True, "required": True},
-                    {"step": "research-studies", "blocking": False, "required": False},
-                    {"step": "twitter", "blocking": False, "required": False},
-                    {"step": "fitbit", "blocking": False, "required": False},
-                    {"step": "facebook", "blocking": False, "required": False},
-                    {"step": "ehr", "blocking": False, "required": False, "multiple": True},
-                    {"step": "picnichealth", "blocking": False, "required": True},
-                ]
-            elif _study is PPM.Study.RANT:
-                steps = [
-                    {"step": "email-confirm", "blocking": True, "required": True,},
-                    {
-                        "step": "registration",
-                        "blocking": True,
-                        "required": True,
-                        "post_enrollment": PPM.Enrollment.Registered.value,
-                    },
-                    {
-                        "step": "consent",
-                        "blocking": True,
-                        "required": True,
-                        "pre_enrollment": PPM.Enrollment.Registered.value,
-                        "post_enrollment": PPM.Enrollment.Consented.value,
-                    },
-                    {
-                        "step": "questionnaire",
-                        "blocking": True,
-                        "required": True,
-                        "pre_enrollment": PPM.Enrollment.Consented.value,
-                        "post_enrollment": PPM.Enrollment.Proposed.value,
-                    },
-                    {"step": "approval", "blocking": True, "required": True},
-                    {"step": "poc", "blocking": True, "required": True},
-                    {"step": "research-studies", "blocking": False, "required": False},
-                    {"step": "twitter", "blocking": False, "required": False},
-                    {"step": "fitbit", "blocking": False, "required": False},
-                    {"step": "facebook", "blocking": False, "required": False},
-                    {"step": "ehr", "blocking": False, "required": False, "multiple": True},
-                    {"step": "picnichealth", "blocking": False, "required": True},
-                ]
-
-            return steps
-
-        @staticmethod
-        def is_dashboard_step_enabled(step, study, environment):
-            """
-            Returns whether the given step for the current study and environment
-            should be enabled or not.
-            :param step: The code for the step to check
-            :param study: The current PPM study
-            :param environment: The current PPM environment
-            :return: bool
-            """
-            step_dict = next((s for s in PPM.Study.dashboard(study, environment) if s["step"] == step.lower()), None)
-
-            # Check if enabled
-            if step_dict and step_dict.get("enabled"):
-                return True
-            elif not step_dict:
-                logger.warning('Step "{}" does not exist in dashboard spec for study "{}"'.format(step, study))
-
-            return False
-
-    # Alias Project as Study until we migrate all usages to Study
-    Project = Study
-
     # Set the appropriate participant statuses
     @total_ordering
     class Enrollment(PPMEnum):
@@ -601,7 +217,7 @@ class PPM:
         @classmethod
         def notification_for_enrollment(cls, enrollment):
             """Returns the identifier of a communication to be sent out when
-             this enrollment is set"""
+            this enrollment is set"""
             # Branch
             enrollment = PPM.Enrollment.enum(enrollment)
             if enrollment is PPM.Enrollment.Pending:
@@ -641,7 +257,10 @@ class PPM:
                 (PPM.Communication.ParticipantPending.value, "Participant Pending"),
                 (PPM.Communication.ParticipantIneligible.value, "Participant Queued"),
                 (PPM.Communication.ParticipantAccepted.value, "Participant Accepted"),
-                (PPM.Communication.PicnicHealthRegistration.value, "PicnicHealth Registration",),
+                (
+                    PPM.Communication.PicnicHealthRegistration.value,
+                    "PicnicHealth Registration",
+                ),
             )
 
         @classmethod
@@ -732,9 +351,6 @@ class PPM:
             elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
                 return PPM.Questionnaire.EXAMPLEConsent.value
 
-            elif PPM.Study.get(study) is PPM.Study.RANT:
-                return PPM.Questionnaire.RANTConsent.value
-
         @staticmethod
         def questionnaire_for_study(study):
             """
@@ -754,9 +370,6 @@ class PPM:
 
             elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
                 return PPM.Questionnaire.ExampleQuestionnaire.value
-
-            elif PPM.Study.get(study) is PPM.Study.RANT:
-                return PPM.Questionnaire.RANTQuestionnaire.value
 
         @staticmethod
         def questionnaire_for_consent(composition):
@@ -797,15 +410,6 @@ class PPM:
                 }
 
             elif questionnaire_id == PPM.Questionnaire.EXAMPLEConsent.value:
-                return {
-                    "question-1": "82078001",
-                    "question-2": "165334004",
-                    "question-3": "258435002",
-                    "question-4": "284036006",
-                    "question-5": "702475000",
-                }
-
-            elif questionnaire_id == PPM.Questionnaire.RANTConsent.value:
                 return {
                     "question-1": "82078001",
                     "question-2": "165334004",
@@ -858,6 +462,7 @@ class PPM:
         File = "file"
         Qualtrics = "qualtrics"
         ImmunoSEQ = "immunoseq"
+        Procure = "procure"
 
         @classmethod
         def enum(cls, enum):
@@ -888,6 +493,7 @@ class PPM:
                 (PPM.Provider.File.value, "PPM Files"),
                 (PPM.Provider.Qualtrics.value, "Qualtrics Surveys"),
                 (PPM.Provider.ImmunoSEQ.value, "immunoSEQ"),
+                (PPM.Provider.Procure.value, "Procure"),
             )
 
         @classmethod
@@ -950,11 +556,12 @@ class PPM:
                     PPM.TrackedItem.BloodSampleKit.value,
                 ],
                 PPM.Study.RANT.value: [
-                    PPM.TrackedItem.Fitbit.value,
-                    PPM.TrackedItem.uBiomeFecalSampleKit.value,
                     PPM.TrackedItem.BloodSampleKit.value,
                 ],
-                PPM.Study.ASD.value: [PPM.TrackedItem.Fitbit.value, PPM.TrackedItem.SalivaSampleKit.value,],
+                PPM.Study.ASD.value: [
+                    PPM.TrackedItem.Fitbit.value,
+                    PPM.TrackedItem.SalivaSampleKit.value,
+                ],
                 PPM.Study.EXAMPLE.value: [
                     PPM.TrackedItem.Fitbit.value,
                     PPM.TrackedItem.uBiomeFecalSampleKit.value,
@@ -1122,7 +729,14 @@ class PPM:
                 return html, plain
 
             except Exception as e:
-                logger.exception(f"Email error: {e}", exc_info=True, extra={"email": email.value, "study": study,})
+                logger.exception(
+                    f"Email error: {e}",
+                    exc_info=True,
+                    extra={
+                        "email": email.value,
+                        "study": study,
+                    },
+                )
 
         @staticmethod
         def subject(email, study):
@@ -1144,6 +758,545 @@ class PPM:
 
             return subjects[email.value]
 
+    class Study(PPMEnum):
+        NEER = "neer"
+        ASD = "autism"
+        EXAMPLE = "example"
+        RANT = "rant"
+
+        @staticmethod
+        def equals(this, that):
+            """
+            Compares a reference to a study and returns whether it is the second
+            passed PPM.Study enum
+            :param this: The study object to be compared
+            :type this: object
+            :param that: What we are comparing against
+            :type that: object
+            :return: Whether they are one and the same
+            :rtype: boolean
+            """
+            # Compare
+            return PPM.Study.get(this) is PPM.Study.get(that)
+
+        @staticmethod
+        def fhir_id(study):
+            """
+            Return the FHIR identifier for the passed study
+            :return: A PPM study identifier
+            :rtype: str
+            """
+            return "ppm-{}".format(PPM.Study.get(study).value)
+
+        @classmethod
+        def identifiers(cls):
+            """
+            Return a list of all PPM study identifiers to be used in FHIR resources
+            :return: A list of PPM study identifiers
+            :rtype: list
+            """
+            return [PPM.Study.fhir_id(study) for study in cls]
+
+        @staticmethod
+        def testing(study):
+            """
+            Return true if the passed study is testing
+            :rtype: boolean
+            """
+            return PPM.Study.get(study) in [PPM.Study.EXAMPLE]
+
+        @staticmethod
+        def is_ppm(identifier):
+            """
+            Returns whether a study identifier is a PPM one or not
+            :param identifier: The study identifier
+            :type identifier: str
+            :return: Whether it's a PPM study or not
+            :rtype: bool
+            """
+            return identifier.lower() in PPM.Study.identifiers()
+
+        @classmethod
+        def enum(cls, enum):
+            """Accepts any form of an enum and returns the enum"""
+            for item in cls:
+                if (
+                    enum is item
+                    or enum == item.name
+                    or enum == item.value
+                    or enum == cls.title(item)
+                    or enum == cls.fhir_id(item)
+                ):
+                    return item
+
+            # Check edge case
+            if enum == "ppm-asd" or enum == "asd":
+                # An edge case from change in study naming
+                logger.warning('PPM.Study deprecated study identifier used: "{}"'.format(enum))
+                return PPM.Study.ASD
+
+            raise ValueError('Value "{}" is not a valid {}'.format(enum, cls.__name__))
+
+        @classmethod
+        def get(cls, enum):
+            """
+            Returns an instance of the Study enum for the given study value, enum,
+            whatever
+            :param enum: The study value string, name or enum
+            :type enum: Object
+            :return: The instance of PPM Study enum
+            :rtype: PPM.Study
+            """
+            return cls.enum(enum)
+
+        @staticmethod
+        def dashboard_url(study):
+            """
+            Returns the defined dashboard for the passed study
+            :param study: The study we want the dashboard URL for
+            :type study: PPM.Study
+            :return: The dashboard URL
+            :rtype: str
+            """
+            return ppm_settings.dashboard_url(PPM.Study.get(study).value)
+
+        @staticmethod
+        def from_value(study):
+            """
+            Returns an instance of the Study enum for the given study value
+            :param study: The study value string
+            :type study: str
+            :return: The instance of PPM Study enum
+            :rtype: PPM.Study
+            """
+            return PPM.Study.get(study)
+
+        @classmethod
+        def title(cls, study):
+            """
+            Returns the title to be used for the given study.
+            :param study: The study identifier or value
+            :type study: object
+            :return: The title for the study
+            :rtype: str
+            """
+            return dict(PPM.Study.choices())[PPM.Study.get(study).value]
+
+        @classmethod
+        def choices(cls):
+            """
+            Returns a choices tuple of tuples. Define enum titles if different
+            from names/values here as this is the source for pulling enum titles.
+            :return: ((str, str), )
+            """
+            return (
+                (PPM.Study.NEER.value, "NEER"),
+                (PPM.Study.ASD.value, "Autism"),
+                (PPM.Study.EXAMPLE.value, "Example"),
+                (PPM.Study.RANT.value, "RANT"),
+            )
+
+        @classmethod
+        def dashboard_url_for_study(cls, study):
+            """
+            Accepts a valid PPM study and returns the URL for that study's dashboard
+            :param study: The study
+            :return: str
+            """
+            url = furl(settings.PPM_DASHBOARD_URL)
+            url.path.segments.extend(["dashboard", cls.get(study).value])
+
+            return url.url
+
+        @classmethod
+        def dashboard(cls, study, environment):
+            """
+            This method returns the dashboard step description for the given study
+            :param study: The study for which the dashboard will be generated
+            :param environment: The environment in which PPM is running
+            :return: dict
+            """
+            # Get the enum
+            _study = PPM.Study.get(study)
+
+            steps = None
+            if _study is PPM.Study.ASD:
+                steps = [
+                    {
+                        "step": "email-confirm",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "registration",
+                        "blocking": True,
+                        "required": True,
+                        "post_enrollment": PPM.Enrollment.Registered.value,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "consent",
+                        "blocking": True,
+                        "required": True,
+                        "pre_enrollment": PPM.Enrollment.Registered.value,
+                        "post_enrollment": PPM.Enrollment.Consented.value,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "poc",
+                        "blocking": True,
+                        "required": True,
+                        "pre_enrollment": PPM.Enrollment.Consented.value,
+                        "post_enrollment": PPM.Enrollment.Proposed.value,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "approval",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "questionnaire",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "twitter",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "fitbit",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "facebook",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                ]
+            elif _study is PPM.Study.EXAMPLE:
+                steps = [
+                    {
+                        "step": "email-confirm",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "registration",
+                        "blocking": True,
+                        "required": True,
+                        "post_enrollment": PPM.Enrollment.Registered.value,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "consent",
+                        "blocking": True,
+                        "required": True,
+                        "pre_enrollment": PPM.Enrollment.Registered.value,
+                        "post_enrollment": PPM.Enrollment.Consented.value,
+                    },
+                    {
+                        "step": "questionnaire",
+                        "blocking": True,
+                        "required": True,
+                        "pre_enrollment": PPM.Enrollment.Consented.value,
+                        "post_enrollment": PPM.Enrollment.Proposed.value,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "approval",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "poc",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "research-studies",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "twitter",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "fitbit",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "facebook",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "procure",
+                        "blocking": False,
+                        "required": False,
+                        "multiple": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "ehr",
+                        "blocking": False,
+                        "required": False,
+                        "multiple": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "picnichealth",
+                        "blocking": False,
+                        "required": True,
+                        "enabled": True,
+                    },
+                ]
+            elif _study is PPM.Study.NEER:
+                steps = [
+                    {
+                        "step": "email-confirm",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "registration",
+                        "blocking": True,
+                        "required": True,
+                        "post_enrollment": PPM.Enrollment.Registered.value,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "consent",
+                        "blocking": True,
+                        "required": True,
+                        "pre_enrollment": PPM.Enrollment.Registered.value,
+                        "post_enrollment": PPM.Enrollment.Consented.value,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "questionnaire",
+                        "blocking": True,
+                        "required": True,
+                        "pre_enrollment": PPM.Enrollment.Consented.value,
+                        "post_enrollment": PPM.Enrollment.Proposed.value,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "approval",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "poc",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "research-studies",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "twitter",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "fitbit",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "picnichealth",
+                        "blocking": False,
+                        "required": True,
+                        "enabled": True,
+                    },
+                ]
+            elif _study is PPM.Study.RANT:
+                steps = [
+                    {
+                        "step": "email-confirm",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "registration",
+                        "blocking": True,
+                        "required": True,
+                        "post_enrollment": PPM.Enrollment.Registered.value,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "consent",
+                        "blocking": True,
+                        "required": True,
+                        "pre_enrollment": PPM.Enrollment.Registered.value,
+                        "post_enrollment": PPM.Enrollment.Consented.value,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "questionnaire",
+                        "blocking": True,
+                        "required": True,
+                        "pre_enrollment": PPM.Enrollment.Consented.value,
+                        "post_enrollment": PPM.Enrollment.Proposed.value,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "approval",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "poc",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "research-studies",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "procure",
+                        "blocking": False,
+                        "required": False,
+                        "multiple": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "picnichealth",
+                        "blocking": False,
+                        "required": True,
+                        "enabled": True,
+                    },
+                ]
+
+            return steps
+
+        @staticmethod
+        def is_dashboard_step_enabled(step, study, environment):
+            """
+            Returns whether the given step for the current study and environment
+            should be enabled or not.
+            :param step: The code for the step to check
+            :param study: The current PPM study
+            :param environment: The current PPM environment
+            :return: bool
+            """
+            step_dict = next((s for s in PPM.Study.dashboard(study, environment) if s["step"] == step.lower()), None)
+
+            # Check if enabled
+            if step_dict and step_dict.get("enabled"):
+                return True
+            elif not step_dict:
+                logger.warning('Step "{}" does not exist in dashboard spec for study "{}"'.format(step, study))
+
+            return False
+
+        @staticmethod
+        def providers(study, environment):
+            """
+            Returns a list of enabled providers for the given study and environment
+            """
+            # Get the enum
+            _study = PPM.Study.get(study)
+
+            providers = None
+            if _study is PPM.Study.ASD:
+                providers = [
+                    PPM.Provider.PPM,
+                    PPM.Provider.Fitbit,
+                    PPM.Provider.Twitter,
+                    PPM.Provider.Facebook,
+                    PPM.Provider.PicnicHealth,
+                    PPM.Provider.Broad,
+                    PPM.Provider.File,
+                    PPM.Provider.Qualtrics,
+                    PPM.Provider.ImmunoSEQ,
+                ]
+            elif _study is PPM.Study.NEER:
+                providers = [
+                    PPM.Provider.PPM,
+                    PPM.Provider.Twitter,
+                    PPM.Provider.PicnicHealth,
+                    PPM.Provider.Broad,
+                    PPM.Provider.File,
+                    PPM.Provider.Qualtrics,
+                    PPM.Provider.ImmunoSEQ,
+                ]
+            elif _study is PPM.Study.RANT:
+                providers = [
+                    PPM.Provider.PPM,
+                    PPM.Provider.PicnicHealth,
+                    PPM.Provider.Broad,
+                    PPM.Provider.File,
+                    PPM.Provider.Qualtrics,
+                    PPM.Provider.ImmunoSEQ,
+                    PPM.Provider.Procure,
+                ]
+            elif _study is PPM.Study.EXAMPLE:
+                providers = [
+                    PPM.Provider.PPM,
+                    PPM.Provider.Fitbit,
+                    PPM.Provider.Twitter,
+                    PPM.Provider.Facebook,
+                    PPM.Provider.PicnicHealth,
+                    PPM.Provider.Broad,
+                    PPM.Provider.File,
+                    PPM.Provider.SMART,
+                    PPM.Provider.Qualtrics,
+                    PPM.Provider.ImmunoSEQ,
+                    PPM.Provider.Procure,
+                ]
+
+            return providers
+
+        @staticmethod
+        def is_provider_enabled(provider, study, environment):
+            """
+            Returns whether the given provider for the current study and environment
+            should be enabled or not.
+            :param provider: The code for the provider to check
+            :param study: The current PPM study
+            :param environment: The current PPM environment
+            :return: bool
+            """
+            _provider = PPM.Provider.get(provider)
+            return _provider in PPM.Study.providers(study, environment)
+
+    # Alias Project as Study until we migrate all usages to Study
+    Project = Study
+
     class Service(object):
 
         # Subclasses set this to direct requests
@@ -1164,8 +1317,6 @@ class PPM:
             # Build the url, chancing on doubling up a slash or two.
             scheme, domain = tuple(cls.service_url().strip("/").split("://"))
             url = furl("{}://{}/{}".format(scheme, domain, path.lstrip("/").replace("//", "/")))
-
-            logger.debug(f'Path "{path}" -> "{url.url}"')
 
             return url.url
 
@@ -1224,7 +1375,9 @@ class PPM:
 
                 # Check for specified prefix
                 prefix = getattr(
-                    settings, "{}_AUTH_PREFIX".format(cls.service.upper()), cls.token_authorization_prefix,
+                    settings,
+                    "{}_AUTH_PREFIX".format(cls.service.upper()),
+                    cls.token_authorization_prefix,
                 )
 
                 # Use token
@@ -1268,8 +1421,6 @@ class PPM:
             :param raw: How the response should be returned
             :return: object
             """
-            logger.debug("Path: {}".format(path))
-
             # Check for params
             if not data:
                 data = {}
@@ -1286,7 +1437,12 @@ class PPM:
 
             except Exception as e:
                 logger.exception(
-                    "{} error: {}".format(cls.service, e), exc_info=True, extra={"data": data, "path": path,},
+                    "{} error: {}".format(cls.service, e),
+                    exc_info=True,
+                    extra={
+                        "data": data,
+                        "path": path,
+                    },
                 )
 
             return None
@@ -1302,8 +1458,6 @@ class PPM:
             :param raw: How the response should be returned
             :return: object
             """
-            logger.debug("Path: {}".format(path))
-
             # Check for params
             if not data:
                 data = {}
@@ -1320,7 +1474,12 @@ class PPM:
 
             except Exception as e:
                 logger.exception(
-                    "{} error: {}".format(cls.service, e), exc_info=True, extra={"data": data, "path": path,},
+                    "{} error: {}".format(cls.service, e),
+                    exc_info=True,
+                    extra={
+                        "data": data,
+                        "path": path,
+                    },
                 )
 
             return None
@@ -1336,15 +1495,17 @@ class PPM:
             :param raw: How the response should be returned
             :return: object
             """
-            logger.debug("Path: {}".format(path))
-
             # Check for params
             if not data:
                 data = {}
 
             try:
                 # Prepare the request.
-                response = requests.post(cls._build_url(path), headers=cls.headers(request), data=json.dumps(data),)
+                response = requests.post(
+                    cls._build_url(path),
+                    headers=cls.headers(request),
+                    data=json.dumps(data),
+                )
 
                 # Check response type
                 if raw:
@@ -1354,7 +1515,12 @@ class PPM:
 
             except Exception as e:
                 logger.exception(
-                    "{} error: {}".format(cls.service, e), exc_info=True, extra={"data": data, "path": path,},
+                    "{} error: {}".format(cls.service, e),
+                    exc_info=True,
+                    extra={
+                        "data": data,
+                        "path": path,
+                    },
                 )
 
             return None
@@ -1370,15 +1536,17 @@ class PPM:
             :param raw: How the response should be returned
             :return: object
             """
-            logger.debug("Path: {}".format(path))
-
             # Check for params
             if not data:
                 data = {}
 
             try:
                 # Prepare the request.
-                response = requests.put(cls._build_url(path), headers=cls.headers(request), data=json.dumps(data),)
+                response = requests.put(
+                    cls._build_url(path),
+                    headers=cls.headers(request),
+                    data=json.dumps(data),
+                )
 
                 # Check response type
                 if raw:
@@ -1388,7 +1556,12 @@ class PPM:
 
             except Exception as e:
                 logger.exception(
-                    "{} error: {}".format(cls.service, e), exc_info=True, extra={"data": data, "path": path,},
+                    "{} error: {}".format(cls.service, e),
+                    exc_info=True,
+                    extra={
+                        "data": data,
+                        "path": path,
+                    },
                 )
 
             return None
@@ -1404,15 +1577,17 @@ class PPM:
             :param raw: How the response should be returned
             :return: object
             """
-            logger.debug("Path: {}".format(path))
-
             # Check for params
             if not data:
                 data = {}
 
             try:
                 # Prepare the request.
-                response = requests.patch(cls._build_url(path), headers=cls.headers(request), data=json.dumps(data),)
+                response = requests.patch(
+                    cls._build_url(path),
+                    headers=cls.headers(request),
+                    data=json.dumps(data),
+                )
 
                 # Check response type
                 if raw:
@@ -1422,7 +1597,12 @@ class PPM:
 
             except Exception as e:
                 logger.exception(
-                    "{} error: {}".format(cls.service, e), exc_info=True, extra={"data": data, "path": path,},
+                    "{} error: {}".format(cls.service, e),
+                    exc_info=True,
+                    extra={
+                        "data": data,
+                        "path": path,
+                    },
                 )
 
             return False
@@ -1438,15 +1618,17 @@ class PPM:
             :param raw: How the response should be returned
             :return: object
             """
-            logger.debug("Path: {}".format(path))
-
             # Check for params
             if not data:
                 data = {}
 
             try:
                 # Prepare the request.
-                response = requests.delete(cls._build_url(path), headers=cls.headers(request), data=json.dumps(data),)
+                response = requests.delete(
+                    cls._build_url(path),
+                    headers=cls.headers(request),
+                    data=json.dumps(data),
+                )
 
                 # Check response type
                 if raw:
@@ -1456,7 +1638,11 @@ class PPM:
 
             except Exception as e:
                 logger.exception(
-                    "{} error: {}".format(cls.service, e), exc_info=True, extra={"path": path,},
+                    "{} error: {}".format(cls.service, e),
+                    exc_info=True,
+                    extra={
+                        "path": path,
+                    },
                 )
 
             return False
@@ -1474,8 +1660,6 @@ class PPM:
             :param check: Check the response and raise exception if faulty
             :return: object
             """
-            logger.debug("{} -> Path: {}".format(verb.upper(), path))
-
             # Check for params
             if not data:
                 data = {}
@@ -1515,7 +1699,12 @@ class PPM:
                 logger.exception(
                     "{} {} error: {}".format(cls.service, verb.upper(), e),
                     exc_info=True,
-                    extra={"path": path, "verb": verb, "data": data, "response": response,},
+                    extra={
+                        "path": path,
+                        "verb": verb,
+                        "data": data,
+                        "response": response,
+                    },
                 )
 
             return False
