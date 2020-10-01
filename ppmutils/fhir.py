@@ -686,7 +686,7 @@ class FHIR:
         pattern = rf"{resource_type}\/([0-9]+)\/"
         matches = re.findall(pattern, response.content.decode())
         if matches:
-            logger.error(f"FHIR ERROR: Could not determine resource ID from " f"response: {response.content.decode()}")
+            logger.error(f"FHIR ERROR: Could not determine resource ID from response: {response.content.decode()}")
 
             # Build URL
             url = furl(PPM.fhir_url())
@@ -1836,7 +1836,7 @@ class FHIR:
             # Check for multiple
             if len(resources) > 1:
                 logger.error(
-                    f"FHIR Error: Multiple consent Compositions " f"returned for {study}/{patient}",
+                    f"FHIR Error: Multiple consent Compositions returned for {study}/{patient}",
                     extra={
                         "compositions": [f"Composition/{r['id']}" for r in resources],
                     },
@@ -1887,7 +1887,7 @@ class FHIR:
             # Check for multiple
             if len(resources) > 1:
                 logger.error(
-                    f"FHIR Error: Multiple consent DocumentReferences " f"returned for {study}/{patient}",
+                    f"FHIR Error: Multiple consent DocumentReferences returned for {study}/{patient}",
                     extra={
                         "document_references": [f"DocumentReference/{r['id']}" for r in resources],
                     },
@@ -2767,9 +2767,7 @@ class FHIR:
                             "reference": f"DocumentReference/{document_reference_id}",
                             "display": FHIR.ppm_consent_type_display,
                         }
-                        logger.debug(
-                            f"{study}/Patient/{patient}: Updated Composition " f"DocumentReference: {reference}"
-                        )
+                        logger.debug(f"{study}/Patient/{patient}: Updated Composition DocumentReference: {reference}")
             else:
                 # Remove it if included
                 sections = []
@@ -2918,7 +2916,7 @@ class FHIR:
 
             # Iterate studies
             for research_subject_id in [resource["id"] for resource in research_subjects]:
-                logger.debug(f"{patient_id}: Found ResearchSubject/{research_subject_id} -> " f"{end}")
+                logger.debug(f"{patient_id}: Found ResearchSubject/{research_subject_id} -> {end}")
 
                 # Do the update
                 FHIR.update_research_subject(patient_id, research_subject_id, start, end)
@@ -3942,7 +3940,7 @@ class FHIR:
         values = {}
 
         # TODO: Implement this
-        logger.warning(f"PPM/ASD/{ppm_id}/FHIR: Flattening ASD participant needs to be " f"fully implemented")
+        logger.warning(f"PPM/ASD/{ppm_id}/FHIR: Flattening ASD participant needs to be fully implemented")
 
         return values
 
@@ -4035,10 +4033,10 @@ class FHIR:
                             values[key] = answer_date.isoformat()
 
                         else:
-                            logger.error(f"PPM/{ppm_id}/Questionnaire/{link_id}: Unhandled answer type: " f"{answer}")
+                            logger.error(f"PPM/{ppm_id}/Questionnaire/{link_id}: Unhandled answer type: {answer}")
 
                     except ValueError:
-                        logger.debug(f"PPM/{ppm_id}/Questionnaire/{link_id}: Invalid date: " f"{answer}")
+                        logger.debug(f"PPM/{ppm_id}/Questionnaire/{link_id}: Invalid date: {answer}")
 
                         # Assign the raw value
                         values[key] = answer
@@ -4169,10 +4167,10 @@ class FHIR:
                             values[key] = answer_date.isoformat()
 
                         else:
-                            logger.error(f"PPM/{ppm_id}/Questionnaire/{link_id}: Unhandled answer type: " f"{answer}")
+                            logger.error(f"PPM/{ppm_id}/Questionnaire/{link_id}: Unhandled answer type: {answer}")
 
                     except ValueError:
-                        logger.debug(f"PPM/{ppm_id}/Questionnaire/{link_id}: Invalid date: " f"{answer}")
+                        logger.debug(f"PPM/{ppm_id}/Questionnaire/{link_id}: Invalid date: {answer}")
 
                         # Assign the raw value
                         values[key] = answer
