@@ -270,7 +270,12 @@ class PPM:
             steps = None
             if _study is PPM.Study.ASD:
                 steps = [
-                    {"step": "email-confirm", "blocking": True, "required": True, "enabled": True,},
+                    {
+                        "step": "email-confirm",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
                     {
                         "step": "registration",
                         "blocking": True,
@@ -294,15 +299,45 @@ class PPM:
                         "post_enrollment": PPM.Enrollment.Proposed.value,
                         "enabled": True,
                     },
-                    {"step": "approval", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "questionnaire", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "twitter", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "fitbit", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "facebook", "blocking": False, "required": False, "enabled": True,},
+                    {
+                        "step": "approval",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "questionnaire",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "twitter",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "fitbit",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "facebook",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
                 ]
             elif _study is PPM.Study.EXAMPLE:
                 steps = [
-                    {"step": "email-confirm", "blocking": True, "required": True, "enabled": True,},
+                    {
+                        "step": "email-confirm",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
                     {
                         "step": "registration",
                         "blocking": True,
@@ -325,19 +360,71 @@ class PPM:
                         "post_enrollment": PPM.Enrollment.Proposed.value,
                         "enabled": True,
                     },
-                    {"step": "approval", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "poc", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "research-studies", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "twitter", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "fitbit", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "facebook", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "procure", "blocking": False, "required": False, "multiple": False, "enabled": True,},
-                    {"step": "ehr", "blocking": False, "required": False, "multiple": True, "enabled": True,},
-                    {"step": "picnichealth", "blocking": False, "required": True, "enabled": True,},
+                    {
+                        "step": "approval",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "poc",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "research-studies",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "twitter",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "fitbit",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "facebook",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "procure",
+                        "blocking": False,
+                        "required": False,
+                        "multiple": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "ehr",
+                        "blocking": False,
+                        "required": False,
+                        "multiple": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "picnichealth",
+                        "blocking": False,
+                        "required": True,
+                        "enabled": True,
+                    },
                 ]
             elif _study is PPM.Study.NEER:
                 steps = [
-                    {"step": "email-confirm", "blocking": True, "required": True, "enabled": True,},
+                    {
+                        "step": "email-confirm",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
                     {
                         "step": "registration",
                         "blocking": True,
@@ -361,16 +448,51 @@ class PPM:
                         "post_enrollment": PPM.Enrollment.Proposed.value,
                         "enabled": True,
                     },
-                    {"step": "approval", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "poc", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "research-studies", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "twitter", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "fitbit", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "picnichealth", "blocking": False, "required": True, "enabled": True,},
+                    {
+                        "step": "approval",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "poc",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "research-studies",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "twitter",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "fitbit",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "picnichealth",
+                        "blocking": False,
+                        "required": True,
+                        "enabled": True,
+                    },
                 ]
             elif _study is PPM.Study.RANT:
                 steps = [
-                    {"step": "email-confirm", "blocking": True, "required": True, "enabled": True,},
+                    {
+                        "step": "email-confirm",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
                     {
                         "step": "registration",
                         "blocking": True,
@@ -394,11 +516,37 @@ class PPM:
                         "post_enrollment": PPM.Enrollment.Proposed.value,
                         "enabled": True,
                     },
-                    {"step": "approval", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "poc", "blocking": True, "required": True, "enabled": True,},
-                    {"step": "research-studies", "blocking": False, "required": False, "enabled": True,},
-                    {"step": "procure", "blocking": False, "required": False, "multiple": False, "enabled": True,},
-                    {"step": "picnichealth", "blocking": False, "required": True, "enabled": True,},
+                    {
+                        "step": "approval",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "poc",
+                        "blocking": True,
+                        "required": True,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "research-studies",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "procure",
+                        "blocking": False,
+                        "required": False,
+                        "multiple": False,
+                        "enabled": True,
+                    },
+                    {
+                        "step": "picnichealth",
+                        "blocking": False,
+                        "required": True,
+                        "enabled": True,
+                    },
                 ]
 
             return steps
@@ -525,7 +673,7 @@ class PPM:
         @classmethod
         def notification_for_enrollment(cls, enrollment):
             """Returns the identifier of a communication to be sent out when
-             this enrollment is set"""
+            this enrollment is set"""
             # Branch
             enrollment = PPM.Enrollment.enum(enrollment)
             if enrollment is PPM.Enrollment.Pending:
@@ -565,7 +713,10 @@ class PPM:
                 (PPM.Communication.ParticipantPending.value, "Participant Pending"),
                 (PPM.Communication.ParticipantIneligible.value, "Participant Queued"),
                 (PPM.Communication.ParticipantAccepted.value, "Participant Accepted"),
-                (PPM.Communication.PicnicHealthRegistration.value, "PicnicHealth Registration",),
+                (
+                    PPM.Communication.PicnicHealthRegistration.value,
+                    "PicnicHealth Registration",
+                ),
             )
 
         @classmethod
@@ -861,7 +1012,10 @@ class PPM:
                     PPM.TrackedItem.uBiomeFecalSampleKit.value,
                     PPM.TrackedItem.BloodSampleKit.value,
                 ],
-                PPM.Study.ASD.value: [PPM.TrackedItem.Fitbit.value, PPM.TrackedItem.SalivaSampleKit.value,],
+                PPM.Study.ASD.value: [
+                    PPM.TrackedItem.Fitbit.value,
+                    PPM.TrackedItem.SalivaSampleKit.value,
+                ],
                 PPM.Study.EXAMPLE.value: [
                     PPM.TrackedItem.Fitbit.value,
                     PPM.TrackedItem.uBiomeFecalSampleKit.value,
@@ -889,7 +1043,7 @@ class PPM:
         def _build_url(cls, path):
 
             # Build the url, chancing on doubling up a slash or two.
-            url = furl(cls.service_url() + "/" + path)
+            url = furl(cls.service_url().rstrip("/") + "/" + path.lstrip("/"))
 
             # Filter empty segments (double slashes in path)
             segments = [
@@ -897,10 +1051,6 @@ class PPM:
                 for index, segment in enumerate(url.path.segments)
                 if segment != "" or index == len(url.path.segments) - 1
             ]
-
-            # Log the filter
-            if len(segments) < len(url.path.segments):
-                logger.debug("Path filtered: /{} -> /{}".format("/".join(url.path.segments), "/".join(segments)))
 
             # Set it
             url.path.segments = segments
@@ -967,7 +1117,9 @@ class PPM:
 
                 # Check for specified prefix
                 prefix = getattr(
-                    settings, "{}_AUTH_PREFIX".format(cls.service.upper()), cls.token_authorization_prefix,
+                    settings,
+                    "{}_AUTH_PREFIX".format(cls.service.upper()),
+                    cls.token_authorization_prefix,
                 )
 
                 # Use token
@@ -1011,8 +1163,6 @@ class PPM:
             :param raw: How the response should be returned
             :return: object
             """
-            logger.debug("Path: {}".format(path))
-
             # Check for params
             if not data:
                 data = {}
@@ -1029,7 +1179,12 @@ class PPM:
 
             except Exception as e:
                 logger.exception(
-                    "{} error: {}".format(cls.service, e), exc_info=True, extra={"data": data, "path": path,},
+                    "{} error: {}".format(cls.service, e),
+                    exc_info=True,
+                    extra={
+                        "data": data,
+                        "path": path,
+                    },
                 )
 
             return None
@@ -1045,8 +1200,6 @@ class PPM:
             :param raw: How the response should be returned
             :return: object
             """
-            logger.debug("Path: {}".format(path))
-
             # Check for params
             if not data:
                 data = {}
@@ -1063,7 +1216,12 @@ class PPM:
 
             except Exception as e:
                 logger.exception(
-                    "{} error: {}".format(cls.service, e), exc_info=True, extra={"data": data, "path": path,},
+                    "{} error: {}".format(cls.service, e),
+                    exc_info=True,
+                    extra={
+                        "data": data,
+                        "path": path,
+                    },
                 )
 
             return None
@@ -1079,15 +1237,17 @@ class PPM:
             :param raw: How the response should be returned
             :return: object
             """
-            logger.debug("Path: {}".format(path))
-
             # Check for params
             if not data:
                 data = {}
 
             try:
                 # Prepare the request.
-                response = requests.post(cls._build_url(path), headers=cls.headers(request), data=json.dumps(data),)
+                response = requests.post(
+                    cls._build_url(path),
+                    headers=cls.headers(request),
+                    data=json.dumps(data),
+                )
 
                 # Check response type
                 if raw:
@@ -1097,7 +1257,12 @@ class PPM:
 
             except Exception as e:
                 logger.exception(
-                    "{} error: {}".format(cls.service, e), exc_info=True, extra={"data": data, "path": path,},
+                    "{} error: {}".format(cls.service, e),
+                    exc_info=True,
+                    extra={
+                        "data": data,
+                        "path": path,
+                    },
                 )
 
             return None
@@ -1113,15 +1278,17 @@ class PPM:
             :param raw: How the response should be returned
             :return: object
             """
-            logger.debug("Path: {}".format(path))
-
             # Check for params
             if not data:
                 data = {}
 
             try:
                 # Prepare the request.
-                response = requests.put(cls._build_url(path), headers=cls.headers(request), data=json.dumps(data),)
+                response = requests.put(
+                    cls._build_url(path),
+                    headers=cls.headers(request),
+                    data=json.dumps(data),
+                )
 
                 # Check response type
                 if raw:
@@ -1131,7 +1298,12 @@ class PPM:
 
             except Exception as e:
                 logger.exception(
-                    "{} error: {}".format(cls.service, e), exc_info=True, extra={"data": data, "path": path,},
+                    "{} error: {}".format(cls.service, e),
+                    exc_info=True,
+                    extra={
+                        "data": data,
+                        "path": path,
+                    },
                 )
 
             return None
@@ -1147,15 +1319,17 @@ class PPM:
             :param raw: How the response should be returned
             :return: object
             """
-            logger.debug("Path: {}".format(path))
-
             # Check for params
             if not data:
                 data = {}
 
             try:
                 # Prepare the request.
-                response = requests.patch(cls._build_url(path), headers=cls.headers(request), data=json.dumps(data),)
+                response = requests.patch(
+                    cls._build_url(path),
+                    headers=cls.headers(request),
+                    data=json.dumps(data),
+                )
 
                 # Check response type
                 if raw:
@@ -1165,7 +1339,12 @@ class PPM:
 
             except Exception as e:
                 logger.exception(
-                    "{} error: {}".format(cls.service, e), exc_info=True, extra={"data": data, "path": path,},
+                    "{} error: {}".format(cls.service, e),
+                    exc_info=True,
+                    extra={
+                        "data": data,
+                        "path": path,
+                    },
                 )
 
             return False
@@ -1181,15 +1360,17 @@ class PPM:
             :param raw: How the response should be returned
             :return: object
             """
-            logger.debug("Path: {}".format(path))
-
             # Check for params
             if not data:
                 data = {}
 
             try:
                 # Prepare the request.
-                response = requests.delete(cls._build_url(path), headers=cls.headers(request), data=json.dumps(data),)
+                response = requests.delete(
+                    cls._build_url(path),
+                    headers=cls.headers(request),
+                    data=json.dumps(data),
+                )
 
                 # Check response type
                 if raw:
@@ -1199,7 +1380,11 @@ class PPM:
 
             except Exception as e:
                 logger.exception(
-                    "{} error: {}".format(cls.service, e), exc_info=True, extra={"path": path,},
+                    "{} error: {}".format(cls.service, e),
+                    exc_info=True,
+                    extra={
+                        "path": path,
+                    },
                 )
 
             return False
@@ -1216,8 +1401,6 @@ class PPM:
             :param check: Check the response and raise exception if faulty
             :return: object
             """
-            logger.debug("{} -> Path: {}".format(verb.upper(), path))
-
             # Check for params
             if not data:
                 data = {}
@@ -1251,7 +1434,12 @@ class PPM:
                 logger.exception(
                     "{} {} error: {}".format(cls.service, verb.upper(), e),
                     exc_info=True,
-                    extra={"path": path, "verb": verb, "data": data, "response": response,},
+                    extra={
+                        "path": path,
+                        "verb": verb,
+                        "data": data,
+                        "response": response,
+                    },
                 )
 
             return False
