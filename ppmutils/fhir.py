@@ -4018,19 +4018,27 @@ class FHIR:
 
                 try:
                     # Get the answer
-                    answer = next(
-                        i["answer"][0]["valueString"] for i in questionnaire_response["item"] if i["linkId"] == link_id
-                    )
+                    answer = next(i["answer"][0] for i in questionnaire_response["item"] if i["linkId"] == link_id)
 
                     try:
-                        # Attempt to parse it
-                        answer_date = parse(answer)
+                        # Check type
+                        if answer.get("valueDate") or answer.get("valueDateTime"):
+                            # Date is already a date object, assign it
+                            values[key] = answer.get("valueDate", answer.get("valueDateTime"))
 
-                        # Assign it
-                        values[key] = answer_date.isoformat()
+                        elif answer.get("valueString"):
+
+                            # Attempt to parse it
+                            answer_date = parse(answer.get("valueString"))
+
+                            # Assign it
+                            values[key] = answer_date.isoformat()
+
+                        else:
+                            logger.error(f"PPM/{ppm_id}/Questionnaire/{link_id}: Unhandled answer type: " f"{answer}")
 
                     except ValueError:
-                        logger.debug(f"PPM/{ppm_id}/Questionnaire/{link_id}: " f"Invalid date: {answer}")
+                        logger.debug(f"PPM/{ppm_id}/Questionnaire/{link_id}: Invalid date: " f"{answer}")
 
                         # Assign the raw value
                         values[key] = answer
@@ -4144,16 +4152,24 @@ class FHIR:
 
                 try:
                     # Get the answer
-                    answer = next(
-                        i["answer"][0]["valueString"] for i in questionnaire_response["item"] if i["linkId"] == link_id
-                    )
+                    answer = next(i["answer"][0] for i in questionnaire_response["item"] if i["linkId"] == link_id)
 
                     try:
-                        # Attempt to parse it
-                        answer_date = parse(answer)
+                        # Check type
+                        if answer.get("valueDate") or answer.get("valueDateTime"):
+                            # Date is already a date object, assign it
+                            values[key] = answer.get("valueDate", answer.get("valueDateTime"))
 
-                        # Assign it
-                        values[key] = answer_date.isoformat()
+                        elif answer.get("valueString"):
+
+                            # Attempt to parse it
+                            answer_date = parse(answer.get("valueString"))
+
+                            # Assign it
+                            values[key] = answer_date.isoformat()
+
+                        else:
+                            logger.error(f"PPM/{ppm_id}/Questionnaire/{link_id}: Unhandled answer type: " f"{answer}")
 
                     except ValueError:
                         logger.debug(f"PPM/{ppm_id}/Questionnaire/{link_id}: Invalid date: " f"{answer}")
@@ -4163,7 +4179,7 @@ class FHIR:
 
                 except Exception as e:
                     logger.exception(
-                        f"PPM/{ppm_id}/Questionnaire/{link_id}: {e}",
+                        f"PPM/{ppm_id}/Questionnaire/{link_id}: Missing response: {e}",
                         exc_info=True,
                         extra={
                             "ppm_id": ppm_id,
@@ -4300,14 +4316,17 @@ class FHIR:
             answer = answers.get(linkId)
             if not answer:
                 answer = [mark_safe('<span class="label label-info">N/A</span>')]
-                logger.debug(
-                    f"FHIR Questionnaire: No answer found for {linkId}",
-                    extra={
-                        "questionnaire": questionnaire_id,
-                        "link_id": linkId,
-                        "ppm_id": questionnaire_response.source,
-                    },
-                )
+
+                # Check if dependent and was enabled (or should have an answer but doesn't)
+                if FHIR.questionnaire_response_is_required(questionnaire, questionnaire_response, linkId):
+                    logger.error(
+                        f"FHIR Questionnaire: No answer found for {linkId}",
+                        extra={
+                            "questionnaire": questionnaire_id,
+                            "link_id": linkId,
+                            "ppm_id": questionnaire_response.source,
+                        },
+                    )
 
             # Format the question text
             text = "{}. {}".format(len(response.keys()) + 1, question)
@@ -4324,6 +4343,173 @@ class FHIR:
             "authored": formatted_authored_date,
             "responses": response,
         }
+
+    @staticmethod
+    def find_questionnaire_item(questionnaire_items, linkId):
+        """Returns the questionnaire item object for the given linkId
+
+        Args:
+            questionnaire_items ([QuestionnaireItem]): The Questionnaire
+            items to search
+            linkId (str): The linkId of the question for which the response is requested
+
+        Returns:
+            QuestionnaireItem: The item in the Questionnaire object
+        """
+        # Find it
+        for item in questionnaire_items:
+
+            # Compare
+            if item.linkId == linkId:
+                return item
+
+            # Check for subitems
+            if item.item:
+                sub_item = FHIR.find_questionnaire_item(item.item, linkId)
+                if sub_item:
+                    return sub_item
+
+        return None
+
+    @staticmethod
+    def find_questionnaire_response_item(questionnaire_response_items, linkId):
+        """Returns the questionnaire response item object for the given linkId
+
+        Args:
+            questionnaire_response_items ([QuestionnaireResponseItem]): The QuestionnaireResponseItems
+            to search
+            linkId (str): The linkId of the question for which the response is requested
+
+        Returns:
+            QuestionnaireResponseItem: The QuestionnaireResponseItem for the linkId
+        """
+        return FHIR.find_questionnaire_item(questionnaire_response_items, linkId)
+
+    @staticmethod
+    def get_questionnaire_response_item_answer(questionnaire_response_items, linkId):
+        """Returns the questionnaire response item object's answer(s) for the given linkId
+
+        Args:
+            questionnaire_response_items ([QuestionnaireResponseItem]): The QuestionnaireResponseItems
+            to search
+            linkId (str): The linkId of the question for which the response is requested
+
+        Returns:
+            object: The QuestionnaireResponseItem's answer(s) for the linkId
+        """
+        # Find it
+        item = FHIR.find_questionnaire_response_item(questionnaire_response_items, linkId)
+
+        # It is possible for a linkId to not match any response items (group, display, etc)
+        if not item or not item.answer:
+            return None
+
+        # Iterate answers
+        answers = []
+        for answer in item.answer:
+            if answer.valueString is not None:
+                answers.append(answer.valueString)
+            elif answer.valueBoolean is not None:
+                answers.append(answer.valueBoolean)
+            elif answer.valueInteger is not None:
+                answers.append(answer.valueInteger)
+            elif answer.valueDate is not None:
+                answers.append(answer.valueDate.isostring)
+            elif answer.valueDateTime is not None:
+                answers.append(answer.valueDateTime.isostring)
+            else:
+                logger.error(f"PPM/FHIR: Unhandled answer type: {answer.as_json()}")
+
+        return answers if len(answers) > 1 else next(iter(answers), None)
+
+    @staticmethod
+    def questionnaire_response_is_required(questionnaire, questionnaire_response, linkId, parent=None):
+        """
+        Inspects the Questionnaire for the given link ID and returns whether it is
+        conditionally required or not based on responses given.
+
+        Args:
+            questionnaire (Questionnaire): The Questionnaire object containing being responded to
+            questionnaire_responses (QuestionnaireResponse): The QuestionnaireResponse object containing
+            all responses
+            linkId (str): The linkId of the item we are looking for
+
+        Keyword Args:
+            parent (QuestionnaireItem): The parent questionnaire item for recursive searches
+
+        Returns:
+            [bool]: Returns True if this item is required and was enabled else False
+        """
+        # If not parent, start with root of Questionnaire
+        if not parent:
+            parent = questionnaire
+
+        # Find it first
+        for item in parent.item:
+
+            # Compare
+            if item.linkId == linkId:
+
+                # If not required, return right away
+                if not getattr(item, "required", False):
+                    return False
+
+                # Check this and parent for enableWhen
+                if item.enableWhen or getattr(parent, "enableWhen", False):
+
+                    # Compile list of conditions on this item as well as parent item
+                    enable_whens = item.enableWhen if item.enableWhen else [] + getattr(parent, "enableWhen", [])
+
+                    # Iterate conditions and check for failures
+                    for enable_when in enable_whens:
+
+                        # Get their answer as a list, if not already
+                        answer = FHIR.get_questionnaire_response_item_answer(
+                            questionnaire_response.item, enable_when.question
+                        )
+                        if type(answer) is not list:
+                            answer = [answer]
+
+                        # Check operation (this is not available on FHIR R3 and below)
+                        enable_when_operation = getattr(enable_when, "operation", "=")
+
+                        # Check equality of condition and answer
+                        if enable_when_operation == "=":
+
+                            # Check for answer type and check if it's in their list of items
+                            if enable_when.answerString is not None:
+                                if enable_when.answerString not in answer:
+                                    return False
+                            elif enable_when.answerBoolean is not None:
+                                if enable_when.answerBoolean not in answer:
+                                    return False
+                            elif enable_when.answerDate is not None:
+                                if enable_when.answerDate.isostring not in answer:
+                                    return False
+                            elif enable_when.answerDateTime is not None:
+                                if enable_when.answerDateTime.isostring not in answer:
+                                    return False
+                            elif enable_when.answerInteger is not None:
+                                if enable_when.answerInteger not in answer:
+                                    return False
+                            else:
+                                logger.error(f"PPM/FHIR: Unhandled enableWhen answer type: {enable_when.as_json()}")
+                                return False
+
+                        else:
+                            logger.error(f"PPM/FHIR: Unhandled enableWhen operation type: {enable_when.as_json()}")
+                            return False
+
+                # If we are here, this item is required and all dependencies are satisfied (if any)
+                return True
+
+            # Check for subitems
+            if item.item and FHIR.questionnaire_response_is_required(
+                questionnaire, questionnaire_response, linkId, parent=item
+            ):
+                return True
+
+        return False
 
     @staticmethod
     def _questions(items):
