@@ -912,6 +912,8 @@ class PPM:
         SMART = "smart"
         File = "file"
         Qualtrics = "qualtrics"
+        ImmunoSEQ = "immunoseq"
+        Procure = "procure"
 
         @classmethod
         def enum(cls, enum):
@@ -941,6 +943,8 @@ class PPM:
                 (PPM.Provider.SMART.value, "SMART on FHIR"),
                 (PPM.Provider.File.value, "PPM Files"),
                 (PPM.Provider.Qualtrics.value, "Qualtrics Surveys"),
+                (PPM.Provider.ImmunoSEQ.value, "immunoSEQ"),
+                (PPM.Provider.Procure.value, "Procure"),
             )
 
         @classmethod
@@ -1003,8 +1007,6 @@ class PPM:
                     PPM.TrackedItem.BloodSampleKit.value,
                 ],
                 PPM.Study.RANT.value: [
-                    PPM.TrackedItem.Fitbit.value,
-                    PPM.TrackedItem.uBiomeFecalSampleKit.value,
                     PPM.TrackedItem.BloodSampleKit.value,
                 ],
                 PPM.Study.ASD.value: [
