@@ -14,6 +14,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# Adding this decorator to an Enum allows it to
+# be passed into a Django context and its members
+# accessed via name and value as well as being iterated (untested)
+def django_enum(cls):
+    cls.do_not_call_in_templates = True
+    return cls
+
+
 class PPMEnum(Enum):
     """
     An extended Enum class with some convenience methods for working with
@@ -132,9 +140,10 @@ class PPM:
 
         return False
 
+    @django_enum
     class Study(PPMEnum):
         NEER = "neer"
-        ASD = "autism"
+        ASD = "asd"
         EXAMPLE = "example"
         RANT = "rant"
 
@@ -239,7 +248,7 @@ class PPM:
             """
             return (
                 (PPM.Study.NEER.value, "NEER"),
-                (PPM.Study.ASD.value, "Autism"),
+                (PPM.Study.ASD.value, "ASD"),
                 (PPM.Study.EXAMPLE.value, "Example"),
                 (PPM.Study.RANT.value, "RANT"),
             )
