@@ -21,11 +21,11 @@ class Auth(object):
     }
 
     @classmethod
-    def has_permission(cls, method, permissions, study=None):
+    def get_permission(cls, method, permissions, study=None):
         """
-        Inspects the set of permissions and returns True if permissions
-        contain admin level permissions. If a study is passed, this method
-        returns True if permissions are admin on PPM or on study.
+        Inspects the set of permissions and returns the permission
+        valid for the request. If a study is passed, this method
+        returns True if permissions are on the specific study or PPM.
 
         :param method: The requested method to check permissions for
         :type method: str
@@ -33,6 +33,8 @@ class Auth(object):
         :type permissions: list
         :param study: A specific study, defaults to None
         :type study: str, optional
+        :returns: Whether the request has permissions or not
+        :rtype: bool
         """
 
         # Map permissions
@@ -51,3 +53,25 @@ class Auth(object):
                 return item, map[item]
 
         return None, None
+
+    @classmethod
+    def has_permission(cls, method, permissions, study=None):
+        """
+        Inspects the set of permissions and returns the item
+        and permission that are valid for the request. This
+        returns the first found permission.
+
+        :param method: The requested method to check permissions for
+        :type method: str
+        :param permissions: A list of permissions from DBMI-AuthZ
+        :type permissions: list
+        :param study: A specific study, defaults to None
+        :type study: str, optional
+        :returns: A tuple of item and permission
+        :rtype: (str, str)
+        """
+
+        # Get permission
+        item, permission = Auth.get_permission(method, permissions, study)
+
+        return item is not None and permission is not None
