@@ -197,12 +197,6 @@ class PPM:
                 ):
                     return item
 
-            # Check edge case
-            if enum == "ppm-asd" or enum == "asd":
-                # An edge case from change in study naming
-                logger.warning('PPM.Study deprecated study identifier used: "{}"'.format(enum))
-                return PPM.Study.ASD
-
             raise ValueError('Value "{}" is not a valid {}'.format(enum, cls.__name__))
 
         @classmethod
@@ -585,6 +579,7 @@ class PPM:
 
     # Set the appropriate participant statuses
     @total_ordering
+    @django_enum
     class Enrollment(PPMEnum):
         Registered = "registered"
         Consented = "consented"

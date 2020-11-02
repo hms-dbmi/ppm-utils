@@ -83,10 +83,10 @@ class FHIR:
     # Patient extension flags
     twitter_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-twitter"
     fitbit_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-fitbit"
-    picnichealth_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/" "StructureDefinition/registered-picnichealth"
+    picnichealth_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/registered-picnichealth"
     facebook_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-facebook"
     smart_on_fhir_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-smart-on-fhir"
-    referral_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/" "StructureDefinition/how-did-you-hear-about-us"
+    referral_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/how-did-you-hear-about-us"
 
     # Qualtrics IDs
     qualtrics_survey_identifier_system = "https://peoplepoweredmedicine.org/fhir/qualtrics/survey"
@@ -518,8 +518,8 @@ class FHIR:
         if identifier:
 
             # Split off the 'ppm-' prefix if needed
-            if "ppm-" in identifier:
-                return identifier.replace("ppm-", "")
+            if PPM.Study.is_ppm(identifier):
+                return PPM.Study.get(identifier).value
 
             else:
                 return identifier
@@ -711,18 +711,18 @@ class FHIR:
 
         # Use the FHIR client lib to validate our resource.
         # "If-None-Exist" can be used for conditional create operations in FHIR.
-        # If there is already a Patient resource identified by the provided email
-        # address, no duplicate records will be created.
+        # If there is already a ResearchStudy resource identified by the provided
+        # study identifier, no duplicate records will be created.
         ResearchStudy(research_study_data)
 
         research_study_request = BundleEntryRequest(
             {
-                "url": "ResearchStudy/ppm-{}".format(project),
+                "url": "ResearchStudy/{}".format(PPM.Study.fhir_id(project)),
                 "method": "PUT",
                 "ifNoneExist": str(
                     Query(
                         {
-                            "_id": project,
+                            "_id": PPM.Study.fhir_id(project),
                         }
                     )
                 ),
@@ -742,8 +742,8 @@ class FHIR:
 
         logger.debug("Creating...")
 
-        # Create the Patient and Flag on the FHIR server.
-        # If we needed the Patient resource id, we could follow the redirect
+        # Create the ResearchStudy on the FHIR server.
+        # If we needed the ResearchStudy resource id, we could follow the redirect
         # returned from a successful POST operation, and get the id out of the
         # new resource. We don't though, so we can save an HTTP request.
         response = requests.post(PPM.fhir_url(), json=bundle.as_json())
@@ -758,10 +758,10 @@ class FHIR:
         # Get the study, or create it
         study = FHIR._query_resources(
             "ResearchStudy",
-            query={"identifier": "{}|{}".format(FHIR.research_study_identifier_system, project)},
+            query={"identifier": "{}|{}".format(FHIR.research_study_identifier_system, PPM.Study.fhir_id(project))},
         )
         if not study:
-            FHIR.create_ppm_research_study(project, PPM.Project.title(project))
+            FHIR.create_ppm_research_study(project, PPM.Study.title(project))
 
         # Generate resource data
         research_subject_data = FHIR.Resources.ppm_research_subject(project, "Patient/{}".format(patient_id))
@@ -852,10 +852,10 @@ class FHIR:
             # Get the study, or create it
             study = FHIR._query_resources(
                 "ResearchStudy",
-                query={"identifier": "{}|{}".format(FHIR.research_study_identifier_system, project)},
+                query={"identifier": "{}|{}".format(FHIR.research_study_identifier_system, PPM.Study.fhir_id(project))},
             )
             if not study:
-                FHIR.create_ppm_research_study(project, PPM.Project.title(project))
+                FHIR.create_ppm_research_study(project, PPM.Study.title(project))
 
             # Build out patient JSON
             patient_data = FHIR.Resources.patient(form)
@@ -1267,7 +1267,7 @@ class FHIR:
                 for section in composition["section"]
                 if "entry" in section and len(section["entry"])
             ]:
-                if entry.get("reference") and PPM.Study.fhir_id(study) in entry["reference"]:
+                if entry.get("reference") and PPM.Study.is_ppm(entry["reference"].replace("ResearchStudy/", "")):
                     break
             else:
                 # Add it
@@ -1752,7 +1752,7 @@ class FHIR:
         :type flatten_return: bool
         :return: The Composition object
         """
-        logger.warning("DEPRECATED: This method should not be used for fetching " "consent composition resources")
+        logger.warning("DEPRECATED: This method should not be used for fetching consent composition resources")
 
         # Just return the first from querying
         compositions = FHIR.query_consent_compositions(patient=patient, flatten_return=flatten_return)
@@ -1762,7 +1762,7 @@ class FHIR:
         return None
 
     @staticmethod
-    def query_consent_compositions(patient, study=None, flatten_return=False):
+    def query_consent_compositions(patient=None, study=None, flatten_return=False):
         """
         Gets and returns any Compositions storing the user's signed consent resources
         :param patient: The Patient object who owns the consent
@@ -1778,10 +1778,11 @@ class FHIR:
 
         # Check study
         if study:
-            query["related-ref"] = f"ResearchStudy/{PPM.Study.fhir_id(study)}"
+            query["entry"] = f"ResearchStudy/{PPM.Study.fhir_id(study)}"
 
         # Build the query
-        query.update(FHIR._patient_resource_query(patient))
+        if patient:
+            query.update(FHIR._patient_resource_query(patient))
 
         # Get resources
         resources = FHIR._query_resources("Composition", query=query)
@@ -1822,7 +1823,7 @@ class FHIR:
         # Build the query
         query = {
             "type": f"{FHIR.ppm_consent_type_system}|{FHIR.ppm_consent_type_value}",
-            "related-ref": f"ResearchStudy/{PPM.Study.fhir_id(study)}",
+            "entry": f"ResearchStudy/{PPM.Study.fhir_id(study)}",
         }
 
         # Build the query
@@ -2028,8 +2029,7 @@ class FHIR:
         research_subjects = [
             entry
             for entry in resources
-            if entry.get("study", {}).get("reference", None)
-            not in ["ResearchStudy/ppm-{}".format(study.value) for study in PPM.Project]
+            if not PPM.Study.is_ppm(entry.get("study", {}).get("reference", "").replace("ResearchStudy/", ""))
         ]
 
         if flatten_return:
@@ -2203,6 +2203,56 @@ class FHIR:
         return None
 
     @staticmethod
+    def query_ppm_participants_details(ppm_ids):
+        """
+        Fetches and returns basic details on the Patients and any PPM studies
+        they're participating in.
+
+        :param ppm_ids: A list of participant identifiers
+        :type ppm_ids: list
+        :return: A list of tuples of Patient object and a list of study codes
+        :rtype: [(dict, list)]
+        """
+        # Get flags for current user
+        query = {
+            "identifier": "{}|".format(FHIR.research_subject_identifier_system),
+            "_include": "ResearchSubject:individual",
+            "individual": ppm_ids,
+        }
+
+        # Get the resources
+        bundle = FHIR._query_bundle("ResearchSubject", query=query)
+        if not bundle.entry:
+            return []
+
+        # Build list
+        participants = []
+
+        # Build response
+        for patient in [p.resource for p in bundle.entry if p.resource.resource_type == "Patient"]:
+
+            # Get matching research subject
+            research_subjects = [
+                r.resource
+                for r in bundle.entry
+                if r.resource.resource_type == "ResearchSubject"
+                and r.resource.individual.reference == f"Patient/{patient.id}"
+            ]
+
+            # Get study IDs
+            research_study_ids = [r.study.reference.split("/")[1] for r in research_subjects]
+
+            # Put Patient resource in a bundle
+            b = Bundle({"type": bundle.type})
+            b.entry = [BundleEntry({"resource": patient.as_json()})]
+
+            # Add details
+            participants.append((FHIR.flatten_patient(b.as_json()), research_study_ids))
+
+        # Return list
+        return participants
+
+    @staticmethod
     def query_ppm_participant_details(patient):
         """
         Fetches and returns basic details on the Patient and any PPM studies
@@ -2224,6 +2274,8 @@ class FHIR:
 
         # Get the resources
         bundle = FHIR._query_bundle("ResearchSubject", query=query)
+        if not bundle.entry:
+            return None, None
 
         # Get study IDs
         research_study_ids = [
@@ -2234,7 +2286,7 @@ class FHIR:
 
         # Remove 'ppm-' prefix and return
         return FHIR.flatten_patient(bundle.as_json()), [
-            research_study_id.replace("ppm-", "") for research_study_id in research_study_ids
+            PPM.Study.get(research_study_id).value for research_study_id in research_study_ids
         ]
 
     @staticmethod
@@ -2727,7 +2779,7 @@ class FHIR:
                         now = FHIRDate(datetime.now().isoformat())
                         flag.period.end = now
                     else:
-                        logger.debug("Flag has no period/start, cannot set end: " "Patient/{}".format(patient_id))
+                        logger.debug("Flag has no period/start, cannot set end: Patient/{}".format(patient_id))
 
                 elif code.code != "completed" and status == "completed":
                     logger.debug('Setting enrollment flag status to "completed"')
@@ -2740,7 +2792,7 @@ class FHIR:
                         now = FHIRDate(datetime.now().isoformat())
                         flag.period.end = now
                     else:
-                        logger.debug("Flag has no period/start, cannot set end: " "Patient/{}".format(patient_id))
+                        logger.debug("Flag has no period/start, cannot set end: Patient/{}".format(patient_id))
 
                 elif code.code == "accepted" and status != "accepted":
                     logger.debug("Reverting back to inactive with no dates")
@@ -3638,7 +3690,7 @@ class FHIR:
         )
 
         # Check project
-        if PPM.Project.get(project) is PPM.Study.ASD:
+        if PPM.Study.get(project) is PPM.Study.ASD:
 
             questionnaire_ids = [
                 "ppm-asd-consent-guardian-quiz",
@@ -3778,7 +3830,7 @@ class FHIR:
             for entry in bundle["entry"]
             if entry["resource"]["resourceType"] == "ResearchSubject"
             and entry["resource"].get("study", {}).get("reference", None)
-            in ["ResearchStudy/ppm-{}".format(study.value) for study in PPM.Project]
+            and PPM.Study.is_ppm(entry["resource"]["study"]["reference"].replace("ResearchStudy/", ""))
         ]
 
         if flatten_result:
@@ -3795,8 +3847,9 @@ class FHIR:
             entry["resource"]
             for entry in bundle["entry"]
             if entry["resource"]["resourceType"] == "ResearchSubject"
-            and entry["resource"].get("study", {}).get("reference", None)
-            not in ["ResearchStudy/ppm-{}".format(study.value) for study in PPM.Project]
+            and not PPM.Study.is_ppm(
+                entry["resource"].get("study", {}).get("reference", "").replace("ResearchStudy/", "")
+            )
         ]
 
         if flatten_result:
@@ -4866,7 +4919,7 @@ class FHIR:
             )
         )
         if not patient.get("email"):
-            logger.error("Could not parse email from Patient/{}! This should not be " "possible".format(resource["id"]))
+            logger.error("Could not parse email from Patient/{}! This should not be possible".format(resource["id"]))
             return {}
 
         # Get status
@@ -5220,7 +5273,7 @@ class FHIR:
                         )
 
                         if not q_response:
-                            logger.error("Could not find bindingReference QR for " "Contract/{}".format(contract.id))
+                            logger.error("Could not find bindingReference QR for Contract/{}".format(contract.id))
                             break
 
                         # Get the questionnaire and its response.
@@ -5574,7 +5627,7 @@ class FHIR:
                 "code": {
                     "coding": [
                         {
-                            "system": "https://peoplepoweredmedicine.org/" "enrollment-status",
+                            "system": FHIR.enrollment_flag_coding_system,
                             "code": status,
                             "display": status.title(),
                         }
@@ -5618,11 +5671,11 @@ class FHIR:
 
             data = {
                 "resourceType": "ResearchStudy",
-                "id": project,
+                "id": PPM.Study.fhir_id(project),
                 "identifier": [
                     {
                         "system": FHIR.research_study_identifier_system,
-                        "value": f"ppm-{project}",
+                        "value": PPM.Study.fhir_id(project),
                     }
                 ],
                 "status": "in-progress",
@@ -5651,11 +5704,11 @@ class FHIR:
                 "resourceType": "ResearchSubject",
                 "identifier": {
                     "system": FHIR.research_subject_identifier_system,
-                    "value": "ppm-{}".format(project),
+                    "value": PPM.Study.fhir_id(project),
                 },
                 "period": {"start": datetime.now().isoformat()},
                 "status": status,
-                "study": {"reference": "ResearchStudy/ppm-{}".format(project)},
+                "study": {"reference": "ResearchStudy/{}".format(PPM.Study.fhir_id(project))},
                 "individual": {"reference": patient_ref},
             }
 
@@ -5817,3 +5870,266 @@ class FHIR:
             Returns a coding resource
             """
             return {"coding": [{"system": system, "code": code}]}
+
+    class Operations(object):
+        """
+        This class manages updates to be performed on the PPM FHIR DB. Each
+        method prefixed with `_op_` is run in sequence and each should perform
+        operations on the FHIR DB to make fixes, tweaks, or modifications to
+        existing resources. Each operation is required to be idempotent and
+        will be run repeatedly with every iteration of updates.
+        """
+
+        PREFIX = "_op_"
+
+        def __init__(self):
+            pass
+
+        def get_operations(self):
+            """
+            Builds a list of operations to run, sorted by date in method name.
+            Returns the list of method objects to be called by caller.
+            """
+            obj = FHIR.Operations()
+
+            # Collect operation methods
+            ops = [m for m in dir(obj) if m.startswith(FHIR.Operations.PREFIX)]
+
+            # Ensure each method has a valid name
+            for op in ops:
+                try:
+                    # Ensure we can parse date in order to sort
+                    datetime.strptime(op.rsplit("_", 1)[1], "%Y%m%d")
+
+                except Exception:
+                    raise ValueError(f"Operation '{op}' has invalid name")
+
+            # Sort by date
+            ops.sort(key=lambda date: datetime.strptime(date.rsplit("_", 1)[1], "%Y%m%d"))
+
+            return [getattr(self, op) for op in ops]
+
+        def run(self, *args, **kwargs):
+            """
+            Runs the operations in order by the date in the method name `ddmmyyyy`
+            """
+            # Execute
+            for op in self.get_operations():
+                logger.info("----- FHIR/Ops: Starting '{}' -----".format(op.__name__))
+                success, message = op(*args, **kwargs)
+                if success:
+                    logger.info("----- FHIR/Ops: Completed '{}' ----".format(op.__name__))
+                else:
+                    logger.error("----- FHIR/Ops: Failed '{}' ----".format(op.__name__))
+                    logger.error("----- FHIR/Ops: '{}' Message: ----\n{}\n".format(op.__name__, message))
+                    logger.info("----- FHIR/Ops: Operation failed, halting operations ----".format(op.__name__))
+                    break
+
+        def _op_fix_asd_researchstudy_20201031(*args, **kwargs):
+            """
+            This operation fixes the study identifier of ASD from 'autism' to
+            'asd'. This updates the actual ResearchStudy instance as well
+            as all ResearchSubject and other referencing resources as
+            ResearchStudy resources are ID'd by name (e.g. ppm-neer)
+
+            :returns: A tuple of success or not and a message describing outcome
+            :rtype: (bool, str)
+            """
+
+            # Prepare the transaction bundle resource
+            bundle = Bundle()
+            bundle.entry = []
+            bundle.type = "transaction"
+
+            # Get PPM ASD ResearchStudy
+            research_studies = FHIR.query_ppm_research_studies(flatten_return=False)
+            logger.debug(f"PPM/FHIR/Ops/fix_asd_research_study: Found {len(research_studies)} ResearchStudy resources")
+            research_study = next((r for r in research_studies if r["id"] == "ppm-autism"), None)
+            if research_study:
+                logger.debug(f"PPM/FHIR/Ops/fix_asd_research_study: Fixing ResearchStudy/{research_study['id']}")
+
+                # Fix it
+                research_study["id"] = PPM.Study.fhir_id(PPM.Study.ASD)
+                for identifier in research_study["identifier"]:
+                    if identifier.get("system") == FHIR.research_study_identifier_system:
+                        identifier["value"] = PPM.Study.fhir_id(PPM.Study.ASD)
+
+                # Set title
+                research_study["title"] = f"People-Powered Medicine - {PPM.Study.title(PPM.Study.ASD)}"
+
+                # Prepare it for the transaction
+                research_study_request = BundleEntryRequest(
+                    {
+                        "url": "ResearchStudy/{}".format(PPM.Study.fhir_id(PPM.Study.ASD)),
+                        "method": "PUT",
+                        "ifNoneExist": str(
+                            Query(
+                                {
+                                    "_id": PPM.Study.fhir_id(PPM.Study.ASD),
+                                }
+                            )
+                        ),
+                    }
+                )
+                research_study_entry = BundleEntry(
+                    {
+                        "resource": research_study,
+                    }
+                )
+                research_study_entry.request = research_study_request
+
+                # Add it
+                bundle.entry.append(research_study_entry)
+
+                # Delete the old one
+                research_study_delete_request = BundleEntryRequest(
+                    {
+                        "url": "ResearchStudy/ppm-autism",
+                        "method": "DELETE",
+                    }
+                )
+                research_study_delete_entry = BundleEntry()
+                research_study_delete_entry.request = research_study_delete_request
+
+                # Add it
+                bundle.entry.append(research_study_delete_entry)
+
+            else:
+                logger.debug(f"PPM/FHIR/Ops/fix_asd_research_study: No ResearchStudy for 'ppm-autism' found")
+
+            # Else, get all referencing ResearchSubjects
+            research_subjects = FHIR.query_ppm_research_subjects()
+            research_subjects = [
+                r for r in research_subjects if r["study"]["reference"].replace("ResearchStudy/", "") == "ppm-autism"
+            ]
+            logger.debug(
+                f"PPM/FHIR/Ops/fix_asd_research_study: Found "
+                f"{len(research_subjects)} ResearchSubject resources"
+                f"for 'ppm-autism'"
+            )
+
+            # Filter for those referencing 'ppm-autism'
+            for research_subject in research_subjects:
+                logger.debug(f"PPM/FHIR/Ops/fix_asd_research_study: Fixing ResearchSubject/{research_subject['id']}")
+                logger.warning(research_subject)
+
+                # Fix it
+                research_subject["study"]["reference"] = "ResearchStudy/{}".format(PPM.Study.fhir_id(PPM.Study.ASD))
+                research_subject["identifier"] = {
+                    "system": FHIR.research_subject_identifier_system,
+                    "value": PPM.Study.fhir_id(PPM.Study.ASD),
+                }
+
+                # Prepare it for the transaction
+                research_subject_request = BundleEntryRequest(
+                    {
+                        "url": "ResearchSubject/{}".format(research_subject["id"]),
+                        "method": "PUT",
+                    }
+                )
+                research_subject_entry = BundleEntry(
+                    {
+                        "resource": research_subject,
+                    }
+                )
+                research_subject_entry.request = research_subject_request
+
+                # Add it
+                bundle.entry.append(research_subject_entry)
+
+            # Get all referencing DocumentReferences
+
+            # Build the query
+            query = {
+                "type": f"{FHIR.ppm_consent_type_system}|{FHIR.ppm_consent_type_value}",
+                "related-ref": "ResearchStudy/ppm-autism",
+            }
+
+            # Get resources
+            document_references = FHIR._query_resources("DocumentReference", query=query)
+            document_references = [
+                d
+                for d in document_references
+                if "ppm-autism"
+                in [r["ref"]["reference"].replace("ResearchStudy/", "") for r in d["context"]["related"]]
+            ]
+            logger.debug(
+                f"PPM/FHIR/Ops/fix_asd_research_study: Found "
+                f"{len(document_references)} DocumentReference resources "
+                f"for 'ppm-autism'"
+            )
+
+            # Filter for those referencing 'ppm-autism'
+            for document_reference in document_references:
+                logger.debug(
+                    f"PPM/FHIR/Ops/fix_asd_research_study: Fixing DocumentReference/{document_reference['id']}"
+                )
+
+                # Fix it
+                for related in document_reference["context"]["related"]:
+                    if related.get("ref", {}).get("reference", "") == "ResearchStudy/ppm-autism":
+                        related["ref"]["reference"] = "ResearchStudy/{}".format(PPM.Study.fhir_id(PPM.Study.ASD))
+
+                # Prepare it for the transaction
+                document_reference_request = BundleEntryRequest(
+                    {
+                        "url": "DocumentReference/{}".format(document_reference["id"]),
+                        "method": "PUT",
+                    }
+                )
+                document_reference_entry = BundleEntry(
+                    {
+                        "resource": document_reference,
+                    }
+                )
+                document_reference_entry.request = document_reference_request
+
+                # Add it
+                bundle.entry.append(document_reference_entry)
+
+            # Get all referencing Compositions
+
+            # Build the query
+            query = {"type": f"{FHIR.ppm_consent_type_system}|{FHIR.ppm_consent_type_value}"}
+
+            # Check for ppm-autism study
+            query["entry"] = f"ResearchStudy/ppm-autism"
+
+            # Get resources
+            compositions = FHIR._query_resources("Composition", query=query)
+            logger.debug(
+                f"PPM/FHIR/Ops/fix_asd_research_study: Found "
+                f"{len(compositions)} Composition resources with ref "
+                f"to 'ppm-autism'"
+            )
+
+            # Filter for those referencing 'ppm-autism'
+            for composition in compositions:
+                logger.debug(f"PPM/FHIR/Ops/fix_asd_research_study: Fixing Composition/{composition['id']}")
+
+                # Iterate sections
+                for section in [s for s in composition["section"] if "entry" in s]:
+                    for entry in section["entry"]:
+                        if entry.get("reference") and entry["reference"] == "ResearchStudy/ppm-autism":
+                            entry["reference"] = f"ResearchStudy/{PPM.Study.fhir_id(PPM.Study.ASD)}"
+
+                # Prepare it for the transaction
+                composition_request = BundleEntryRequest(
+                    {
+                        "url": "Composition/{}".format(composition["id"]),
+                        "method": "PUT",
+                    }
+                )
+                composition_entry = BundleEntry(
+                    {
+                        "resource": composition,
+                    }
+                )
+                composition_entry.request = composition_request
+
+                # Add it
+                bundle.entry.append(composition_entry)
+
+            # Run the operation
+            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+            return response.ok, response.content
