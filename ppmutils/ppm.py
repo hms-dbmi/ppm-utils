@@ -829,7 +829,7 @@ class PPM:
                 return PPM.Questionnaire.RANTQuestionnaire.value
 
             elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
-                return PPM.Questionnaire.ExampleQuestionnaire.value
+                return PPM.Questionnaire.EXAMPLEQuestionnaire.value
 
         @staticmethod
         def questionnaire_for_consent(composition):
