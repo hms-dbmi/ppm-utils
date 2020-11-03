@@ -17,6 +17,14 @@ import logging
 logger = logging.getLogger(ppm_settings.LOGGER_NAME)
 
 
+# Adding this decorator to an Enum allows it to
+# be passed into a Django context and its members
+# accessed via name and value as well as being iterated (untested)
+def django_enum(cls):
+    cls.do_not_call_in_templates = True
+    return cls
+
+
 class PPMEnum(Enum):
     """
     An extended Enum class with some convenience methods for working with
@@ -118,9 +126,10 @@ class PPM:
 
         return False
 
+    @django_enum
     class Study(PPMEnum):
         NEER = "neer"
-        ASD = "autism"
+        ASD = "asd"
         EXAMPLE = "example"
         RANT = "rant"
 
@@ -189,12 +198,6 @@ class PPM:
                 ):
                     return item
 
-            # Check edge case
-            if enum == "ppm-asd" or enum == "asd":
-                # An edge case from change in study naming
-                logger.warning('PPM.Study deprecated study identifier used: "{}"'.format(enum))
-                return PPM.Study.ASD
-
             raise ValueError('Value "{}" is not a valid {}'.format(enum, cls.__name__))
 
         @classmethod
@@ -251,7 +254,7 @@ class PPM:
             """
             return (
                 (PPM.Study.NEER.value, "NEER"),
-                (PPM.Study.ASD.value, "Autism"),
+                (PPM.Study.ASD.value, "ASD"),
                 (PPM.Study.EXAMPLE.value, "Example"),
                 (PPM.Study.RANT.value, "RANT"),
             )
@@ -659,6 +662,7 @@ class PPM:
 
     # Set the appropriate participant statuses
     @total_ordering
+    @django_enum
     class Enrollment(PPMEnum):
         Registered = "registered"
         Consented = "consented"
