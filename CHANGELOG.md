@@ -2,6 +2,10 @@
 
 <!--next-version-placeholder-->
 
+## v0.8.4 (2020-10-21)
+### Fix
+* Hotfix for adding upcoming data providers and fixing RANT item specification ([`4776cdb`](https://github.com/hms-dbmi/ppm-utils/commit/4776cdbe2d2e6b7395877d0cbea66a8e7715e7b9))
+
 ## v0.8.3 (2020-10-20)
 ### Fix
 * PPM-660 - Removed consent exemptions for RANT ([`5623795`](https://github.com/hms-dbmi/ppm-utils/commit/56237956d4c97eb4f99a012dd1328e738a9a9aeb))
