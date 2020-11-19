@@ -1,6 +1,7 @@
 import collections
 import requests
 import json
+import hashlib
 import uuid
 from furl import furl, Query
 import random
@@ -28,6 +29,8 @@ from fhirclient.models.coding import Coding
 from fhirclient.models.communication import Communication
 from fhirclient.models.device import Device
 from fhirclient.models.resource import Resource
+from fhirclient.models.questionnaire import Questionnaire
+from fhirclient.models.questionnaireresponse import QuestionnaireResponse
 
 from ppmutils.ppm import PPM
 from ppmutils.settings import ppm_settings
@@ -96,7 +99,11 @@ class FHIR(PPM.Service):
 
     # Qualtrics IDs
     qualtrics_survey_identifier_system = "https://peoplepoweredmedicine.org/fhir/qualtrics/survey"
+    qualtrics_survey_version_identifier_system = "https://peoplepoweredmedicine.org/fhir/qualtrics/survey/version"
     qualtrics_response_identifier_system = "https://peoplepoweredmedicine.org/fhir/qualtrics/response"
+    qualtrics_survey_coding_system = "https://peoplepoweredmedicine.org/qualtrics-survey"
+    qualtrics_response_coding_system = "https://peoplepoweredmedicine.org/qualtrics-response"
+    qualtrics_survey_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/qualtrics-survey"
 
     #
     # META
@@ -749,6 +756,93 @@ class FHIR(PPM.Service):
         return None, None
 
     #
+    # SAVE
+    #
+
+    @staticmethod
+    def save_questionnaire_response(patient_id, questionnaire_id, questionnaire_response, replace=False):
+        """
+        Persist the QuestionnaireResponse to FHIR. If replace is set to true,
+        an existing QuestionnaireResponse for this Questionnaire and Patient
+        is deleted.
+
+        :param patient_id: The Patient ID for the QuestionnaireResponse
+        :type patient_id: str
+        :param questionnaire_id: The ID of the Questionnaire this is related to
+        :type questionnaire_id: str
+        :param questionnaire_response: The QuestionnaireResponse resource
+        :type questionnaire_response: dict
+        :param replace: Whether to replace existing response or not, defaults to True
+        :type replace: bool, optional
+        :return: The response for the operation
+        :rtype: [type]
+        """
+        logger.debug("Create QuestionnaireResponse: {}".format(questionnaire_response["questionnaire"]["reference"]))
+
+        # Validate it.
+        bundle = Bundle()
+        bundle.entry = []
+        bundle.type = "transaction"
+
+        # If replace, request prior response be deleted
+        if replace:
+
+            # Check for it
+            existing_questionnaire_responses = FHIR.query_questionnaire_responses(patient_id, questionnaire_id)
+            for q in existing_questionnaire_responses.entry:
+
+                delete_questionnaire_response_entry = BundleEntry()
+                delete_questionnaire_response_request = BundleEntryRequest(
+                    {
+                        "url": f"QuestionnaireResponse/{q.resource.id}",
+                        "method": "DELETE",
+                    }
+                )
+
+                # Set it
+                delete_questionnaire_response_entry.request = delete_questionnaire_response_request
+
+                # Add it
+                bundle.entry.append(delete_questionnaire_response_request)
+
+        # Create the organization
+        questionnaire_response = QuestionnaireResponse(questionnaire_response)
+        questionnaire_response_request = BundleEntryRequest(
+            {
+                "url": "QuestionnaireResponse",
+                "method": "POST",
+            }
+        )
+
+        questionnaire_response_entry = BundleEntry({"resource": questionnaire_response.as_json()})
+
+        questionnaire_response_entry.request = questionnaire_response_request
+
+        # Add it
+        bundle.entry.append(questionnaire_response_entry)
+
+        logger.debug(f"PPM/{patient_id}: Saving QuestionnaireResponse for " f"Questionnaire/{questionnaire_id}")
+
+        try:
+            # Create the organization
+            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+            response.raise_for_status()
+
+            return response.json()
+
+        except Exception as e:
+            logger.exception(
+                "Save QuestionnaireResponse error: {}".format(e),
+                exc_info=True,
+                extra={
+                    "ppm_id": patient_id,
+                    "questionnaire": questionnaire_id,
+                },
+            )
+
+        return None
+
+    #
     # CREATE
     #
 
@@ -1041,6 +1135,69 @@ class FHIR(PPM.Service):
         logger.debug("Response: {}".format(response.status_code))
 
         return response
+
+    @staticmethod
+    def create_qualtrics_questionnaire(study, questionnaire_id, survey_id, survey):
+        """
+        Create a Questionnaire resource created from the Qualtrics
+        survey.
+        :param survey: The Qualtrics survey object from the Qualtrics API
+        :type survey: dict
+        :return: The result of the operation
+        :rtype: Response
+        """
+        logger.debug("Qualtrics survey: {}".format(survey["id"]))
+
+        # Use the FHIR client lib to validate our resource.
+        questionnaire = Questionnaire(
+            FHIR.Resources.ppm_qualtrics_survey_questionnaire(
+                study=study, questionnaire_id=questionnaire_id, survey_id=survey_id, survey=survey
+            )
+        )
+
+        questionnaire_request = BundleEntryRequest(
+            {
+                "url": f"Questionnaire/{questionnaire_id}",
+                "method": "PUT",
+                "ifNoneExist": str(
+                    Query(
+                        {
+                            "identifier": "{}|{}".format(
+                                FHIR.qualtrics_survey_version_identifier_system, questionnaire.version
+                            ),
+                        }
+                    )
+                ),
+            }
+        )
+        questionnaire_entry = BundleEntry()
+        questionnaire_entry.resource = questionnaire
+        questionnaire_entry.request = questionnaire_request
+
+        # Validate it.
+        bundle = Bundle()
+        bundle.entry = [questionnaire_entry]
+        bundle.type = "transaction"
+
+        logger.debug("Creating Questionnaire for Qualtrics: {}".format(survey["id"]))
+
+        try:
+            # Create the organization
+            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+            logger.debug("Response: {}".format(response.status_code))
+            response.raise_for_status()
+
+            return response.json()
+
+        except Exception as e:
+            logger.exception(
+                "PPM/FHIR: Create Questionnaire error: {}".format(e),
+                exc_info=True,
+                extra={
+                    "survey_id": survey["id"],
+                    "questionnaire_version": questionnaire.version,
+                },
+            )
 
     @staticmethod
     def create_research_study(patient_id, research_study_title):
@@ -2120,6 +2277,27 @@ class FHIR(PPM.Service):
         return None
 
     @staticmethod
+    def query_qualtrics_questionnaire(survey_id):
+        """
+        Queries FHIR for a Questionnaire created from the passed Qualtrics
+        survey.
+
+        :param survey_id: The Qualtrics survey ID
+        :type survey_id: str
+        :return: The FHIR Bundle containing the results of the query
+        :rtype: Bundle
+        """
+        # Build the query
+        query = {
+            "identifier": "{}|{}".format(FHIR.qualtrics_survey_identifier_system, survey_id),
+        }
+
+        # Query resources
+        bundle = FHIR._query_bundle("Questionnaire", query=query)
+
+        return bundle
+
+    @staticmethod
     def query_questionnaire_responses(patient=None, questionnaire_id=None):
 
         # Build the query
@@ -2131,12 +2309,64 @@ class FHIR(PPM.Service):
 
         # Check patient
         if patient:
-            query.update(FHIR._patient_query(patient))
+            query.update(FHIR._patient_resource_query(patient, "source"))
 
         # Query resources
         bundle = FHIR._query_bundle("QuestionnaireResponse", query=query)
 
         return bundle
+
+    @staticmethod
+    def query_qualtrics_questionnaire_responses(patient=None, survey_id=None):
+        """
+        Queries FHIR for QuestionnaireResponses created for the passed Qualtrics
+        survey by the passed patient.
+
+        :param patient: The patient reference
+        :type patient: str
+        :param survey_id: The Qualtrics survey ID
+        :type survey_id: str
+        :return: The FHIR Bundle containing the results of the query
+        :rtype: Bundle
+        """
+        # Build the query
+        query = {
+            "identifier": "{}|".format(FHIR.qualtrics_survey_identifier_system),
+            "_include": "*",
+            "_revinclude": "*",
+        }
+
+        # Check for specific survey
+        if survey_id:
+            query["identifier"] = "{}{}".format(query["identifier"], survey_id)
+
+        # Check patient
+        if patient:
+            query.update(FHIR._patient_resource_query(patient, "source"))
+
+        # Query resources
+        bundle = FHIR._query_bundle("Questionnaire", query=query)
+
+        return bundle
+
+    @staticmethod
+    def get_qualtrics_questionnaire(survey_id):
+        """
+        Queries FHIR for a Questionnaire created from the passed Qualtrics
+        survey.
+
+        :param survey_id: The Qualtrics survey ID
+        :type survey_id: str
+        :return: The FHIR Questionnaire object
+        :rtype: dict or None
+        """
+        # Query resources
+        bundle = FHIR.query_qualtrics_questionnaire(survey_id=survey_id)
+
+        return next(
+            (r.resource.as_json() for r in bundle.entry if r.resource.resource_type == "Questionnaire"),
+            None,
+        )
 
     @staticmethod
     def get_questionnaire_response(patient, questionnaire_id, flatten_return=False):
@@ -2158,6 +2388,38 @@ class FHIR(PPM.Service):
 
             # We need the whole bundle to flatten it
             return FHIR.flatten_questionnaire_response(bundle, questionnaire_id)
+        else:
+
+            # Fetch the questionnaire response from the bundle
+            questionnaire_response = next(
+                (r.resource for r in bundle.entry if r.resource.resource_type == "QuestionnaireResponse"),
+                None,
+            )
+            return questionnaire_response.as_json()
+
+    @staticmethod
+    def get_qualtrics_questionnaire_response(patient, survey_id, flatten_return=False):
+        """
+        Queries FHIR for a QuestionnaireResponse for the passed patient and
+        Qualtrics survey. If specified, FHIR resource is flattened for output.
+
+        :param patient: The patient reference
+        :type patient: str
+        :param survey_id: The Qualtrics survey ID
+        :type survey_id: str
+        :return: The FHIR Questionnaire object
+        :rtype: dict or None
+        """
+        # Query resources
+        bundle = FHIR.query_qualtrics_questionnaire_response(patient=patient, survey_id=survey_id)
+
+        # Pull out Questionnaire ID
+        questionnaire = next(e.resource for e in bundle.entry if e.resource.resource_type == "Questionnaire")
+
+        if flatten_return:
+
+            # We need the whole bundle to flatten it
+            return FHIR.flatten_questionnaire_response(bundle, questionnaire["id"])
         else:
 
             # Fetch the questionnaire response from the bundle
@@ -3662,11 +3924,12 @@ class FHIR(PPM.Service):
             logger.warning("Cannot delete")
 
     @staticmethod
-    def delete_questionnaire_response(patient_id, project):
-        logger.debug("Deleting questionnaire response: Patient/{} - {}".format(patient_id, project))
+    def delete_questionnaire_response(patient_id, project, questionnaire_id=None):
+        logger.debug("Deleting QuestionnaireResponse/{}: Patient/{} - {}".format(questionnaire_id, patient_id, project))
 
-        # Get the questionnaire ID
-        questionnaire_id = PPM.Questionnaire.questionnaire_for_study(study=project)
+        # Get the questionnaire ID if not passed
+        if not questionnaire_id:
+            questionnaire_id = PPM.Questionnaire.questionnaire_for_study(study=project)
 
         # Find it
         questionnaire_response = FHIR.get_questionnaire_response(patient_id, questionnaire_id)
@@ -4035,7 +4298,19 @@ class FHIR(PPM.Service):
             _questionnaire_id = PPM.Questionnaire.questionnaire_for_study(study=participant["project"])
 
             # Parse out the responses
-            participant["questionnaire"] = FHIR.flatten_questionnaire_response(bundle, _questionnaire_id)
+            questionnaire_response = FHIR.flatten_questionnaire_response(bundle, _questionnaire_id)
+
+            # Add primary questionnaire and all questionnaires
+            participant["questionnaire"] = questionnaire_response
+            participant["questionnaires"] = {_questionnaire_id: questionnaire_response}
+
+            # Add additional questionnaires
+            for questionnaire in PPM.Questionnaire.extra_questionnaires_for_study(participant["project"]):
+
+                # Attempt to parse it
+                participant["questionnaires"][questionnaire.value] = FHIR.flatten_questionnaire_response(
+                    bundle, questionnaire.value
+                )
 
             # Flatten points of care
             participant["points_of_care"] = FHIR.flatten_list(bundle, "Organization")
@@ -4483,24 +4758,33 @@ class FHIR(PPM.Service):
             answer = answers.get(linkId)
             if not answer:
 
+                # Check if group
+                item = FHIR.find_questionnaire_item(questionnaire.item, linkId)
+                if item.type == "group" and item.item:
+
+                    # This is a header
+                    answer = []
+
                 # Check if dependent and enabled
-                if FHIR.question_is_conditionally_enabled(
+                elif FHIR.question_is_conditionally_enabled(
                     questionnaire, linkId
                 ) and not FHIR.questionnaire_response_is_enabled(questionnaire, questionnaire_response, linkId):
                     continue
 
-                answer = [mark_safe('<span class="label label-info">N/A</span>')]
+                else:
+                    # Set a default answer
+                    answer = [mark_safe('<span class="label label-info">N/A</span>')]
 
-                # Check if dependent and was enabled (or should have an answer but doesn't)
-                if FHIR.questionnaire_response_is_required(questionnaire, questionnaire_response, linkId):
-                    logger.error(
-                        f"FHIR Questionnaire: No answer found for {linkId}",
-                        extra={
-                            "questionnaire": questionnaire_id,
-                            "link_id": linkId,
-                            "ppm_id": questionnaire_response.source,
-                        },
-                    )
+                    # Check if dependent and was enabled (or should have an answer but doesn't)
+                    if FHIR.questionnaire_response_is_required(questionnaire, questionnaire_response, linkId):
+                        logger.error(
+                            f"FHIR Questionnaire: No answer found for {linkId}",
+                            extra={
+                                "questionnaire": questionnaire_id,
+                                "link_id": linkId,
+                                "ppm_id": questionnaire_response.source,
+                            },
+                        )
 
             # Format the question text
             text = "{} {}".format(indices.get(linkId), question)
@@ -4516,6 +4800,8 @@ class FHIR(PPM.Service):
             "ppm_id": FHIR._get_referenced_id(questionnaire_response.as_json(), "Patient"),
             "authored": formatted_authored_date,
             "responses": response,
+            "questionnaire_id": questionnaire_id,
+            "title": PPM.Questionnaire.title(questionnaire_id),
         }
 
     @staticmethod
@@ -4540,6 +4826,7 @@ class FHIR(PPM.Service):
         # Create a mapping of linkId to index
         indices = {}
         offset = 0
+        index = 0
 
         # Iterate questions
         for linkId, question in questions.items():
@@ -4550,14 +4837,11 @@ class FHIR(PPM.Service):
 
             if len(parts) >= 1:
 
-                # Check for an offset (NEER starts at 5)
-                if not indices and int(parts[0]) > 1:
-                    offset = 1 - int(parts[0])
-                elif not indices and int(parts[0]) == 0:
-                    offset = 1
+                # Increment if not children
+                if len(parts) == 1:
+                    index = index + 1
 
                 # Set it
-                index = int(parts[0]) + offset
                 indices[linkId] = f"{index}. "
 
             if len(parts) >= 2:
@@ -4575,7 +4859,7 @@ class FHIR(PPM.Service):
                 i_count = int(parts[2])
                 indices[linkId] = f'{indices[linkId]}{"i" * i_count}. '
 
-        # Check for an offset
+            logger.debug(f"{linkId} / {[str(p) for p in parts]} / {offset} = {indices[linkId]}")
 
         return indices
 
@@ -4844,6 +5128,10 @@ class FHIR(PPM.Service):
 
                 # Get answers
                 sub_questions = FHIR._questions(item.item)
+
+                # Check for text
+                if item.text:
+                    questions[item.linkId] = item.text
 
                 # Add them
                 questions.update(sub_questions)
@@ -5923,6 +6211,474 @@ class FHIR(PPM.Service):
             Returns a coding resource
             """
             return {"coding": [{"system": system, "code": code}]}
+
+        @staticmethod
+        def ppm_qualtrics_survey_questionnaire(study, questionnaire_id, survey_id, survey):
+            """
+            Returns QuestionnaireResponse resource for a survey taken through
+            Qualtrics. This method requires that Qualtrics question names are
+            matched to the FHIR Questionnaire linkIds.
+
+            :param study: The study for which the questionnaire was given
+            :type study: PPM.Study
+            :param questionnaire_id: The ID for the related FHIR Questionnaire
+            :type questionnaire_id: str
+            :param survey_id: The ID of the Qualtrics survey
+            :type survey_id: str
+            :param url: The URL of the survey
+            :type url: str
+            :param title: The title of the survey
+            :type title: str
+            :param version: The version identifier for this survey
+            :type version: str
+            :param modified: The date this survey was last modified
+            :type modified: datetime
+            :param items: A list of FHIR structured QuestionnaireItem resources
+            :type items: list
+            :param description: A description for the survey
+            :type description: str, default None
+            :return: The QuestionnaireResponse resource
+            :rtype: dict
+            """
+            # Hash the questions of the survey to track version of the survey
+            version = hashlib.md5(json.dumps(survey["questions"], sort_keys=True).encode()).hexdigest()
+
+            data = {
+                "id": questionnaire_id,
+                "resourceType": "Questionnaire",
+                "meta": {"lastUpdated": datetime.now().isoformat()},
+                "identifier": [
+                    {
+                        "system": FHIR.qualtrics_survey_identifier_system,
+                        "value": survey_id,
+                    },
+                    {
+                        "system": FHIR.qualtrics_survey_version_identifier_system,
+                        "value": version,
+                    },
+                ],
+                "version": version,
+                "name": survey_id,
+                "title": survey["name"],
+                "status": "active" if survey["isActive"] else "draft",
+                "approvalDate": survey["creationDate"],
+                "date": survey["lastModifiedDate"],
+                "extension": [
+                    {
+                        "url": FHIR.qualtrics_survey_extension_url,
+                        "valueString": survey_id,
+                    }
+                ],
+                "item": [
+                    FHIR.Resources.ppm_qualtrics_survey_questionnaire_item(survey, qid, question)
+                    for qid, question in survey["questions"].items()
+                ],
+            }
+
+            # If expiration, add it
+            if survey.get("expiration", {}).get("startDate"):
+
+                data["effectivePeriod"] = {
+                    "start": survey["expiration"]["startDate"],
+                    "end": survey["expiration"]["endDate"],
+                }
+
+                # If after expiration, set status
+                if survey["expiration"].get("endDate"):
+                    if parse(survey["expiration"]["endDate"]) < datetime.now():
+                        data["status"] = "retired"
+
+            return data
+
+        def ppm_qualtrics_survey_questionnaire_item(survey, qid, question):
+            """
+            Returns a FHIR resource for a QuestionnaireItem parsed from
+            the Qualtrics survey's question
+
+            :param survey: The Qualtrics survey object
+            :type survey: dict
+            :param qid: The Qualtrics survey question identifier
+            :type qid: str
+            :param question: The Qualtrics survey question object
+            :type question: dict
+            :raises Exception: Raises exception if question is an unhandled type
+            :return: The FHIR QuestionnaireItem resource
+            :rtype: dict
+            """
+            # Get common survey info
+            survey_id = survey["id"]
+
+            # Set root link ID
+            link_id = f"question-{qid.replace('QID', '')}"
+
+            # Strip text of HTML and other characters
+            text = re.sub("<[^<]+?>", "", question["questionText"]).strip().replace("\n", "").replace("\r", "")
+
+            # Get question text
+            item = {"linkId": link_id, "text": text, "required": question["validation"].get("doesForceResponse", False)}
+
+            # Check type
+            question_type = question["questionType"]
+
+            try:
+                # Text (single line)
+                if question_type["type"] == "TE" and question_type["selector"] == "SL":
+
+                    # Set type
+                    item["type"] = "string"
+
+                # Text (multiple line)
+                elif question_type["type"] == "TE" and question_type["selector"] == "ESTB":
+
+                    # Set type
+                    item["type"] = "text"
+
+                # Text (multiple line)
+                elif question_type["type"] == "TE" and question_type["selector"] == "ML":
+
+                    # Set type
+                    item["type"] = "text"
+
+                # Multiple choice (single answer)
+                elif question_type["type"] == "MC" and question_type["selector"] == "SAVR":
+
+                    # Set type
+                    item["type"] = "choice"
+
+                    # Set choices
+                    item["option"] = [{"valueString": c["choiceText"]} for k, c in question["choices"].items()]
+
+                # Multiple choice (multiple answer)
+                elif question_type["type"] == "MC" and question_type["selector"] == "MAVR":
+
+                    # Set type
+                    item["type"] = "choice"
+                    item["repeats"] = True
+
+                    # Set choices
+                    item["option"] = [{"valueString": c["choiceText"]} for k, c in question["choices"].items()]
+
+                # Matrix (single answer)
+                elif (
+                    question_type["type"] == "Matrix"
+                    and question_type["selector"] == "Likert"
+                    and question_type["subSelector"] == "SingleAnswer"
+                ):
+
+                    # Add this as a grouped set of multiple choice, single answer questions
+                    item["type"] = "group"
+
+                    # Preselect choices
+                    choices = [{"valueString": c["choiceText"]} for k, c in question["choices"].items()]
+
+                    # Set subitems
+                    item["item"] = [
+                        {
+                            "linkId": f"{link_id}-{k}",
+                            "text": s["choiceText"],
+                            "type": "choice",
+                            "option": choices,
+                            "required": question["validation"].get("doesForceResponse", False),
+                        }
+                        for k, s in question["subQuestions"].items()
+                    ]
+
+                # Matrix (multiple answer)
+                elif (
+                    question_type["type"] == "Matrix"
+                    and question_type["selector"] == "Likert"
+                    and question_type["subSelector"] == "MultipleAnswer"
+                ):
+
+                    # Add this as a grouped set of multiple choice, single answer questions
+                    item["type"] = "group"
+                    item["repeats"] = True
+
+                    # Preselect choices
+                    choices = [{"valueString": c["choiceText"]} for k, c in question["choices"].items()]
+
+                    # Set subitems
+                    item["item"] = [
+                        {
+                            "linkId": f"{link_id}-{k}",
+                            "text": s["choiceText"],
+                            "type": "choice",
+                            "option": choices,
+                            "required": question["validation"].get("doesForceResponse", False),
+                        }
+                        for k, s in question["subQuestions"].items()
+                    ]
+
+                # Slider (integer answer)
+                elif question_type["type"] == "Slider" and question_type["selector"] == "HBAR":
+
+                    # Set type
+                    item["type"] = "integer"
+
+                # Hot spot (multiple choice, multiple answer)
+                elif question_type["type"] == "HotSpot" and question_type["selector"] == "OnOff":
+
+                    # Set type
+                    item["type"] = "choice"
+                    item["repeats"] = True
+
+                    # Set choices
+                    item["option"] = [{"valueString": c["choiceText"]} for k, c in question["subQuestions"].items()]
+
+                # Descriptive text
+                elif question_type["type"] == "DB":
+
+                    # Set type
+                    item["type"] = "display"
+
+                # Descriptive graphics
+                elif question_type["type"] == "GB":
+
+                    # Set type
+                    item["type"] = "display"
+
+                else:
+                    logger.error(
+                        "PPM/Questionnaire: Unhandled survey question" f" type {survey_id}/{qid}: {question_type}"
+                    )
+                    raise ValueError(f"Failed to process survey {survey['id']}")
+            except Exception as e:
+                logger.exception(
+                    f"PPM/FHIR: Error processing question" f" {survey_id}/{qid}: {e}",
+                    exc_info=True,
+                    extra={
+                        "survey_id": survey["id"],
+                        "qid": qid,
+                        "question": question,
+                    },
+                )
+                raise e
+
+            return item
+
+        @staticmethod
+        def ppm_qualtrics_survey_questionnaire_response(
+            study, ppm_id, questionnaire_id, survey_id, survey, response_id, response
+        ):
+            """
+            Returns QuestionnaireResponse resource for a survey taken through
+            Qualtrics. This method requires that Qualtrics question names are
+            matched to the FHIR Questionnaire linkIds.
+
+            :param study: The study for which the questionnaire was given
+            :type study: PPM.Study
+            :param ppm_id: The PPM ID for the participant who took the survey
+            :type ppm_id: str
+            :param questionnaire_id: The ID for the related FHIR Questionnaire
+            :type questionnaire_id: str
+            :param survey_id: The ID of the Qualtrics survey
+            :type survey_id: str
+            :param survey: The Qualtrics survey object
+            :type survey: dict
+            :param response_id: The ID of the Qualtrics survey response
+            :type response_id: str
+            :param response: The Qualtrics survey response object
+            :type response: dict
+            :return: The QuestionnaireResponse resource
+            :rtype: dict
+            """
+
+            data = {
+                "resourceType": "QuestionnaireResponse",
+                "meta": {"lastUpdated": datetime.now().isoformat()},
+                "identifier": {
+                    "system": FHIR.qualtrics_response_identifier_system,
+                    "value": response_id,
+                },
+                "questionnaire": {"reference": "Questionnaire/{}".format(questionnaire_id)},
+                "subject": {"reference": "ResearchStudy/{}".format(PPM.Study.fhir_id(study))},
+                "status": "completed",
+                "author": {"reference": f"Patient/{ppm_id}"},
+                "source": {"reference": f"Patient/{ppm_id}"},
+                "authored": datetime.now().isoformat(),
+                "extension": [
+                    {
+                        "url": FHIR.qualtrics_survey_extension_url,
+                        "valueString": survey_id,
+                    }
+                ],
+                "item": FHIR.Resources.ppm_qualtrics_survey_questionnaire_response_item(
+                    survey=survey,
+                    response=response,
+                ),
+            }
+
+            # Set dates if specified.
+            if response.get("endDate"):
+                data["authored"] = response["endDate"]
+
+            return data
+
+        def ppm_qualtrics_survey_questionnaire_response_item(survey, response):
+            """
+            Returns a list of FHIR QuestionnaireResponse.Item resource
+            for the passed Qualtrics survey question response.
+
+            :param survey: The Qualtrics survey object
+            :type survey: object
+            :param response: The Qualtrics survey response item
+            :type response: object
+            :raises Exception: Raises exception if value is an unhandled type
+            :return: A list of FHIR QuestionnaireResponse.Item resources
+            :rtype: list
+            """
+            # Build dictionary of linkId to value
+            responses = {}
+
+            # Set regex for matching answer keys
+            key_regex = re.compile(r"(?P<id>QID[\d]{1,})(_(?P<subid>[\d]+))?(_(?P<type>[a-zA-Z]+))?")
+
+            # Iterate values
+            for key, value in response["values"].items():
+                # Reset vars
+                q_id = q_subid = q_type = None
+                try:
+                    # Check for response value
+                    if not key.startswith("QID"):
+                        continue
+
+                    # Get ID and type
+                    q_id = key_regex.match(key).groupdict()["id"]
+                    q_subid = key_regex.match(key).groupdict()["subid"]
+                    q_type = key_regex.match(key).groupdict()["type"]
+
+                    # Get question object
+                    question = survey["questions"].get(q_id)
+
+                    # Get linkID
+                    link_id = f"question-{q_id.replace('QID', '')}"
+
+                    # Parse value depending on question/answer type
+                    question_type = question["questionType"]["type"]
+
+                    # Check type
+
+                    # This describes options for the question's answer
+                    if q_type and q_type == "DO":
+
+                        # This is the list of options
+                        continue
+
+                    # Slider answer
+                    elif question_type == "Slider" and type(value) is int:
+
+                        responses[link_id] = value
+
+                    elif question_type == "HotSpot" and type(value) is str:
+
+                        # Skip if off
+                        if value.lower() == "off":
+                            continue
+
+                        # Get the label
+                        label = survey["questions"][q_id]["subQuestions"][q_subid]["choiceText"]
+
+                        # Set answer if on, blank if off
+                        if link_id in responses:
+                            responses[link_id].append(label)
+                        else:
+                            responses[link_id] = [label]
+
+                    # This is a matrix, single answer question
+                    elif question_type == "Matrix" and type(value) is int:
+
+                        # Just set label
+                        responses[link_id + "-" + q_subid] = response["labels"][key]
+
+                    # This is a multiple-choice, single answer question (radio)
+                    elif question_type == "MC" and type(value) is int:
+
+                        # Add it
+                        responses[link_id] = response["labels"][key]
+
+                    # This is a multiple-choice scale, multiple answer question (matrix)
+                    elif question_type == "MC" and type(value) is list:
+
+                        # Index to a list of options
+                        value_list = response["labels"].get(key)
+
+                        # Add it
+                        if q_subid:
+                            responses[link_id + "-" + q_subid] = value_list
+                        else:
+                            responses[link_id] = value_list
+
+                    # Text answer
+                    elif q_type and q_type == "TEXT":
+
+                        # Easy
+                        responses[link_id] = value
+
+                    # This is a multiple-choice, multiple answer question (checkbox)
+                    elif not q_type and type(value) is list:
+
+                        # Index to a list of options
+                        value_list = response["labels"].get(key)
+
+                        # Add it
+                        responses[link_id] = value_list
+
+                    else:
+                        logger.error(
+                            f"PPM/Questionnaire: Unhandled Qualtrics "
+                            f"answer item: {key} = {value} ({q_id}/"
+                            f"{q_subid}/{q_type})"
+                        )
+
+                except (IndexError, ValueError, KeyError, TypeError) as e:
+                    logger.exception(
+                        f"PPM/Questionnaire: Unhandled Qualtrics "
+                        f"answer item: {key} = {value} ({q_id}/"
+                        f"{q_subid}/{q_type}) {e}",
+                        exc_info=True,
+                    )
+
+            # Return responses
+            return [
+                {"linkId": k, "answer": FHIR.Resources._questionnaire_response_answer(v)} for k, v in responses.items()
+            ]
+
+        def _questionnaire_response_answer(value):
+            """
+            Returns a FHIR resource for a QuestionnaireResponse answer
+
+            :param value: The value object
+            :type value: object
+            :raises Exception: Raises exception if value is an unhandled type
+            :return: The FHIR answer items
+            :rtype: list
+            """
+            # Get answers
+            answers = None
+
+            # Check type
+            if type(value) is str:
+                answers = [{"valueString": value}]
+
+            elif type(value) is int:
+                answers = [{"valueInteger": value}]
+
+            elif type(value) is date:
+                answers = [{"valueDate": value.isoformat()}]
+
+            elif type(value) is datetime:
+                answers = [{"valueDateTime": value.isoformat()}]
+
+            elif type(value) is bool:
+                answers = [{"valueBoolean": value}]
+
+            elif type(value) is list:
+                answers = [FHIR.Resources._questionnaire_response_answer(a)[0] for a in value]
+
+            else:
+                raise Exception(f"FHIR/Resources: Unhandled answer type {value} ({type(value)})")
+
+            return answers
 
     class Operations(object):
         """

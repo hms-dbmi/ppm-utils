@@ -739,12 +739,12 @@ class PPM:
         @staticmethod
         def is_active(enrollment):
             """
-            Accepts an enrollment and returns whether it is considered 'active' or not.
-            This will determine how this flag is set on participant records.
-            The state of being active generally means this participant is in the
-            enrollment procedure and is still considered for acceptance, or if
-            already accepted, should receive notifications, requests, and any other
-            communications concerning the study.
+            Accepts an enrollment and returns whether it is considered 'active'
+            or not. This will determine how this flag is set on participant
+            records. The state of being active generally means this participant
+            is in the enrollment procedure and is still considered for
+            acceptance, or if already accepted, should receive notifications,
+            requests, and any other communications concerning the study.
             :param enrollment: The enrollment to consider
             :return: boolean
             """
@@ -812,12 +812,20 @@ class PPM:
             return dict(PPM.Communication.choices())[PPM.Communication.get(communication).value]
 
     class Questionnaire(PPMEnum):
+        """
+        This class manages and describes the various questionnaires and surveys
+        participants are expected to take during the course of the study
+        """
 
-        # Survey/Questionnaires
+        # Pre-approval survey/Questionnaires
         EXAMPLEQuestionnaire = "ppm-example-registration-questionnaire"
         NEERQuestionnaire = "ppm-neer-registration-questionnaire"
-        ASDQuestionnaire = "ppm-asd-questionnaire"
         RANTQuestionnaire = "ppm-rant-registration-questionnaire"
+
+        # Post-approval surveys/questionnaires
+        ASDQuestionnaire = "ppm-asd-questionnaire"
+        RANTPointsOfCareQuestionnaire = "ppm-rant-points-of-care-questionnaire"
+        RANTRASymptomQuestionnaire = "ppm-rant-ra-symptom-questionnaire"
 
         # Consents
         EXAMPLEConsent = "example-signature"
@@ -829,6 +837,154 @@ class PPM:
         ASDConsentGuardianSignature1Questionnaire = "guardian-signature-part-1"
         ASDConsentGuardianSignature2Questionnaire = "guardian-signature-part-2"
         ASDConsentGuardianSignature3Questionnaire = "guardian-signature-part-3"
+
+        @classmethod
+        def choices(cls):
+            return (
+                (PPM.Questionnaire.EXAMPLEQuestionnaire.value, "Example Registration Questionnaire"),
+                (PPM.Questionnaire.NEERQuestionnaire.value, "NEER Registration Questionnaire"),
+                (PPM.Questionnaire.ASDQuestionnaire.value, "ASD Registration Questionnaire"),
+                (PPM.Questionnaire.RANTQuestionnaire.value, "RANT Registration Questionnaire"),
+                (PPM.Questionnaire.RANTPointsOfCareQuestionnaire.value, "RANT Points of Care Questionnaire"),
+                (PPM.Questionnaire.RANTRASymptomQuestionnaire.value, "RANT RA Symptom Questionnaire"),
+                (PPM.Questionnaire.EXAMPLEConsent.value, "Example Consent Signature"),
+                (PPM.Questionnaire.NEERConsent.value, "NEER Consent Signature"),
+                (PPM.Questionnaire.RANTConsent.value, "RANT Consent Signature"),
+                (PPM.Questionnaire.ASDGuardianConsentQuestionnaire.value, "ASD Guardian Consent Questionnaire"),
+                (PPM.Questionnaire.ASDIndividualConsentQuestionnaire.value, "ASD Individual ConsentQuestionnaire"),
+                (
+                    PPM.Questionnaire.ASDConsentIndividualSignatureQuestionnaire.value,
+                    "ASD Individual Consent Signature",
+                ),
+                (PPM.Questionnaire.ASDConsentGuardianSignature1Questionnaire.value, "ASD Guardian Consent Signature"),
+                (PPM.Questionnaire.ASDConsentGuardianSignature2Questionnaire.value, "ASD Guardian Consent Signature"),
+                (PPM.Questionnaire.ASDConsentGuardianSignature3Questionnaire.value, "ASD Guardian Assent Signature"),
+            )
+
+        @classmethod
+        def questionnaires_for_study(cls, study):
+            """
+            Returns a list of Questionnaires for the passed study. This includes
+            both mandatory and optional questionnaires.
+
+            :param study: The study to check
+            :type study: PPM.Study
+            :raises ValueError: Throws error if the study is invalid
+            :return: A list of PPM.Questionnaire
+            :rtype: list
+            """
+            # Match questionnaires by ID
+            reg = re.compile(r"^ppm-{}[-]?.*-questionnaire$".format(PPM.Study.get(study).value))
+            return [q for q in PPM.Questionnaire if type(q.value) is str and reg.fullmatch(q.value) is not None]
+
+        @classmethod
+        def extra_questionnaires_for_study(cls, study):
+            """
+            Returns a list of Questionnaires for the passed study. This includes
+            only optional questionnaires that are given post-approval.
+
+            :param study: The study to check
+            :type study: PPM.Study
+            :raises ValueError: Throws error if the study is invalid
+            :return: A list of PPM.Questionnaire
+            :rtype: list
+            """
+            # Match questionnaires by ID
+            return list(
+                set(PPM.Questionnaire.questionnaires_for_study(study))
+                - set(PPM.Questionnaire.questionnaire_for_study(study))
+            )
+
+        @classmethod
+        def qualtrics_survey_ids(cls):
+            """
+            This method returns a mapping of Qualtrics survey IDs to PPM
+            Questionnaire IDs.
+
+            :return: A dictionary of Qualtrics IDs to PPM Questionnaire IDs
+            :rtype: dict
+            """
+            # Get mapping from environment
+            try:
+                # Attempt to parse dictionary from environment
+                surveys = json.loads(os.environ.get("PPM_QUALTRICS_SURVEY_MAP"))
+
+                # Check format
+                for key in surveys.keys():
+                    try:
+                        # Ensure keys are valid questionnaire IDs
+                        cls.get(key)
+
+                    except ValueError as e:
+                        logger.exception(
+                            "PPM/Questionnaire: Qualtrics survey mapping is"
+                            " invalid, unknown key: {} : {}".format(key, e),
+                            exc_info=True,
+                        )
+                return surveys
+
+            except Exception as e:
+                logger.exception("PPM/Questionnaire: Error parsing Qualtrics " "map: {}".format(e), exc_info=True)
+
+            return {}
+
+        @classmethod
+        def questionnaire_id_for_qualtrics_id(cls, survey_id):
+            """
+            This method links Qualtrics surveys to PPM questionnaire resources.
+            This is only used for surveys that are administered by Qualtrics
+            but are sent to PPM for storage (typically in FHIR) to be used
+            elsewhere in the dashboards.
+
+            :param survey_id: The Qualtrics survey ID
+            :type survey_id: str
+            :raises ValueError: If either ID is invalid, ValueError is raied
+            :return: The ID of the related PPM questionnaire resource in FHIR
+            :rtype: str
+            """
+            try:
+                questionnaire_id = next(
+                    key for key, value in cls.qualtrics_survey_ids().items() if value == survey_id,
+                )
+
+                # Return it
+                logger.debug('PPM/Questionnaire: Found "{}"' 'for "{}"'.format(questionnaire_id, survey_id))
+
+                return cls.get(questionnaire_id).value
+
+            except Exception as e:
+                logger.exception("Error: Unknown Qualtrics survey " '"{}": {}'.format(survey_id, e), exc_info=True)
+
+            return None
+
+        @classmethod
+        def qualtrics_id_for_questionnaire_id(cls, questionnaire_id):
+            """
+            This method links Qualtrics surveys to PPM questionnaire resources.
+            This is only used for surveys that are administered by Qualtrics
+            but are sent to PPM for storage (typically in FHIR) to be used
+            elsewhere in the dashboards.
+
+            :param questionnaire_id: The PPM questionnaire ID
+            :type questionnaire_id: str
+            :raises ValueError: If either ID is invalid, ValueError is raied
+            :return: The ID of the related Qualtrics Survey
+            :rtype: str
+            """
+            try:
+                survey_id = cls.qualtrics_survey_ids()[cls.get(questionnaire_id).value]
+
+                # Return it
+                logger.debug('PPM/Questionnaire: Found "{}" ' 'for "{}"'.format(survey_id, questionnaire_id))
+
+                return survey_id
+
+            except Exception as e:
+                logger.exception(
+                    "Error: Unknown PPM Questionnaire " '"{}": {}'.format(questionnaire_id, e), exc_info=True
+                )
+
+            return None
 
         @staticmethod
         def questionnaire_url_for_study(study, return_url=None):
@@ -842,6 +998,32 @@ class PPM:
 
             # Add components
             url.path.set("fhirquestionnaire/questionnaire/p/{}/".format(study.value))
+
+            # Check for return URL
+            if return_url:
+                url.query.params.add("return_url", return_url)
+
+            return url.url
+
+        @classmethod
+        def questionnaire_url_for_questionnaire(cls, questionnaire, return_url=None):
+            """
+            Returns the URL of the Questionnaire to be taken by participants
+            typically after approval and during general data collection.
+            :param study: The PPM study
+            :return: str
+            """
+            # Ensure we're working with the enum
+            questionnaire = cls.get(questionnaire)
+
+            # Get the base URL for the service
+            url = furl(os.environ["PPM_QUESTIONNAIRE_URL"])
+
+            # Get study this questionnaire pertains to
+            study = next(s for s in PPM.Study if questionnaire in cls.questionnaires_for_study(s))
+
+            # Add components
+            url.path.set("fhirquestionnaire/questionnaire/q/{}/{}/".format(study.value, questionnaire.value))
 
             # Check for return URL
             if return_url:
@@ -912,7 +1094,7 @@ class PPM:
                 return PPM.Questionnaire.RANTQuestionnaire.value
 
             elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
-                return PPM.Questionnaire.ExampleQuestionnaire.value
+                return PPM.Questionnaire.EXAMPLEQuestionnaire.value
 
         @staticmethod
         def questionnaire_for_consent(composition):
@@ -978,9 +1160,9 @@ class PPM:
 
             else:
                 raise ValueError(
-                    f'Questionnaire ID "{questionnaire_id}" is either not a valid PPM '
-                    f"consent Questionnaire, or its exception mappings has not "
-                    f"yet been added."
+                    'Questionnaire ID "{}" is either not a valid PPM '
+                    "consent Questionnaire, or its exception mappings has not "
+                    "yet been added.".format(questionnaire_id)
                 )
 
         @staticmethod

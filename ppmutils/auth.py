@@ -121,24 +121,24 @@ class Auth(object):
         return item is not None and permission is not None
 
     @classmethod
-    def has_study_permission(cls, method, permissions, study):
+    def has_study_permission(cls, permissions, study, method=None):
         """
         Inspects the set of permissions and returns whether this
         user has needed permissions on the particular PPM study
         for the given operation.
 
-        :param method: The requested method to check permissions for
-        :type method: str
         :param permissions: A list of permissions from DBMI-AuthZ
         :type permissions: list
         :param study: A specific study
         :type study: str
+        :param method: The requested method to check permissions for
+        :type method: str, default None
         :returns: Whether the user has the permissions or not
         :rtype: bool
         """
 
         # Get permission
-        item, permission = Auth.get_permission(method, permissions, study)
+        item, permission = Auth.get_permission(permissions, method=method, study=study)
 
         return item is not None and permission is not None
 
