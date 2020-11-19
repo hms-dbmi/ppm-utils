@@ -394,6 +394,12 @@ class PPM:
                         "enabled": True,
                     },
                     {
+                        "step": "survey",
+                        "blocking": False,
+                        "required": False,
+                        "enabled": True,
+                    },
+                    {
                         "step": "twitter",
                         "blocking": False,
                         "required": False,
@@ -482,13 +488,7 @@ class PPM:
                         "enabled": True,
                     },
                     {
-                        "step": "twitter",
-                        "blocking": False,
-                        "required": False,
-                        "enabled": True,
-                    },
-                    {
-                        "step": "fitbit",
+                        "step": "survey",
                         "blocking": False,
                         "required": False,
                         "enabled": True,
@@ -538,13 +538,13 @@ class PPM:
                         "enabled": True,
                     },
                     {
-                        "step": "poc",
-                        "blocking": True,
-                        "required": True,
+                        "step": "qualtrics-SV_6YHOgpujEr8uDaZ",
+                        "blocking": False,
+                        "required": False,
                         "enabled": True,
                     },
                     {
-                        "step": "research-studies",
+                        "step": "qualtrics-SV_74G8i7ukzojD88J",
                         "blocking": False,
                         "required": False,
                         "enabled": True,
