@@ -747,7 +747,7 @@ class FHIR(PPM.Service):
             logger.error(f"FHIR ERROR: Could not determine resource ID from response: {response.content.decode()}")
 
             # Build URL
-            url = furl(PPM.fhir_url())
+            url = furl(FHIR.service_url())
             url.path.segments.extend([resource_type, matches[0]])
 
             return matches[0], url.url
@@ -825,7 +825,7 @@ class FHIR(PPM.Service):
 
         try:
             # Create the organization
-            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+            response = requests.post(FHIR.service_url(), json=bundle.as_json())
             response.raise_for_status()
 
             return response.json()
@@ -1183,7 +1183,7 @@ class FHIR(PPM.Service):
 
         try:
             # Create the organization
-            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+            response = requests.post(FHIR.service_url(), json=bundle.as_json())
             logger.debug("Response: {}".format(response.status_code))
             response.raise_for_status()
 
@@ -1493,7 +1493,7 @@ class FHIR(PPM.Service):
             bundle.entry.append(composition_entry)
 
             # Post the transaction
-            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+            response = requests.post(FHIR.service_url(), json=bundle.as_json())
             response.raise_for_status()
 
             # Check response
@@ -3225,7 +3225,7 @@ class FHIR(PPM.Service):
                 composition["section"].append({"reference": f"ResearchStudy/{PPM.Study.fhir_id(study)}"})
 
             # Build the URL
-            url = furl(PPM.fhir_url())
+            url = furl(FHIR.service_url())
             url.path.segments.append("Composition")
             url.path.segments.append(composition["id"])
 
@@ -6940,5 +6940,5 @@ class FHIR(PPM.Service):
                 bundle.entry.append(composition_entry)
 
             # Run the operation
-            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+            response = requests.post(FHIR.service_url(), json=bundle.as_json())
             return response.ok, response.content
