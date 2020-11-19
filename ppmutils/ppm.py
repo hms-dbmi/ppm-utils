@@ -728,6 +728,10 @@ class PPM:
             return dict(PPM.Communication.choices())[PPM.Communication.get(communication).value]
 
     class Questionnaire(PPMEnum):
+        """
+        This class manages and describes the various questionnaires and surveys
+        participants are expected to take during the course of the study
+        """
 
         # Pre-approval survey/Questionnaires
         EXAMPLEQuestionnaire = "ppm-example-registration-questionnaire"
