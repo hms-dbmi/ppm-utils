@@ -907,20 +907,21 @@ class PPM:
             # Get mapping from environment
             try:
                 # Attempt to parse dictionary from environment
-                surveys = json.loads(os.environ.get("PPM_QUALTRICS_SURVEY_MAP"))
+                surveys = json.loads(os.environ.get("SOURCE_QUALTRICS_SURVEYS"))
 
                 # Check format
-                for key in surveys.keys():
-                    try:
-                        # Ensure keys are valid questionnaire IDs
-                        cls.get(key)
+                for study, study_surveys in surveys.items():
+                    for survey in study_surveys:
+                        try:
+                            # Ensure valid questionnaire IDs
+                            cls.get(survey["questionnaire_id"])
 
-                    except ValueError as e:
-                        logger.exception(
-                            "PPM/Questionnaire: Qualtrics survey mapping is"
-                            " invalid, unknown key: {} : {}".format(key, e),
-                            exc_info=True,
-                        )
+                        except ValueError as e:
+                            logger.exception(
+                                "PPM/Questionnaire: Qualtrics survey mapping is"
+                                " invalid, unknown key: {} : {}".format(survey, e),
+                                exc_info=True,
+                            )
                 return surveys
 
             except Exception as e:
@@ -943,14 +944,21 @@ class PPM:
             :rtype: str
             """
             try:
-                questionnaire_id = next(
-                    key for key, value in cls.qualtrics_survey_ids().items() if value == survey_id,
-                )
+                for _, surveys in cls.qualtrics_survey_ids().items():
 
-                # Return it
-                logger.debug('PPM/Questionnaire: Found "{}"' 'for "{}"'.format(questionnaire_id, survey_id))
+                    # Check for questionnaire ID
+                    questionnaire_id = next(
+                        (s.get("questionnaire_id") for s in surveys if s.get("survey_id") == survey_id), None
+                    )
 
-                return cls.get(questionnaire_id).value
+                    # If not questionnaire ID
+                    if not questionnaire_id:
+                        continue
+
+                    # Return it
+                    logger.debug('PPM/Questionnaire: Found "{}"' 'for "{}"'.format(questionnaire_id, survey_id))
+
+                    return cls.get(questionnaire_id).value
 
             except Exception as e:
                 logger.exception("Error: Unknown Qualtrics survey " '"{}": {}'.format(survey_id, e), exc_info=True)
@@ -972,17 +980,24 @@ class PPM:
             :rtype: str
             """
             try:
-                survey_id = cls.qualtrics_survey_ids()[cls.get(questionnaire_id).value]
+                for _, surveys in cls.qualtrics_survey_ids().items():
 
-                # Return it
-                logger.debug('PPM/Questionnaire: Found "{}" ' 'for "{}"'.format(survey_id, questionnaire_id))
+                    # Check for questionnaire ID
+                    survey_id = next(
+                        (s.get("survey_id") for s in surveys if s.get("questionnaire_id") == questionnaire_id), None
+                    )
 
-                return survey_id
+                    # If not survey ID
+                    if not survey_id:
+                        continue
+
+                    # Return it
+                    logger.debug('PPM/Questionnaire: Found "{}" for "{}"'.format(survey_id, questionnaire_id))
+
+                    return survey_id
 
             except Exception as e:
-                logger.exception(
-                    "Error: Unknown PPM Questionnaire " '"{}": {}'.format(questionnaire_id, e), exc_info=True
-                )
+                logger.exception('Error: Unknown PPM Questionnaire "{}": {}'.format(questionnaire_id, e), exc_info=True)
 
             return None
 
