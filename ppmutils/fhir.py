@@ -1087,12 +1087,20 @@ class FHIR:
         return response
 
     @staticmethod
-    def create_qualtrics_questionnaire(study, questionnaire_id, survey_id, survey):
+    def create_qualtrics_questionnaire(study, questionnaire_id, survey_id, survey, replace=False):
         """
         Create a Questionnaire resource created from the Qualtrics
         survey.
+        :param study: The PPM study for which the survey/questionnaire is related
+        :type study: str
+        :param questionnaire_id: The questionnaire ID to use in FHIR
+        :type questionnaire_id: str
+        :param survey_id: The Qualtrics survey ID
+        :type survey_id: str
         :param survey: The Qualtrics survey object from the Qualtrics API
         :type survey: dict
+        :param replace: Whether existing resources should be replaced or not
+        :type replace: bool, defaults to False
         :return: The result of the operation
         :rtype: Response
         """
@@ -1105,19 +1113,22 @@ class FHIR:
             )
         )
 
+        # Check if exists if not replacing
+        if not replace:
+            questionnaires = FHIR._query_resources(
+                "Questionnaire",
+                query={
+                    "version": questionnaire.version,
+                },
+            )
+            if questionnaires:
+                return next(iter(questionnaires))
+
         questionnaire_request = BundleEntryRequest(
             {
                 "url": f"Questionnaire/{questionnaire_id}",
                 "method": "PUT",
-                "ifNoneExist": str(
-                    Query(
-                        {
-                            "identifier": "{}|{}".format(
-                                FHIR.qualtrics_survey_version_identifier_system, questionnaire.version
-                            ),
-                        }
-                    )
-                ),
+                "ifNoneExist": str(Query({"version:exact": questionnaire.version})),
             }
         )
         questionnaire_entry = BundleEntry()
@@ -2283,21 +2294,21 @@ class FHIR:
         """
         # Build the query
         query = {
-            "identifier": "{}|".format(FHIR.qualtrics_survey_identifier_system),
+            "questionnaire.identifier": "{}|".format(FHIR.qualtrics_survey_identifier_system),
             "_include": "*",
             "_revinclude": "*",
         }
 
         # Check for specific survey
         if survey_id:
-            query["identifier"] = "{}{}".format(query["identifier"], survey_id)
+            query["questionnaire.identifier"] = "{}{}".format(query["questionnaire.identifier"], survey_id)
 
         # Check patient
         if patient:
             query.update(FHIR._patient_resource_query(patient, "source"))
 
         # Query resources
-        bundle = FHIR._query_bundle("Questionnaire", query=query)
+        bundle = FHIR._query_bundle("QuestionnaireResponse", query=query)
 
         return bundle
 
@@ -2363,7 +2374,7 @@ class FHIR:
         :rtype: dict or None
         """
         # Query resources
-        bundle = FHIR.query_qualtrics_questionnaire_response(patient=patient, survey_id=survey_id)
+        bundle = FHIR.query_qualtrics_questionnaire_responses(patient=patient, survey_id=survey_id)
 
         # Pull out Questionnaire ID
         questionnaire = next(e.resource for e in bundle.entry if e.resource.resource_type == "Questionnaire")
@@ -4782,7 +4793,6 @@ class FHIR:
 
         # Create a mapping of linkId to index
         indices = {}
-        offset = 0
         index = 0
 
         # Iterate questions
@@ -4815,8 +4825,6 @@ class FHIR:
 
                 i_count = int(parts[2])
                 indices[linkId] = f'{indices[linkId]}{"i" * i_count}. '
-
-            logger.debug(f"{linkId} / {[str(p) for p in parts]} / {offset} = {indices[linkId]}")
 
         return indices
 
@@ -6190,6 +6198,19 @@ class FHIR:
             # Hash the questions of the survey to track version of the survey
             version = hashlib.md5(json.dumps(survey["questions"], sort_keys=True).encode()).hexdigest()
 
+            # Sort questions based on flow
+            question_ids = []
+            for block in [f for f in survey["flow"] if f.get("type") == "Block"]:
+
+                # Get questions
+                for question in [
+                    e for e in survey["blocks"][block["id"]].get("elements", []) if e.get("type") == "Question"
+                ]:
+
+                    # Add questions to list
+                    question_ids.append(question["questionId"])
+
+            # Build the resource
             data = {
                 "id": questionnaire_id,
                 "resourceType": "Questionnaire",
@@ -6217,8 +6238,8 @@ class FHIR:
                     }
                 ],
                 "item": [
-                    FHIR.Resources.ppm_qualtrics_survey_questionnaire_item(survey, qid, question)
-                    for qid, question in survey["questions"].items()
+                    FHIR.Resources.ppm_qualtrics_survey_questionnaire_item(survey, qid, survey["questions"][qid])
+                    for qid in question_ids
                 ],
             }
 
