@@ -4313,17 +4313,16 @@ class FHIR:
                         participant["consent_quiz_answers"] = FHIR.questionnaire_answers(bundle, quiz_id)
 
             # Get study specific resources
-            if PPM.Study.enum(participant["study"]) is PPM.Study.NEER:
-                participant[PPM.Study.NEER.value] = FHIR._flatten_neer_participant(bundle=bundle, ppm_id=ppm_id)
+            if hasattr(FHIR, f"_flatten_{PPM.Study.enum(participant['study']).value}_participant"):
 
-            elif PPM.Study.enum(participant["study"]) is PPM.Study.RANT:
-                participant[PPM.Study.RANT.value] = FHIR._flatten_rant_participant(bundle=bundle, ppm_id=ppm_id)
+                # Run it
+                values, study_values = getattr(
+                    FHIR, f"_flatten_{PPM.Study.enum(participant['study']).value}_participant"
+                )(bundle=bundle, ppm_id=ppm_id)
 
-            elif PPM.Study.enum(participant["study"]) is PPM.Study.ASD:
-                participant[PPM.Study.ASD.value] = FHIR._flatten_asd_participant(bundle=bundle, ppm_id=ppm_id)
-
-            elif PPM.Study.enum(participant["study"]) is PPM.Study.EXAMPLE:
-                participant[PPM.Study.EXAMPLE.value] = FHIR._flatten_example_participant(bundle=bundle, ppm_id=ppm_id)
+                # Set them
+                participant.update(values)
+                participant[PPM.Study.enum(participant["study"]).value] = study_values
 
         except Exception as e:
             logger.exception(
@@ -4338,34 +4337,50 @@ class FHIR:
     def _flatten_asd_participant(bundle, ppm_id):
         """
         Continues flattening a participant by adding any study specific data to
-        their record. This will include answers in questionnaires, etc.
+        their record. This will include answers in questionnaires, etc. Returns
+        a dictionary to merge into the root participant dictionary as well as
+        a dictionary that will be keyed by the study value.
+
         :param bundle: The participant's entire FHIR record
+        :type bundle: dict
         :param ppm_id: The PPM ID of the participant
-        :return: dict
+        :type ppm_id: str
+        :returns: A tuple of properties for the root participant object, and for
+        the study sub-object
+        :rtype: dict, dict
         """
         logger.debug(f"PPM/{ppm_id}/FHIR: Flattening ASD participant")
 
-        # Put values in a dictionary
+        # Put values and study values in dictionaries
         values = {}
+        study_values = {}
 
         # TODO: Implement this
         logger.warning(f"PPM/ASD/{ppm_id}/FHIR: Flattening ASD participant needs to be fully implemented")
 
-        return values
+        return values, study_values
 
     @staticmethod
     def _flatten_neer_participant(bundle, ppm_id):
         """
-        Continues flattening a participant by adding any study specific data to their
-        record. This will include answers in questionnaires, etc.
+        Continues flattening a participant by adding any study specific data to
+        their record. This will include answers in questionnaires, etc. Returns
+        a dictionary to merge into the root participant dictionary as well as
+        a dictionary that will be keyed by the study value.
+
         :param bundle: The participant's entire FHIR record
+        :type bundle: dict
         :param ppm_id: The PPM ID of the participant
-        :return: dict
+        :type ppm_id: str
+        :returns: A tuple of properties for the root participant object, and for
+        the study sub-object
+        :rtype: dict, dict
         """
         logger.debug(f"PPM/{ppm_id}/FHIR: Flattening NEER participant")
 
-        # Put values in a dictionary
+        # Put values and study values in dictionaries
         values = {}
+        study_values = {}
 
         # Get questionnaire answers
         questionnaire_response = next(
@@ -4400,7 +4415,7 @@ class FHIR:
                     )
 
                     # Assign it
-                    values[key] = answer
+                    study_values[key] = answer
                 except Exception as e:
                     logger.exception(
                         f"PPM/{ppm_id}/Questionnaire/{link_id}: {e}",
@@ -4418,7 +4433,7 @@ class FHIR:
                     )
 
                     # Assign default value
-                    values[key] = "---"
+                    study_values[key] = "---"
 
             # Iterate date items and attempt to parse dates, otherwise treat as text
             for link_id, key in date_answers.items():
@@ -4431,7 +4446,7 @@ class FHIR:
                         # Check type
                         if answer.get("valueDate") or answer.get("valueDateTime"):
                             # Date is already a date object, assign it
-                            values[key] = answer.get("valueDate", answer.get("valueDateTime"))
+                            study_values[key] = answer.get("valueDate", answer.get("valueDateTime"))
 
                         elif answer.get("valueString"):
 
@@ -4439,7 +4454,7 @@ class FHIR:
                             answer_date = parse(answer.get("valueString"))
 
                             # Assign it
-                            values[key] = answer_date.isoformat()
+                            study_values[key] = answer_date.isoformat()
 
                         else:
                             logger.error(f"PPM/{ppm_id}/Questionnaire/{link_id}: Unhandled answer type: {answer}")
@@ -4448,7 +4463,7 @@ class FHIR:
                         logger.debug(f"PPM/{ppm_id}/Questionnaire/{link_id}: Invalid date: {answer}")
 
                         # Assign the raw value
-                        values[key] = answer
+                        study_values[key] = answer
 
                 except Exception as e:
                     logger.exception(
@@ -4467,39 +4482,178 @@ class FHIR:
                     )
 
                     # Assign default value
-                    values[key] = "---"
+                    study_values[key] = "---"
 
-        return values
+        return values, study_values
 
     @staticmethod
     def _flatten_rant_participant(bundle, ppm_id):
         """
-        Continues flattening a participant by adding any study specific data to their
-        record. This will include answers in questionnaires, etc.
+        Continues flattening a participant by adding any study specific data to
+        their record. This will include answers in questionnaires, etc. Returns
+        a dictionary to merge into the root participant dictionary as well as
+        a dictionary that will be keyed by the study value.
+
         :param bundle: The participant's entire FHIR record
+        :type bundle: dict
         :param ppm_id: The PPM ID of the participant
-        :return: dict
+        :type ppm_id: str
+        :returns: A tuple of properties for the root participant object, and for
+        the study sub-object
+        :rtype: dict, dict
         """
         logger.debug(f"PPM/{ppm_id}/FHIR: Flattening RANT participant")
 
-        # Put values in a dictionary
+        # Put values and study values in dictionaries
         values = {}
+        study_values = {}
 
-        return values
+        # Check for points of care questionnaire
+        questionnaire_response = next(
+            (
+                q
+                for q in FHIR._find_resources(bundle, "QuestionnaireResponse")
+                if q["questionnaire"]["reference"]
+                == f"Questionnaire/{PPM.Questionnaire.RANTPointsOfCareQuestionnaire.value}"
+            ),
+            None,
+        )
+        if questionnaire_response:
+
+            # Set a list
+            values["points_of_care"] = []
+
+            # Parse answers
+            diagnosing_name = next(
+                (
+                    next(a["valueString"] for a in i["answer"])
+                    for i in questionnaire_response["item"]
+                    if i["linkId"] == "question-1"
+                ),
+                None,
+            )
+            diagnosing_address = next(
+                (
+                    next(a["valueString"] for a in i["answer"])
+                    for i in questionnaire_response["item"]
+                    if i["linkId"] == "question-2"
+                ),
+                None,
+            )
+            diagnosing_phone = next(
+                (
+                    next(a["valueString"] for a in i["answer"])
+                    for i in questionnaire_response["item"]
+                    if i["linkId"] == "question-3"
+                ),
+                None,
+            )
+
+            # Add it.
+            values["points_of_care"].append(f"{diagnosing_name}, {diagnosing_phone}, {diagnosing_address}")
+
+            # Check for another
+            if (
+                next(
+                    (
+                        next(a["valueString"] for a in i["answer"])
+                        for i in questionnaire_response["item"]
+                        if i["linkId"] == "question-4"
+                    ),
+                    "",
+                )
+                == "No"
+            ):
+
+                # Parse answers
+                current_name = next(
+                    (
+                        next(a["valueString"] for a in i["answer"])
+                        for i in questionnaire_response["item"]
+                        if i["linkId"] == "question-5"
+                    ),
+                    None,
+                )
+                current_address = next(
+                    (
+                        next(a["valueString"] for a in i["answer"])
+                        for i in questionnaire_response["item"]
+                        if i["linkId"] == "question-6"
+                    ),
+                    None,
+                )
+                current_phone = next(
+                    (
+                        next(a["valueString"] for a in i["answer"])
+                        for i in questionnaire_response["item"]
+                        if i["linkId"] == "question-7"
+                    ),
+                    None,
+                )
+
+                # Add it.
+                values["points_of_care"].append(f"{current_name}, {current_phone}, {current_address}")
+
+            # Get remaining RA places
+            additional_ra_points_of_care = next(
+                (
+                    next(a["valueString"] for a in i["answer"])
+                    for i in questionnaire_response["item"]
+                    if i["linkId"] == "question-8"
+                ),
+                None,
+            )
+            if additional_ra_points_of_care:
+                values["points_of_care"].append(additional_ra_points_of_care)
+
+            # Check for another
+            if (
+                next(
+                    (
+                        next(a["valueString"] for a in i["answer"])
+                        for i in questionnaire_response["item"]
+                        if i["linkId"] == "question-9"
+                    ),
+                    "",
+                )
+                == "Yes"
+            ):
+
+                # Get remaining places
+                additional_points_of_care = next(
+                    (
+                        next(a["valueString"] for a in i["answer"])
+                        for i in questionnaire_response["item"]
+                        if i["linkId"] == "question-10"
+                    ),
+                    None,
+                )
+                if additional_points_of_care:
+                    values["points_of_care"].append(additional_points_of_care)
+
+        return values, study_values
 
     @staticmethod
     def _flatten_example_participant(bundle, ppm_id):
         """
         Continues flattening a participant by adding any study specific data to
-        their record. This will include answers in questionnaires, etc.
+        their record. This will include answers in questionnaires, etc. Returns
+        a dictionary to merge into the root participant dictionary as well as
+        a dictionary that will be keyed by the study value.
+
         :param bundle: The participant's entire FHIR record
+        :type bundle: dict
         :param ppm_id: The PPM ID of the participant
-        :return: dict
+        :type ppm_id: str
+        :returns: A tuple of properties for the root participant object, and for
+        the study sub-object
+        :rtype: dict, dict
         """
         logger.debug(f"PPM/{ppm_id}/FHIR: Flattening EXAMPLE participant")
 
-        # Put values in a dictionary
+        # Put values and study values in dictionaries
         values = {}
+        study_values = {}
 
         # Get questionnaire answers
         questionnaire_response = next(
@@ -4534,7 +4688,7 @@ class FHIR:
                     )
 
                     # Assign it
-                    values[key] = answer
+                    study_values[key] = answer
                 except Exception as e:
                     logger.exception(
                         f"PPM/{ppm_id}/Questionnaire/{link_id}: {e}",
@@ -4552,7 +4706,7 @@ class FHIR:
                     )
 
                     # Assign default value
-                    values[key] = "---"
+                    study_values[key] = "---"
 
             # Iterate date items and attempt to parse dates, otherwise treat as text
             for link_id, key in date_answers.items():
@@ -4565,7 +4719,7 @@ class FHIR:
                         # Check type
                         if answer.get("valueDate") or answer.get("valueDateTime"):
                             # Date is already a date object, assign it
-                            values[key] = answer.get("valueDate", answer.get("valueDateTime"))
+                            study_values[key] = answer.get("valueDate", answer.get("valueDateTime"))
 
                         elif answer.get("valueString"):
 
@@ -4573,7 +4727,7 @@ class FHIR:
                             answer_date = parse(answer.get("valueString"))
 
                             # Assign it
-                            values[key] = answer_date.isoformat()
+                            study_values[key] = answer_date.isoformat()
 
                         else:
                             logger.error(f"PPM/{ppm_id}/Questionnaire/{link_id}: Unhandled answer type: {answer}")
@@ -4582,7 +4736,7 @@ class FHIR:
                         logger.debug(f"PPM/{ppm_id}/Questionnaire/{link_id}: Invalid date: {answer}")
 
                         # Assign the raw value
-                        values[key] = answer
+                        study_values[key] = answer
 
                 except Exception as e:
                     logger.exception(
@@ -4601,9 +4755,9 @@ class FHIR:
                     )
 
                     # Assign default value
-                    values[key] = "---"
+                    study_values[key] = "---"
 
-        return values
+        return values, study_values
 
     @staticmethod
     def flatten_questionnaire_response(bundle_dict, questionnaire_id):
