@@ -4864,17 +4864,9 @@ class FHIR:
         # Build the response
         response = collections.OrderedDict()
 
-        # Process top-level questions first
-        top_questions = collections.OrderedDict(
-            sorted(
-                {linkId: question for linkId, question in questions.items() if type(question) is str}.items(),
-                key=lambda q: int(q[0].split("-")[1]),
-            )
-        )
-
         # Determine index
-        indices = FHIR.get_answer_indices(questions)
-        for linkId, question in top_questions.items():
+        indices = FHIR.get_answer_indices(questionnaire, questions)
+        for linkId, question in questions.items():
 
             # Check for the answer
             answer = answers.get(linkId)
@@ -4927,7 +4919,7 @@ class FHIR:
         }
 
     @staticmethod
-    def get_answer_indices(questions):
+    def get_answer_indices(questionnaire, questions):
         """
         Returns a mapping of a QuestionnaireItem linkId to the string to be
         used as its indexing in the listing of questions and answers in a
@@ -4938,6 +4930,8 @@ class FHIR:
         Second-level questions: {item-type}-2-4 -> "2. d.  Some answer"
         Third-level questions: {item-type}-10-1-3 -> "10. a. iii. Some answer"
 
+        :param questionnaire: The Questionnaire object
+        :type questionnaire: dict
         :param questions: The dictionary of linkIds to question text
         :type questions: dict
         :return: The mapping of linkId to answer index text.
@@ -4950,7 +4944,17 @@ class FHIR:
         index = 0
 
         # Iterate questions
-        for linkId, question in questions.items():
+        for linkId, text in questions.items():
+
+            # Check type
+            question = FHIR.find_questionnaire_item(questionnaire.item, linkId)
+
+            # If group, check if subitems are nested or not
+            if question.type == "display" or linkId.startswith("display-"):
+
+                # No index needed
+                indices[linkId] = ""
+                continue
 
             # Parse it up
             r = re.compile(r"-?([\d]+)")
