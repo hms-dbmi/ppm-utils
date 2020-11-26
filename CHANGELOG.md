@@ -2,6 +2,10 @@
 
 <!--next-version-placeholder-->
 
+## v0.9.5 (2020-11-22)
+### Fix
+* PPM-665 - Fixed Qualtrics survey question ordering; fixed Qualtrics Questionnaire creation to not replace if not necessary ([`2d8583c`](https://github.com/hms-dbmi/ppm-utils/commit/2d8583c4e4b882c7b37b1245ada2e5104791dbf9))
+
 ## v0.8.4 (2020-10-21)
 ### Fix
 * Hotfix for adding upcoming data providers and fixing RANT item specification ([`4776cdb`](https://github.com/hms-dbmi/ppm-utils/commit/4776cdbe2d2e6b7395877d0cbea66a8e7715e7b9))
