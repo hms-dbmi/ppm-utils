@@ -731,6 +731,9 @@ class PPM:
         """
         This class manages and describes the various questionnaires and surveys
         participants are expected to take during the course of the study
+
+        NOTE: When adding a new questionnaire, ensure it is set as a class
+        variable and the title is also set in `choices()`
         """
 
         # Pre-approval survey/Questionnaires
@@ -742,17 +745,20 @@ class PPM:
         ASDQuestionnaire = "ppm-asd-questionnaire"
         RANTPointsOfCareQuestionnaire = "ppm-rant-points-of-care-questionnaire"
         RANTRASymptomQuestionnaire = "ppm-rant-ra-symptom-questionnaire"
+        RANTCOVIDQuestionnaire = "ppm-rant-covid-questionnaire"
 
-        # Consents
+        # Consents (Current)
         EXAMPLEConsent = "example-signature"
         NEERConsent = "neer-signature-v2"
-        RANTConsent = "rant-signature"
         ASDGuardianConsentQuestionnaire = "ppm-asd-consent-guardian-quiz"
         ASDIndividualConsentQuestionnaire = "ppm-asd-consent-individual-quiz"
         ASDConsentIndividualSignatureQuestionnaire = "individual-signature-part-1"
         ASDConsentGuardianSignature1Questionnaire = "guardian-signature-part-1"
         ASDConsentGuardianSignature2Questionnaire = "guardian-signature-part-2"
         ASDConsentGuardianSignature3Questionnaire = "guardian-signature-part-3"
+
+        # Older versions
+        NEERConsentV1 = "neer-signature"
 
         @classmethod
         def choices(cls):
@@ -763,9 +769,9 @@ class PPM:
                 (PPM.Questionnaire.RANTQuestionnaire.value, "RANT Registration Questionnaire"),
                 (PPM.Questionnaire.RANTPointsOfCareQuestionnaire.value, "RANT Points of Care Questionnaire"),
                 (PPM.Questionnaire.RANTRASymptomQuestionnaire.value, "RANT RA Symptom Questionnaire"),
+                (PPM.Questionnaire.RANTCOVIDQuestionnaire.value, "RANT COVID Questionnaire"),
                 (PPM.Questionnaire.EXAMPLEConsent.value, "Example Consent Signature"),
                 (PPM.Questionnaire.NEERConsent.value, "NEER Consent Signature"),
-                (PPM.Questionnaire.RANTConsent.value, "RANT Consent Signature"),
                 (PPM.Questionnaire.ASDGuardianConsentQuestionnaire.value, "ASD Guardian Consent Questionnaire"),
                 (PPM.Questionnaire.ASDIndividualConsentQuestionnaire.value, "ASD Individual ConsentQuestionnaire"),
                 (
@@ -1002,7 +1008,7 @@ class PPM:
                 return PPM.Questionnaire.NEERConsent.value
 
             elif PPM.Study.get(study) is PPM.Study.RANT:
-                return PPM.Questionnaire.RANTConsent.value
+                return None
 
             elif PPM.Study.get(study) is PPM.Study.EXAMPLE:
                 return PPM.Questionnaire.EXAMPLEConsent.value
