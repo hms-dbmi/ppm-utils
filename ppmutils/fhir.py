@@ -94,6 +94,9 @@ class FHIR:
 
     # Qualtrics IDs
     qualtrics_survey_identifier_system = "https://peoplepoweredmedicine.org/fhir/qualtrics/survey"
+    qualtrics_survey_questionnaire_identifier_system = (
+        "https://peoplepoweredmedicine.org/fhir/qualtrics/survey/questionnaire"
+    )
     qualtrics_survey_version_identifier_system = "https://peoplepoweredmedicine.org/fhir/qualtrics/survey/version"
     qualtrics_response_identifier_system = "https://peoplepoweredmedicine.org/fhir/qualtrics/response"
     qualtrics_survey_coding_system = "https://peoplepoweredmedicine.org/qualtrics-survey"
@@ -1989,6 +1992,10 @@ class FHIR:
         :type flatten_return: bool
         :return: The Composition object
         """
+        # Due to an issue with HAPI-FHIR and this query using email, get PPM ID
+        if re.match(r"^\w+([-+.']\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$", patient):
+            patient = FHIR.get_patient(patient, flatten_return=True)["ppm_id"]
+
         # Build the query
         query = {
             "type": f"{FHIR.ppm_consent_type_system}|{FHIR.ppm_consent_type_value}",
