@@ -98,21 +98,63 @@ class P2MD(PPM.Service):
     @classmethod
     def get_study(cls, request, study):
         """
-        Make a request to P2MD to get data on the study.
+        Make a request to P2MD to get the current study object. Object
+        contains general info about the study.
+
+        :param request: The current HTTP request
+        :type request: HttpRequest
+        :param study: The study to query on
+        :type study: str
+        :return: The study object
+        :rtype: dict
         """
         # Ensure it's a valid study
         if not study or not PPM.Study.get(study) in PPM.Study:
             raise ValueError(f"'{study}' is not a valid PPM study identifier")
 
-        return cls.get(request, "/ppm/api/study", {"identifier": PPM.Study.get(study).value})
+        return cls.get(request, "/ppm/api/study/", {"identifier": PPM.Study.get(study).value})
 
     @classmethod
     def get_study_is_open(cls, request, study):
         """
         Make a request to P2MD to get data on the study and return whether it
         is open or not.
+
+        :param request: The current HTTP request
+        :type request: HttpRequest
+        :param study: The study to query on
+        :type study: str
+        :return: Whether the current study is open or not
+        :rtype: boolean
         """
         return next(iter(cls.get_study(request, study)))["is_open"]
+
+    @classmethod
+    def get_study_administrators(cls, request, study, support=True, approvals=True):
+        """
+        Returns a list of the study administrators. Optionally filter based on
+        administrator responsibilities.
+
+        :param request: The curren HTTP request
+        :type request: HttpRequest
+        :param study: The current study
+        :type study: str
+        :param support: Whether the admin handles support, defaults to True
+        :type support: bool, optional
+        :param approvals: Whether the admin handles approvals, defaults to True
+        :type approvals: bool, optional
+        :return: A list of matching administrators
+        :rtype: list
+        """
+        return cls.get(
+            request,
+            "/ppm/api/administrator/",
+            {
+                "studies": PPM.Study.get(study).value,
+                "does_support": support,
+                "does_approval": approvals,
+            },
+        )
 
     @classmethod
     def get_authorizations(cls, request, ppm_ids):
