@@ -2,6 +2,10 @@
 
 <!--next-version-placeholder-->
 
+## v0.9.10 (2021-02-13)
+### Fix
+* **p2md:** PPM-686 - Fixed some query methods; added a couple more ([`ff7f6d0`](https://github.com/hms-dbmi/ppm-utils/commit/ff7f6d05abdfacdf74014d340a145d9b87a8d7e9))
+
 ## v0.9.5 (2020-11-22)
 ### Fix
 * PPM-665 - Fixed Qualtrics survey question ordering; fixed Qualtrics Questionnaire creation to not replace if not necessary ([`2d8583c`](https://github.com/hms-dbmi/ppm-utils/commit/2d8583c4e4b882c7b37b1245ada2e5104791dbf9))

@@ -80,6 +80,67 @@ class P2MD(PPM.Service):
         return url.url
 
     @classmethod
+    def get_study(cls, request, study):
+        """
+        Make a request to P2MD to get the current study object. Object
+        contains general info about the study.
+
+        :param request: The current HTTP request
+        :type request: HttpRequest
+        :param study: The study to query on
+        :type study: str
+        :return: The study object
+        :rtype: dict
+        """
+        # Ensure it's a valid study
+        if not study or not PPM.Study.get(study) in PPM.Study:
+            raise ValueError(f"'{study}' is not a valid PPM study identifier")
+
+        return cls.get(request, "/ppm/api/study/", {"identifier": PPM.Study.get(study).value})
+
+    @classmethod
+    def get_study_is_open(cls, request, study):
+        """
+        Make a request to P2MD to get data on the study and return whether it
+        is open or not.
+
+        :param request: The current HTTP request
+        :type request: HttpRequest
+        :param study: The study to query on
+        :type study: str
+        :return: Whether the current study is open or not
+        :rtype: boolean
+        """
+        return next(iter(cls.get_study(request, study)))["is_open"]
+
+    @classmethod
+    def get_study_administrators(cls, request, study, support=True, approvals=True):
+        """
+        Returns a list of the study administrators. Optionally filter based on
+        administrator responsibilities.
+
+        :param request: The curren HTTP request
+        :type request: HttpRequest
+        :param study: The current study
+        :type study: str
+        :param support: Whether the admin handles support, defaults to True
+        :type support: bool, optional
+        :param approvals: Whether the admin handles approvals, defaults to True
+        :type approvals: bool, optional
+        :return: A list of matching administrators
+        :rtype: list
+        """
+        return cls.get(
+            request,
+            "/ppm/api/administrator/",
+            {
+                "studies": PPM.Study.get(study).value,
+                "does_support": support,
+                "does_approval": approvals,
+            },
+        )
+
+    @classmethod
     def get_authorizations(cls, request, ppm_ids):
         """
         Make a request to P2MD to determine what providers all participants
@@ -198,7 +259,12 @@ class P2MD(PPM.Service):
         """
         Make a request to P2MD to fetch Gencove data and store it in PPM.
         """
-        response = cls.post(request, f"/sources/api/gencove/{ppm_id}", data={"gencove_id": gencove_id}, raw=True,)
+        response = cls.post(
+            request,
+            f"/sources/api/gencove/{ppm_id}",
+            data={"gencove_id": gencove_id},
+            raw=True,
+        )
 
         # Return True if no errors
         return response.ok
@@ -385,7 +451,11 @@ class P2MD(PPM.Service):
         :return: bool
         """
         # Make the request
-        response = cls.head(request, f"/sources/api/qualtrics/survey/{study}/{ppm_id}/{survey_id}/", raw=True,)
+        response = cls.head(
+            request,
+            f"/sources/api/qualtrics/survey/{study}/{ppm_id}/{survey_id}/",
+            raw=True,
+        )
         if response:
             return response.ok
 
@@ -453,7 +523,11 @@ class P2MD(PPM.Service):
         :return: bool
         """
         # Make the request
-        response = cls.head(request, f"/sources/api/procure/{study}/{ppm_id}/", raw=True,)
+        response = cls.head(
+            request,
+            f"/sources/api/procure/{study}/{ppm_id}/",
+            raw=True,
+        )
         if response:
             return response.ok
 
@@ -480,7 +554,14 @@ class P2MD(PPM.Service):
 
     @classmethod
     def uploaded_file(
-        cls, request, study, ppm_id, document_type, uuid, location, content_type="application/octect-stream",
+        cls,
+        request,
+        study,
+        ppm_id,
+        document_type,
+        uuid,
+        location,
+        content_type="application/octect-stream",
     ):
         """
         Make a request to P2MD to create a file upload
@@ -692,7 +773,12 @@ class P2MD(PPM.Service):
         :return: The age of the current dataset in hours, if any
         """
         # Make the request
-        response = cls.head(request, f"/sources/api/ppm/{provider.value}/{ppm_id}/export", {"age": age}, raw=True,)
+        response = cls.head(
+            request,
+            f"/sources/api/ppm/{provider.value}/{ppm_id}/export",
+            {"age": age},
+            raw=True,
+        )
         if response:
             return response.ok
 
