@@ -133,7 +133,8 @@ class P2MD(PPM.Service):
     def get_study_administrators(cls, request, study, support=True, approvals=True):
         """
         Returns a list of the study administrators. Optionally filter based on
-        administrator responsibilities.
+        administrator responsibilities. Support and approvals is a logical AND
+        so run separate queries if you need a union.
 
         :param request: The curren HTTP request
         :type request: HttpRequest
@@ -146,15 +147,15 @@ class P2MD(PPM.Service):
         :return: A list of matching administrators
         :rtype: list
         """
-        return cls.get(
-            request,
-            "/ppm/api/administrator/",
-            {
-                "studies": PPM.Study.get(study).value,
-                "does_support": support,
-                "does_approval": approvals,
-            },
-        )
+        # Build request
+        params = {}
+        if support:
+            params["approvals_for"] = PPM.Study.get(study).value
+
+        if approvals:
+            params["support_for"] = PPM.Study.get(study).value
+
+        return cls.get(request, "/ppm/api/administrator/", params)
 
     @classmethod
     def get_authorizations(cls, request, ppm_ids):

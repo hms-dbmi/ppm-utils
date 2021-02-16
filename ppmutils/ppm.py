@@ -100,6 +100,25 @@ class PPM:
         Staging = "staging"
         Prod = "prod"
 
+        @classmethod
+        def get_environment(cls):
+            """
+            Checks the current environment and returns whether it
+            is local, dev, stagin or prod.
+
+            :raises SystemError: If environment can not be determined
+            :return: The current environment enum
+            :rtype: PPM.Environment
+            """
+            # Check environment
+            if os.environ.get("DBMI_ENV"):
+                return cls.get(os.environ.get("DBMI_ENV").lower())
+
+            elif os.environ.get("PPM_ENV"):
+                return cls.get(os.environ.get("PPM_ENV").lower())
+
+            raise SystemError("Current environment could not be determined")
+
     @staticmethod
     def fhir_url():
         if hasattr(settings, "FHIR_URL"):
