@@ -1082,9 +1082,6 @@ class PPM:
                     "question-4": "702475000",
                 }
 
-            elif questionnaire_id == PPM.Questionnaire.RANTConsent.value:
-                return {}
-
             elif questionnaire_id == PPM.Questionnaire.EXAMPLEConsent.value:
                 return {
                     "question-1": "82078001",
