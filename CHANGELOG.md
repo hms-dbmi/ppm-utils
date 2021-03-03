@@ -1,3 +1,10 @@
+## [0.9.13](https://github.com/hms-dbmi/ppm-utils/compare/v0.9.12...v0.9.13) (2021-03-03)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-694 - Fixed Qualtrics survey handling when converting to Questionnaire/QuestionnaireResponse ([b7c75ed](https://github.com/hms-dbmi/ppm-utils/commit/b7c75ed0dc3e2a68b34a11043eb6a575babf1087))
+
 # Changelog
 
 <!--next-version-placeholder-->
