@@ -1831,7 +1831,21 @@ class FHIR:
         return None
 
     @staticmethod
-    def get_participant(patient, flatten_return=False):
+    def get_participant(patient, flatten_return=False, questionnaire_ids=None):
+        """
+        This method fetches a participant's entire FHIR record and returns it.
+        If specified, the record will be flattened into a dictionary. Otherwise,
+        a list of all resources belonging to the participant are returned.
+
+        :param patient: The participant identifier, PPM ID or email
+        :type patient: str
+        :param flatten_return: Whether to flatten the resources or not
+        :type flatten_return: bool, defaults to False
+        :param questionnaire_ids: The list of Questionnaire IDs to include
+        :type questionnaire_ids: list, defaults to None
+        :returns: A dictionary comprising the user's record
+        :rtype: dict
+        """
 
         # Build the FHIR Consent URL.
         url = furl(PPM.fhir_url())
@@ -1857,7 +1871,7 @@ class FHIR:
                 return {}
 
             if flatten_return:
-                return FHIR.flatten_participant(response.json())
+                return FHIR.flatten_participant(response.json(), questionnaire_ids)
             else:
                 return [entry["resource"] for entry in bundle.get("entry")]
 
@@ -4252,14 +4266,15 @@ class FHIR:
         return " ".join(names)
 
     @staticmethod
-    def flatten_participant(bundle):
+    def flatten_participant(bundle, questionnaire_ids=None):
         """
         Accepts a Bundle containing everything related to a Patient resource
         and flattens the data into something easier to build templates/views with.
         :param bundle: The Patient resource bundle as JSON/dict
         :type bundle: dict
-        :return: A flattened dictionary of the Participant/Patient's entire FHIR
-        data record
+        :param questionnaire_ids: A dictionary of Questionnaires to include if available
+        :type questionnaire_ids: dict, defaults to None
+        :return: A flattened dictionary of the Participant/Patient's entire FHIR data record
         :rtype: dict
         """
 
@@ -4335,6 +4350,15 @@ class FHIR:
                 participant["questionnaires"][questionnaire.value] = FHIR.flatten_questionnaire_response(
                     bundle, questionnaire.value
                 )
+
+            # Add additional questionnaires
+            if questionnaire_ids:
+                for questionnaire_id in questionnaire_ids:
+
+                    # Attempt to parse it
+                    participant["questionnaires"][questionnaire_id] = FHIR.flatten_questionnaire_response(
+                        bundle, questionnaire_id
+                    )
 
             # Flatten points of care
             participant["points_of_care"] = FHIR.flatten_list(bundle, "Organization")
@@ -5044,6 +5068,19 @@ class FHIR:
         return None
 
     @staticmethod
+    def int_to_roman(num):
+        val = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
+        syb = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"]
+        roman_num = ""
+        i = 0
+        while num > 0:
+            for _ in range(num // val[i]):
+                roman_num += syb[i]
+                num -= val[i]
+            i += 1
+        return roman_num
+
+    @staticmethod
     def get_answer_indices(questionnaire, questions):
         """
         Returns a mapping of a QuestionnaireItem linkId to the string to be
@@ -5097,7 +5134,12 @@ class FHIR:
             if len(parts) >= 2:
 
                 letter_index = int(parts[1])
-                letter = string.ascii_lowercase[letter_index - 1]
+
+                # TODO: THIS NEEDS TO SUPPORT HGREATER THAN 26 CHARS!!!
+
+                # Add it
+                letter_multiplier = int((letter_index - 1) / len(string.ascii_lowercase)) + 1
+                letter = string.ascii_lowercase[(letter_index - 1) % len(string.ascii_lowercase)] * letter_multiplier
                 indices[linkId] = f"{indices[linkId]}{letter}. "
 
             if len(parts) == 3:
@@ -5107,7 +5149,7 @@ class FHIR:
                     continue
 
                 i_count = int(parts[2])
-                indices[linkId] = f'{indices[linkId]}{"i" * i_count}. '
+                indices[linkId] = f"{indices[linkId]}{FHIR.int_to_roman(i_count).lower()}. "
 
         return indices
 
@@ -6802,6 +6844,50 @@ class FHIR:
                         for k, s in question["subQuestions"].items()
                     ]
 
+                # Multiple Matrix (multiple answer)
+                elif question_type["type"] == "SBS" and question_type["selector"] == "SBSMatrix":
+
+                    item["type"] = "group"
+                    item["text"] = question["questionText"]
+                    item["item"] = []
+
+                    # Get choices
+                    questions = {k: c["choiceText"] for k, c in question["subQuestions"].items()}
+
+                    # Add this as multiple grouped sets of multiple choice, single answer questions
+                    for k, additional_question in question["columns"].items():
+
+                        # Add another display for the subquestion
+                        sub_item = {
+                            "linkId": f"{link_id}-{k}",
+                            "type": "group",
+                            "text": additional_question["questionText"],
+                            "item": [],
+                        }
+
+                        # Preselect choices
+                        answers = [{"valueString": c["choiceText"]} for k, c in additional_question["choices"].items()]
+
+                        # Add a question per choice
+                        for sub_k, sub_question in questions.items():
+
+                            # Remove prefixes, if set
+                            sub_question = re.sub(r"^[\d]{1,4}\.\s", "", sub_question)
+
+                            # Set subitems
+                            sub_item["item"].append(
+                                {
+                                    "linkId": f"{link_id}-{k}-{sub_k}",
+                                    "text": sub_question,
+                                    "type": "choice",
+                                    "option": answers,
+                                    "required": question["validation"].get("doesForceResponse", False),
+                                }
+                            )
+
+                        # Add it
+                        item["item"].append(sub_item)
+
                 # Slider (integer answer)
                 elif question_type["type"] == "Slider" and question_type["selector"] == "HBAR":
 
@@ -7054,7 +7140,9 @@ class FHIR:
             """
             # Set regex for matching answer keys
             key_regex = re.compile(
-                r"((?P<loop>[\d]{1,})_)?(?P<id>QID[\d]{1,})(_(?P<subid>[\d]+))?(_(?P<type>[a-zA-Z]+))?"
+                r"((?P<loop>[\d]{1,})_)?(?P<id>QID[\d]{1,})"
+                r"(#(?P<columnid>[\d]+))?(_(?P<subid>[\d]+))?"
+                r"(_(?P<type>[a-zA-Z]+))?"
             )
 
             # Ensure we've got an actual question's answer
@@ -7071,6 +7159,7 @@ class FHIR:
                 # Get ID and type
                 q_loop = matches["loop"]
                 q_id = matches["id"]
+                q_columnid = matches["columnid"]
                 q_subid = matches["subid"]
                 q_type = matches["type"]
 
@@ -7182,6 +7271,16 @@ class FHIR:
 
                     # Add it
                     answer = response["labels"][key]
+
+                # This is a multiple matrix question answer
+                elif question_type == "SBS" and question_selector == "SBSMatrix" and type(value) is int:
+
+                    # Add it
+                    answer = response["labels"][key]
+
+                    # Set link ID for sub question
+                    if q_subid:
+                        link_id = f"{link_id}-{q_columnid}-{q_subid}"
 
                 # This is a multiple-choice scale, multiple answer question (matrix)
                 elif question_type == "MC" and type(value) is list:
