@@ -762,6 +762,9 @@ class PPM:
 
         # Post-approval surveys/questionnaires
         ASDQuestionnaire = "ppm-asd-questionnaire"
+        NEERRISCQuestionnaire = "ppm-neer-risc-questionnaire"
+        NEERDietQuestionnaire = "ppm-neer-diet-questionnaire"
+        NEERCAMQuestionnaire = "ppm-neer-cam-questionnaire"
         RANTPointsOfCareQuestionnaire = "ppm-rant-points-of-care-questionnaire"
         RANTRASymptomQuestionnaire = "ppm-rant-ra-symptom-questionnaire"
         RANTCOVIDQuestionnaire = "ppm-rant-covid-questionnaire"
@@ -784,6 +787,9 @@ class PPM:
             return (
                 (PPM.Questionnaire.EXAMPLEQuestionnaire.value, "Example Registration Questionnaire"),
                 (PPM.Questionnaire.NEERQuestionnaire.value, "NEER Registration Questionnaire"),
+                (PPM.Questionnaire.NEERRISCQuestionnaire.value, "NEER CD-RISC Resilience Scale Questionnaire"),
+                (PPM.Questionnaire.NEERDietQuestionnaire.value, "NEER Diet Questionnaire"),
+                (PPM.Questionnaire.NEERCAMQuestionnaire.value, "NEER CAM Questionnaire"),
                 (PPM.Questionnaire.ASDQuestionnaire.value, "ASD Registration Questionnaire"),
                 (PPM.Questionnaire.RANTQuestionnaire.value, "RANT Registration Questionnaire"),
                 (PPM.Questionnaire.RANTPointsOfCareQuestionnaire.value, "RANT Points of Care Questionnaire"),
