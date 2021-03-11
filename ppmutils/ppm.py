@@ -35,8 +35,17 @@ class PPMEnum(Enum):
                 return item
 
             # Compare titles
-            if item.value in dict(cls.choices()) and dict(cls.choices())[item.value] == enum:
-                return item
+            title = dict(cls.choices()).get(item.value)
+            if title and type(enum) is str:
+
+                # Check title
+                if title == enum:
+                    return item
+
+                # If case-insensitive, check titles again
+                elif title.lower() == enum.lower():
+                    logger.info(f"PPM: Used case-insensitive check for " f"'{enum}' -> '{item}'")
+                    return item
 
         raise ValueError('Value "{}" is not a valid {}'.format(enum, cls.__name__))
 
@@ -63,6 +72,20 @@ class PPMEnum(Enum):
         return cls.enum(value)
 
     @classmethod
+    def check(cls, enum):
+        """
+        Checks whether the passed value belongs to an enum or not
+        :param enum: The study value string, name or enum
+        :type enum: Object
+        :return: Whether the value is mapped to a valid enum or not
+        :rtype: bool
+        """
+        try:
+            return bool(cls.enum(enum))
+        except Exception:
+            return False
+
+    @classmethod
     def title(cls, enum):
         """
         Returns the title to be used for the given enum.
@@ -84,7 +107,7 @@ class PPMEnum(Enum):
         from names/values here as this is the source for pulling enum titles.
         :return: ((str, str), )
         """
-        return tuple((e.name, e.value) for e in cls)
+        return tuple((e.value, e.name) for e in cls)
 
 
 class PPM:
@@ -95,10 +118,24 @@ class PPM:
 
     # Set values for determining environments
     class Environment(PPMEnum):
-        Local = "local"
+        Loc = "loc"
         Dev = "dev"
-        Staging = "staging"
+        Stg = "stg"
         Prod = "prod"
+
+        @classmethod
+        def choices(cls):
+            """
+            Returns a choices tuple of tuples. Define enum titles if different
+            from names/values here as this is the source for pulling enum titles.
+            :return: ((str, str), )
+            """
+            return (
+                (cls.Loc.value, "Local"),
+                (cls.Dev.value, "Development"),
+                (cls.Stg.value, "Staging"),
+                (cls.Prod.value, "Production"),
+            )
 
         @classmethod
         def get_environment(cls):
@@ -111,13 +148,15 @@ class PPM:
             :rtype: PPM.Environment
             """
             # Check environment
-            if os.environ.get("DBMI_ENV"):
-                return cls.get(os.environ.get("DBMI_ENV").lower())
+            env = os.environ.get("PPM_ENV", os.environ.get("DBMI_ENV"))
+            if not env:
+                raise SystemError("Current environment could not be determined")
 
-            elif os.environ.get("PPM_ENV"):
-                return cls.get(os.environ.get("PPM_ENV").lower())
+            # See if it's valid
+            elif not cls.check(env.lower()):
+                raise ValueError(f"Configured environment '{env}' is invalid")
 
-            raise SystemError("Current environment could not be determined")
+            return cls.get(env.lower())
 
     @staticmethod
     def fhir_url():
