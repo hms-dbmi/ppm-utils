@@ -7,6 +7,9 @@ import sys
 import collections
 import warnings
 from furl import furl
+import requests
+from fhirclient.models.bundle import Bundle, BundleEntry, BundleEntryRequest
+from fhirclient.models.questionnaire import Questionnaire
 
 from ppmutils.fhir import FHIR
 from ppmutils.ppm import PPM
@@ -37,7 +40,7 @@ class Qualtrics:
         """
         try:
             # Extract the items
-            items = [i for i in cls.questionnaire_items(survey_id, survey)]
+            items = [i for i in cls.questionnaire_item_generator(survey_id, survey)]
 
             # Hash the questions and flow of the survey to track version of the survey
             version = hashlib.md5(json.dumps(items).encode()).hexdigest()
@@ -102,7 +105,7 @@ class Qualtrics:
             raise Qualtrics.ConversionError
 
     @classmethod
-    def questionnaire_items(cls, survey_id, survey):
+    def questionnaire_item_generator(cls, survey_id, survey):
         """
         Returns a generator of QuestionnaireItem resources
         to be added to the Questionnaire. This will determine
@@ -222,6 +225,19 @@ class Qualtrics:
             raise e
 
     @classmethod
+    def _qid_to_linkid(cls, qid):
+        """
+        This is a utility method to convert a Qualtrics QID question ID
+        to a FHIR Questionnaire/QuestionnaireResponse Link ID.
+
+        :param qid: The Qualtrics QID to convert
+        :type qid: str
+        :return: The FHIR Link ID
+        :rtype: str
+        """
+        return f'question-{qid.replace("QID", "").replace("S", "-")}'
+
+    @classmethod
     def questionnaire_item(cls, survey_id, survey, question_id, question):
         """
         Returns a FHIR resource for a QuestionnaireItem parsed from
@@ -240,7 +256,7 @@ class Qualtrics:
         :rtype: dict
         """
         # Set root link ID
-        link_id = f"question-{question_id.replace('QID', '')}"
+        link_id = cls._qid_to_linkid(question_id)
 
         # Strip text of HTML and other characters
         text = re.sub("<[^<]+?>", "", question["QuestionText"]).strip().replace("\n", "").replace("\r", "")
@@ -299,7 +315,7 @@ class Qualtrics:
                     # Add it
                     enable_whens.append(
                         {
-                            "question": f"question-{conditional_qid.replace('QID', '')}",
+                            "question": cls._qid_to_linkid(conditional_qid),
                             "answerString": conditional_value,
                         }
                     )
@@ -520,6 +536,431 @@ class Qualtrics:
         return item
 
     @classmethod
+    def questionnaire_response(cls, study, ppm_id, questionnaire_id, survey_id, survey, response_id, response):
+        """
+        Returns QuestionnaireResponse resource for a survey taken through
+        Qualtrics. This method requires that Qualtrics question names are
+        matched to the FHIR Questionnaire linkIds.
+
+        :param study: The study for which the questionnaire was given
+        :type study: PPM.Study
+        :param ppm_id: The PPM ID for the participant who took the survey
+        :type ppm_id: str
+        :param questionnaire_id: The ID for the related FHIR Questionnaire
+        :type questionnaire_id: str
+        :param survey_id: The ID of the Qualtrics survey
+        :type survey_id: str
+        :param survey: The Qualtrics survey object
+        :type survey: dict
+        :param response_id: The ID of the Qualtrics survey response
+        :type response_id: str
+        :param response: The Qualtrics survey response object
+        :type response: dict
+        :return: The QuestionnaireResponse resource
+        :rtype: dict
+        """
+        # Build a dictionary describing block and question order
+        blocks = {
+            f["id"]: [
+                e["questionId"] for e in survey["blocks"][f["id"]].get("elements", []) if e.get("type") == "Question"
+            ]
+            for f in survey["flow"]
+            if f.get("type") == "Block"
+        }
+
+        # Build response groups
+        items = list(cls.questionnaire_response_item_generator(survey, response, blocks))
+
+        data = {
+            "resourceType": "QuestionnaireResponse",
+            "meta": {"lastUpdated": datetime.now().isoformat()},
+            "identifier": {
+                "system": FHIR.qualtrics_response_identifier_system,
+                "value": response_id,
+            },
+            "questionnaire": {"reference": "Questionnaire/{}".format(questionnaire_id)},
+            "subject": {"reference": "ResearchStudy/{}".format(PPM.Study.fhir_id(study))},
+            "status": "completed",
+            "author": {"reference": f"Patient/{ppm_id}"},
+            "source": {"reference": f"Patient/{ppm_id}"},
+            "authored": datetime.now().isoformat(),
+            "extension": [
+                {
+                    "url": FHIR.qualtrics_survey_extension_url,
+                    "valueString": survey_id,
+                }
+            ],
+            "item": items,
+        }
+
+        # Set dates if specified.
+        if response.get("endDate"):
+            data["authored"] = response["endDate"]
+
+        return data
+
+    @classmethod
+    def questionnaire_response_item_generator(cls, survey, response, blocks):
+        """
+        Accepts the survey, response objects as well as the list of blocks add their
+        respective questions and yields a set of QuestionnareResponseItem
+        resources to be set for the QuestionnaireResponse.
+
+        :param survey: The Qualtrics survey object
+        :type survey: object
+        :param response: The Qualtrics survey response item
+        :type response: object
+        :param blocks: The dictionary of blocks comprising the survey
+        :type blocks: dict
+        :param blocks: The ID of the specific block to process
+        :type blocks: str
+        :raises Exception: Raises exception if value is an unhandled type
+        :returns A generator of QuestionnaireResponseItem resources
+        :rtype generator
+        """
+        for block_id, question_ids in blocks.items():
+            try:
+                # Get the block
+                block = survey["blocks"][block_id]
+
+                # Set root link ID
+                link_id = f"group-{block_id.replace('BL_', '')}"
+
+                # Get all questions in this block
+                question_ids = [e["questionId"] for e in block["elements"] if e["type"] == "Question"]
+
+                # Check if repeating
+                if survey.get("loopAndMerge").get(block_id, None):
+
+                    # Loop each block and build a set of answers
+                    answers = []
+                    for loop_index in range(1, sys.maxsize):
+
+                        # Check for values
+                        values = {k: v for k, v in response["values"].items() if k.startswith(f"{loop_index}_QID")}
+                        if not values:
+                            break
+
+                        # Get items
+                        items = [
+                            cls.questionnaire_response_item(survey, response, key, loop_index) for key in values.keys()
+                        ]
+
+                        # Weed out duplicates
+                        filtered_items = [i for n, i in enumerate(items) if i not in items[n + 1 :] and i is not None]
+
+                        # Prepare group item
+                        answers.append(
+                            {
+                                "valueInteger": loop_index,
+                                "item": filtered_items,
+                            }
+                        )
+
+                    # Prepare group item
+                    if answers:
+                        yield {
+                            "linkId": link_id,
+                            "answer": answers,
+                        }
+
+                else:
+                    # Filter values to those for this block/group
+                    values = {
+                        k: v
+                        for k, v in response["values"].items()
+                        if re.match(rf"^({'|'.join(question_ids)}[^\d]?)", k)
+                    }
+                    if not values:
+                        logger.warning(f"PPM/FHIR/Qualtrics: Cannot find values for '{block_id}/{question_ids}'")
+                        continue
+
+                    # Get items
+                    items = [cls.questionnaire_response_item(survey, response, key) for key in values.keys()]
+
+                    # Weed out duplicates
+                    filtered_items = [i for n, i in enumerate(items) if i not in items[n + 1 :] and i is not None]
+
+                    # We don't want to group un-repeated items, so just return them
+                    for item in filtered_items:
+                        yield item
+
+            except Exception as e:
+                logger.exception(
+                    f"PPM/FHIR: Error processing block {block_id}: {e}",
+                    exc_info=True,
+                    extra={
+                        "survey_id": survey["id"],
+                        "block_id": block_id,
+                    },
+                )
+                raise e
+
+    @classmethod
+    def questionnaire_response_item(cls, survey, response, key, loop=None):
+        """
+        Returns a FHIR QuestionnaireResponse.Item resource for the passed
+        Qualtrics survey question response key and loop (if applicable).
+
+        :param survey: The Qualtrics survey object
+        :type survey: object
+        :param response: The Qualtrics survey response item
+        :type response: object
+        :type survey: object
+        :param key: The Qualtrics question ID to process
+        :type key: str
+        :param loop: The Qualtrics loop ID to process
+        :type loop: str
+        :raises Exception: Raises exception if value is an unhandled type
+        :return: A FHIR QuestionnaireResponse.Item resource
+        :rtype: dict
+        """
+        # Set regex for matching answer keys
+        key_regex = re.compile(
+            r"((?P<loop>[\d]{1,})_)?(?P<id>QID[\d]{1,}(S(?P<subqid>[\d]+))?)"
+            r"(#(?P<columnid>[\d]+))?(_(?P<subid>[\d]+))?"
+            r"(_(?P<type>[a-zA-Z]+))?"
+        )
+
+        # Ensure we've got an actual question's answer
+        matches = re.match(key_regex, key)
+        if not matches:
+            return None
+
+        # Set placeholders
+        link_id = answer = None
+        try:
+            # Group matches
+            matches = matches.groupdict()
+
+            # Get ID and type
+            q_loop = matches["loop"]
+            q_id = matches["id"]
+            q_columnid = matches["columnid"]
+            q_subid = matches["subid"]
+            q_type = matches["type"]
+
+            # Get the value
+            value = response["values"][key]
+
+            # If in a loop, we only care about that loop's values
+            if loop and str(loop) != q_loop:
+                return None
+
+            # Get question object
+            question = survey["questions"].get(q_id)
+
+            # Get linkID
+            link_id = cls._qid_to_linkid(q_id)
+
+            # Parse value depending on question/answer type
+            question_type = question["questionType"]["type"]
+            question_selector = question["questionType"]["selector"]
+
+            # Check type
+
+            # This describes options for the question's answer
+            if q_type and q_type == "DO":
+
+                # This is the list of options
+                return None
+
+            # Slider answer
+            elif question_type == "Slider" and type(value) in [int, float]:
+
+                # Set answer
+                answer = value
+
+            elif question_type == "HotSpot" and type(value) is str:
+
+                # Skip if off
+                if value.lower() == "off":
+                    return None
+
+                # Ensure we've got subquestions
+                if q_subid:
+
+                    # Find all values for this hot spot
+                    pattern = rf"^({q_loop}_)?{q_id}_" if q_loop else rf"^{q_id}_"
+                    _responses = {
+                        k: v
+                        for k, v in response["values"].items()
+                        if re.match(pattern, k) and type(v) is str and v.lower() == "on"
+                    }
+                    if _responses:
+
+                        # Sort them
+                        _responses = collections.OrderedDict(sorted(_responses.items()))
+
+                        # Join them together
+                        answer = []
+                        for k in [k for k, v in _responses.items()]:
+                            _q_id = key_regex.match(k).groupdict()["id"]
+                            _q_subid = key_regex.match(k).groupdict()["subid"]
+
+                            # Add the label
+                            answer.append(survey["questions"][_q_id]["subQuestions"][_q_subid]["choiceText"])
+
+                else:
+                    logger.error(
+                        f"PPM/Questionnaire: Unhandled singular hot spot Qualtrics " f"answer item: {key} = {value}"
+                    )
+                    return None
+
+            # This is a matrix, single answer question
+            elif question_type == "Matrix" and type(value) is int:
+
+                # Just set label
+                link_id = link_id + "-" + q_subid
+                answer = response["labels"][key]
+
+            elif question_type == "DD" and question_selector == "DL":
+
+                # Check for single
+                if not q_subid:
+                    # Set it
+                    answer = response["labels"][key]
+
+                else:
+                    # NOTE: This is a special case where for the time being,
+                    # we just append values for each part of the drill down
+                    # to a string
+
+                    # Find all values for this drill down
+                    pattern = rf"^({q_loop}_)?{q_id}_[\d]+" if q_loop else rf"^{q_id}_[\d]+"
+                    _responses = {k: v for k, v in response["values"].items() if re.match(pattern, k)}
+                    if _responses:
+
+                        # Sort them
+                        _responses = collections.OrderedDict(sorted(_responses.items()))
+
+                        # Join them together
+                        answer = " ".join([response["labels"][k] for k, v in _responses.items()])
+
+                    else:
+                        logger.error(
+                            f"PPM/Questionnaire: Unhandled drill down Qualtrics " f"answer item: {key} = {value}"
+                        )
+                        return None
+
+            # This is a multiple-choice, single answer question (radio)
+            elif question_type == "MC" and type(value) is int:
+
+                # Add it
+                answer = response["labels"][key]
+
+            # This is a multiple matrix question answer
+            elif question_type == "SBS" and question_selector == "SBSMatrix" and type(value) is int:
+
+                # Add it
+                answer = response["labels"][key]
+
+                # Set link ID for sub question
+                if q_subid:
+                    link_id = f"{link_id}-{q_columnid}-{q_subid}"
+
+            # This is a multiple-choice scale, multiple answer question (matrix)
+            elif question_type == "MC" and type(value) is list:
+
+                # Index to a list of options
+                value_list = response["labels"].get(key)
+
+                # Set link ID for sub question
+                if q_subid:
+                    link_id = link_id + "-" + q_subid
+
+                # Set the answer
+                answer = value_list
+
+            # Text answer
+            elif q_type and q_type == "TEXT":
+
+                # Easy
+                answer = value
+
+            # This is a multiple-choice, multiple answer question (checkbox)
+            elif not q_type and type(value) is list:
+
+                # Index to a list of options
+                value_list = response["labels"].get(key)
+
+                # Add it
+                answer = value_list
+
+            else:
+                logger.error(
+                    f"PPM/Questionnaire: Unhandled Qualtrics "
+                    f"answer item: {key} = {value} ({q_id}/"
+                    f"{q_subid}/{q_type})"
+                )
+
+        except (IndexError, ValueError, KeyError, TypeError) as e:
+            logger.exception(
+                f"PPM/Questionnaire: Unhandled Qualtrics " f"answer item: {key}: {e}",
+                exc_info=True,
+            )
+
+        # Check
+        if not link_id or not answer:
+            return None
+
+        # Return response after formatting answer
+        return {"linkId": link_id, "answer": FHIR.Resources._questionnaire_response_answer(answer)}
+
+    @classmethod
+    def questionnaire_transaction(cls, questionnaire, questionnaire_id=None):
+        """
+        Accepts a Questionnaire object and builds the transaction to be used
+        to perform the needed operation in FHIR. Operations can be POST or PUT,
+        depending on if an ID is passed. If the object does not need to be created
+        or updated, the operation will return as a success with an empty response
+        object.
+
+        :param questionnaire: The Questionnaire object to be persisted
+        :type questionnaire: dict
+        :param questionnaire_id: The ID to use for new Questionnaire, defaults to None
+        :type questionnaire_id: str, optional
+        :return: The response if the resource was created, None if no operation needed
+        :rtype: dict
+        """
+        # Check for a version matching the created one
+        version = questionnaire["version"]
+        query = {"identifier": f"{FHIR.qualtrics_survey_version_identifier_system}|{version}"}
+        if questionnaire_id:
+            query["_id"] = questionnaire_id
+
+        questionnaires = FHIR._query_resources("Questionnaire", query)
+        if questionnaires:
+
+            # No need to recreate it
+            logger.debug(f"API/Qualtrics: Questionnaire already exists for survey version {version}")
+            return None
+
+        # Use the FHIR client lib to validate our resource.
+        questionnaire = Questionnaire(questionnaire)
+        questionnaire_request = BundleEntryRequest(
+            {
+                "url": f"Questionnaire/{questionnaire_id}" if questionnaire_id else "Questionnaire",
+                "method": "PUT" if questionnaire_id else "POST",
+            }
+        )
+        questionnaire_entry = BundleEntry()
+        questionnaire_entry.resource = questionnaire
+        questionnaire_entry.request = questionnaire_request
+
+        # Validate it.
+        bundle = Bundle()
+        bundle.entry = [questionnaire_entry]
+        bundle.type = "transaction"
+
+        # Create the organization
+        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+        logger.debug("Response: {}".format(response.status_code))
+        response.raise_for_status()
+
+        return response.json()
+
+    @classmethod
     def ppm_qualtrics_survey_questionnaire(cls, study, questionnaire_id, survey_id, survey):
         """
         Returns QuestionnaireResponse resource for a survey taken through
@@ -537,9 +978,7 @@ class Qualtrics:
         :return: The QuestionnaireResponse resource
         :rtype: dict
         """
-        warnings.warn(
-            f"This method should not be used. Instead use Qualtrics.questionnaire", DeprecationWarning, stacklevel=2
-        )
+        warnings.warn(f"This method should not be used. Instead use Qualtrics.questionnaire()", DeprecationWarning)
 
         # Hash the questions of the survey to track version of the survey
         version = hashlib.md5(json.dumps(survey["questions"], sort_keys=True).encode()).hexdigest()
@@ -560,7 +999,7 @@ class Qualtrics:
             # Create them
             items.extend(
                 [
-                    FHIR.Resources.ppm_qualtrics_survey_questionnaire_item(survey, qid, survey["questions"][qid])
+                    cls.ppm_qualtrics_survey_questionnaire_item(survey, qid, survey["questions"][qid])
                     for qid in question_ids
                 ]
             )
@@ -626,9 +1065,7 @@ class Qualtrics:
         :rtype generator
         """
         warnings.warn(
-            f"This method should not be used. Instead use Qualtrics.questionnaire_items",
-            DeprecationWarning,
-            stacklevel=2,
+            f"This method should not be used. Instead use Qualtrics.questionnaire_item_generator()", DeprecationWarning
         )
         for block_id, question_ids in blocks.items():
             try:
@@ -653,7 +1090,7 @@ class Qualtrics:
                     for question_id in question_ids:
 
                         # Set root link ID
-                        link_id = f"question-{question_id.replace('QID', '')}"
+                        link_id = cls._qid_to_linkid(question_id)
 
                         # Fetch the question
                         question = survey["questions"][question_id]
@@ -704,15 +1141,14 @@ class Qualtrics:
         :rtype: dict
         """
         warnings.warn(
-            f"This method should not be used. Instead use Qualtrics.questionnaire_item",
+            f"This method should not be used. Instead use Qualtrics.questionnaire_item()",
             DeprecationWarning,
-            stacklevel=2,
         )
         # Get common survey info
         survey_id = survey["id"]
 
         # Set root link ID
-        link_id = f"question-{qid.replace('QID', '')}"
+        link_id = cls._qid_to_linkid(qid)
 
         # Strip text of HTML and other characters
         text = re.sub("<[^<]+?>", "", question["questionText"]).strip().replace("\n", "").replace("\r", "")
@@ -768,7 +1204,7 @@ class Qualtrics:
                             # Add it
                             enable_whens.append(
                                 {
-                                    "question": f"question-{qid.replace('QID', '')}",
+                                    "question": cls._qid_to_linkid(qid),
                                     "answerString": conditional_value,
                                 }
                             )
@@ -984,527 +1420,3 @@ class Qualtrics:
             raise e
 
         return item
-
-    @classmethod
-    def ppm_qualtrics_survey_questionnaire_response(
-        cls, study, ppm_id, questionnaire_id, survey_id, survey, response_id, response
-    ):
-        """
-        Returns QuestionnaireResponse resource for a survey taken through
-        Qualtrics. This method requires that Qualtrics question names are
-        matched to the FHIR Questionnaire linkIds.
-
-        :param study: The study for which the questionnaire was given
-        :type study: PPM.Study
-        :param ppm_id: The PPM ID for the participant who took the survey
-        :type ppm_id: str
-        :param questionnaire_id: The ID for the related FHIR Questionnaire
-        :type questionnaire_id: str
-        :param survey_id: The ID of the Qualtrics survey
-        :type survey_id: str
-        :param survey: The Qualtrics survey object
-        :type survey: dict
-        :param response_id: The ID of the Qualtrics survey response
-        :type response_id: str
-        :param response: The Qualtrics survey response object
-        :type response: dict
-        :return: The QuestionnaireResponse resource
-        :rtype: dict
-        """
-        # Build a dictionary describing block and question order
-        blocks = {
-            f["id"]: [
-                e["questionId"] for e in survey["blocks"][f["id"]].get("elements", []) if e.get("type") == "Question"
-            ]
-            for f in survey["flow"]
-            if f.get("type") == "Block"
-        }
-
-        # Build response groups
-        items = list(FHIR.Resources.ppm_qualtrics_survey_questionnaire_response_items(survey, response, blocks))
-
-        data = {
-            "resourceType": "QuestionnaireResponse",
-            "meta": {"lastUpdated": datetime.now().isoformat()},
-            "identifier": {
-                "system": FHIR.qualtrics_response_identifier_system,
-                "value": response_id,
-            },
-            "questionnaire": {"reference": "Questionnaire/{}".format(questionnaire_id)},
-            "subject": {"reference": "ResearchStudy/{}".format(PPM.Study.fhir_id(study))},
-            "status": "completed",
-            "author": {"reference": f"Patient/{ppm_id}"},
-            "source": {"reference": f"Patient/{ppm_id}"},
-            "authored": datetime.now().isoformat(),
-            "extension": [
-                {
-                    "url": FHIR.qualtrics_survey_extension_url,
-                    "valueString": survey_id,
-                }
-            ],
-            "item": items,
-        }
-
-        # Set dates if specified.
-        if response.get("endDate"):
-            data["authored"] = response["endDate"]
-
-        return data
-
-    @classmethod
-    def ppm_qualtrics_survey_questionnaire_response_items(cls, survey, response, blocks):
-        """
-        Accepts the survey, response objects as well as the list of blocks add their
-        respective questions and yields a set of QuestionnareResponseItem
-        resources to be set for the QuestionnaireResponse.
-
-        :param survey: The Qualtrics survey object
-        :type survey: object
-        :param response: The Qualtrics survey response item
-        :type response: object
-        :param blocks: The dictionary of blocks comprising the survey
-        :type blocks: dict
-        :param blocks: The ID of the specific block to process
-        :type blocks: str
-        :raises Exception: Raises exception if value is an unhandled type
-        :returns A generator of QuestionnaireResponseItem resources
-        :rtype generator
-        """
-        for block_id, question_ids in blocks.items():
-            try:
-                # Get the block
-                block = survey["blocks"][block_id]
-
-                # Set root link ID
-                link_id = f"group-{block_id.replace('BL_', '')}"
-
-                # Get all questions in this block
-                question_ids = [e["questionId"] for e in block["elements"] if e["type"] == "Question"]
-
-                # Check if repeating
-                if survey.get("loopAndMerge").get(block_id, None):
-
-                    # Loop each block and build a set of answers
-                    answers = []
-                    for loop_index in range(1, sys.maxsize):
-
-                        # Check for values
-                        values = {k: v for k, v in response["values"].items() if k.startswith(f"{loop_index}_QID")}
-                        if not values:
-                            break
-
-                        # Get items
-                        items = [
-                            FHIR.Resources.ppm_qualtrics_survey_questionnaire_response_item_(
-                                survey, response, key, loop_index
-                            )
-                            for key in values.keys()
-                        ]
-
-                        # Weed out duplicates
-                        filtered_items = [i for n, i in enumerate(items) if i not in items[n + 1 :] and i is not None]
-
-                        # Prepare group item
-                        answers.append(
-                            {
-                                "valueInteger": loop_index,
-                                "item": filtered_items,
-                            }
-                        )
-
-                    # Prepare group item
-                    if answers:
-                        yield {
-                            "linkId": link_id,
-                            "answer": answers,
-                        }
-
-                else:
-                    # Filter values to those for this block/group
-                    values = {
-                        k: v
-                        for k, v in response["values"].items()
-                        if re.match(rf"^({'|'.join(question_ids)}[^\d]?)", k)
-                    }
-                    if not values:
-                        logger.warning(f"PPM/FHIR/Qualtrics: Cannot find values for '{block_id}/{question_ids}'")
-                        continue
-
-                    # Get items
-                    items = [
-                        FHIR.Resources.ppm_qualtrics_survey_questionnaire_response_item_(survey, response, key)
-                        for key in values.keys()
-                    ]
-
-                    # Weed out duplicates
-                    filtered_items = [i for n, i in enumerate(items) if i not in items[n + 1 :] and i is not None]
-
-                    # We don't want to group un-repeated items, so just return them
-                    for item in filtered_items:
-                        yield item
-
-            except Exception as e:
-                logger.exception(
-                    f"PPM/FHIR: Error processing block {block_id}: {e}",
-                    exc_info=True,
-                    extra={
-                        "survey_id": survey["id"],
-                        "block_id": block_id,
-                    },
-                )
-                raise e
-
-    @classmethod
-    def ppm_qualtrics_survey_questionnaire_response_item_(cls, survey, response, key, loop=None):
-        """
-        Returns a FHIR QuestionnaireResponse.Item resource for the passed
-        Qualtrics survey question response key and loop (if applicable).
-
-        :param survey: The Qualtrics survey object
-        :type survey: object
-        :param response: The Qualtrics survey response item
-        :type response: object
-        :type survey: object
-        :param key: The Qualtrics question ID to process
-        :type key: str
-        :param loop: The Qualtrics loop ID to process
-        :type loop: str
-        :raises Exception: Raises exception if value is an unhandled type
-        :return: A FHIR QuestionnaireResponse.Item resource
-        :rtype: dict
-        """
-        # Set regex for matching answer keys
-        key_regex = re.compile(
-            r"((?P<loop>[\d]{1,})_)?(?P<id>QID[\d]{1,})"
-            r"(#(?P<columnid>[\d]+))?(_(?P<subid>[\d]+))?"
-            r"(_(?P<type>[a-zA-Z]+))?"
-        )
-
-        # Ensure we've got an actual question's answer
-        matches = re.match(key_regex, key)
-        if not matches:
-            return None
-
-        # Set placeholders
-        link_id = answer = None
-        try:
-            # Group matches
-            matches = matches.groupdict()
-
-            # Get ID and type
-            q_loop = matches["loop"]
-            q_id = matches["id"]
-            q_columnid = matches["columnid"]
-            q_subid = matches["subid"]
-            q_type = matches["type"]
-
-            # Get the value
-            value = response["values"][key]
-
-            # If in a loop, we only care about that loop's values
-            if loop and str(loop) != q_loop:
-                return None
-
-            # Get question object
-            question = survey["questions"].get(q_id)
-
-            # Get linkID
-            link_id = f"question-{q_id.replace('QID', '')}"
-
-            # Parse value depending on question/answer type
-            question_type = question["questionType"]["type"]
-            question_selector = question["questionType"]["selector"]
-
-            # Check type
-
-            # This describes options for the question's answer
-            if q_type and q_type == "DO":
-
-                # This is the list of options
-                return None
-
-            # Slider answer
-            elif question_type == "Slider" and type(value) in [int, float]:
-
-                # Set answer
-                answer = value
-
-            elif question_type == "HotSpot" and type(value) is str:
-
-                # Skip if off
-                if value.lower() == "off":
-                    return None
-
-                # Ensure we've got subquestions
-                if q_subid:
-
-                    # Find all values for this hot spot
-                    pattern = rf"^({q_loop}_)?{q_id}_" if q_loop else rf"^{q_id}_"
-                    _responses = {
-                        k: v
-                        for k, v in response["values"].items()
-                        if re.match(pattern, k) and type(v) is str and v.lower() == "on"
-                    }
-                    if _responses:
-
-                        # Sort them
-                        _responses = collections.OrderedDict(sorted(_responses.items()))
-
-                        # Join them together
-                        answer = []
-                        for k in [k for k, v in _responses.items()]:
-                            _q_id = key_regex.match(k).groupdict()["id"]
-                            _q_subid = key_regex.match(k).groupdict()["subid"]
-
-                            # Add the label
-                            answer.append(survey["questions"][_q_id]["subQuestions"][_q_subid]["choiceText"])
-
-                else:
-                    logger.error(
-                        f"PPM/Questionnaire: Unhandled singular hot spot Qualtrics " f"answer item: {key} = {value}"
-                    )
-                    return None
-
-            # This is a matrix, single answer question
-            elif question_type == "Matrix" and type(value) is int:
-
-                # Just set label
-                link_id = link_id + "-" + q_subid
-                answer = response["labels"][key]
-
-            elif question_type == "DD" and question_selector == "DL":
-
-                # Check for single
-                if not q_subid:
-                    # Set it
-                    answer = response["labels"][key]
-
-                else:
-                    # NOTE: This is a special case where for the time being,
-                    # we just append values for each part of the drill down
-                    # to a string
-
-                    # Find all values for this drill down
-                    pattern = rf"^({q_loop}_)?{q_id}_[\d]+" if q_loop else rf"^{q_id}_[\d]+"
-                    _responses = {k: v for k, v in response["values"].items() if re.match(pattern, k)}
-                    if _responses:
-
-                        # Sort them
-                        _responses = collections.OrderedDict(sorted(_responses.items()))
-
-                        # Join them together
-                        answer = " ".join([response["labels"][k] for k, v in _responses.items()])
-
-                    else:
-                        logger.error(
-                            f"PPM/Questionnaire: Unhandled drill down Qualtrics " f"answer item: {key} = {value}"
-                        )
-                        return None
-
-            # This is a multiple-choice, single answer question (radio)
-            elif question_type == "MC" and type(value) is int:
-
-                # Add it
-                answer = response["labels"][key]
-
-            # This is a multiple matrix question answer
-            elif question_type == "SBS" and question_selector == "SBSMatrix" and type(value) is int:
-
-                # Add it
-                answer = response["labels"][key]
-
-                # Set link ID for sub question
-                if q_subid:
-                    link_id = f"{link_id}-{q_columnid}-{q_subid}"
-
-            # This is a multiple-choice scale, multiple answer question (matrix)
-            elif question_type == "MC" and type(value) is list:
-
-                # Index to a list of options
-                value_list = response["labels"].get(key)
-
-                # Set link ID for sub question
-                if q_subid:
-                    link_id = link_id + "-" + q_subid
-
-                # Set the answer
-                answer = value_list
-
-            # Text answer
-            elif q_type and q_type == "TEXT":
-
-                # Easy
-                answer = value
-
-            # This is a multiple-choice, multiple answer question (checkbox)
-            elif not q_type and type(value) is list:
-
-                # Index to a list of options
-                value_list = response["labels"].get(key)
-
-                # Add it
-                answer = value_list
-
-            else:
-                logger.error(
-                    f"PPM/Questionnaire: Unhandled Qualtrics "
-                    f"answer item: {key} = {value} ({q_id}/"
-                    f"{q_subid}/{q_type})"
-                )
-
-        except (IndexError, ValueError, KeyError, TypeError) as e:
-            logger.exception(
-                f"PPM/Questionnaire: Unhandled Qualtrics " f"answer item: {key}: {e}",
-                exc_info=True,
-            )
-
-        # Check
-        if not link_id or not answer:
-            return None
-
-        # Return response after formatting answer
-        return {"linkId": link_id, "answer": FHIR.Resources._questionnaire_response_answer(answer)}
-
-    @classmethod
-    def ppm_qualtrics_survey_questionnaire_response_item(cls, survey, response):
-        """
-        Returns a list of FHIR QuestionnaireResponse.Item resource
-        for the passed Qualtrics survey question response.
-
-        :param survey: The Qualtrics survey object
-        :type survey: object
-        :param response: The Qualtrics survey response item
-        :type response: object
-        :raises Exception: Raises exception if value is an unhandled type
-        :return: A list of FHIR QuestionnaireResponse.Item resources
-        :rtype: list
-        """
-        # Build dictionary of linkId to value
-        responses = {}
-
-        # Set regex for matching answer keys
-        key_regex = re.compile(r"((?P<loop>[\d]{1,})_)?(?P<id>QID[\d]{1,})(_(?P<subid>[\d]+))?(_(?P<type>[a-zA-Z]+))?")
-
-        # Iterate values
-        for key, value in response["values"].items():
-
-            # Reset vars
-            q_id = q_subid = q_type = None
-            try:
-                # Check for response value
-                if not key.startswith("QID"):
-                    continue
-
-                # Get ID and type
-                q_id = key_regex.match(key).groupdict()["id"]
-                q_subid = key_regex.match(key).groupdict()["subid"]
-                q_type = key_regex.match(key).groupdict()["type"]
-
-                # Get question object
-                question = survey["questions"].get(q_id)
-
-                # Get linkID
-                link_id = f"question-{q_id.replace('QID', '')}"
-
-                # Parse value depending on question/answer type
-                question_type = question["questionType"]["type"]
-                question_selector = question["questionType"]["selector"]
-
-                # Check type
-
-                # This describes options for the question's answer
-                if q_type and q_type == "DO":
-
-                    # This is the list of options
-                    continue
-
-                # Slider answer
-                elif question_type == "Slider" and type(value) in [int, float]:
-
-                    responses[link_id] = value
-
-                elif question_type == "HotSpot" and type(value) is str:
-
-                    # Skip if off
-                    if value.lower() == "off":
-                        continue
-
-                    # Get the label
-                    label = survey["questions"][q_id]["subQuestions"][q_subid]["choiceText"]
-
-                    # Set answer if on, blank if off
-                    if link_id in responses:
-                        responses[link_id].append(label)
-                    else:
-                        responses[link_id] = [label]
-
-                # This is a matrix, single answer question
-                elif question_type == "Matrix" and type(value) is int:
-
-                    # Just set label
-                    responses[link_id + "-" + q_subid] = response["labels"][key]
-
-                elif question_type == "DD" and question_selector == "DL":
-
-                    # Consult labels
-                    if link_id in responses:
-
-                        # Append the string
-                        # TODO: Make this general as it is most definitely not
-                        responses[link_id] += f' {response["labels"][key]}'
-
-                    else:
-
-                        # Set it
-                        responses[link_id] = response["labels"][key]
-
-                # This is a multiple-choice, single answer question (radio)
-                elif question_type == "MC" and type(value) is int:
-
-                    # Add it
-                    responses[link_id] = response["labels"][key]
-
-                # This is a multiple-choice scale, multiple answer question (matrix)
-                elif question_type == "MC" and type(value) is list:
-
-                    # Index to a list of options
-                    value_list = response["labels"].get(key)
-
-                    # Add it
-                    if q_subid:
-                        responses[link_id + "-" + q_subid] = value_list
-                    else:
-                        responses[link_id] = value_list
-
-                # Text answer
-                elif q_type and q_type == "TEXT":
-
-                    # Easy
-                    responses[link_id] = value
-
-                # This is a multiple-choice, multiple answer question (checkbox)
-                elif not q_type and type(value) is list:
-
-                    # Index to a list of options
-                    value_list = response["labels"].get(key)
-
-                    # Add it
-                    responses[link_id] = value_list
-
-                else:
-                    logger.error(
-                        f"PPM/Questionnaire: Unhandled Qualtrics "
-                        f"answer item: {key} = {value} ({q_id}/"
-                        f"{q_subid}/{q_type})"
-                    )
-
-            except (IndexError, ValueError, KeyError, TypeError) as e:
-                logger.exception(
-                    f"PPM/Questionnaire: Unhandled Qualtrics "
-                    f"answer item: {key} = {value} ({q_id}/"
-                    f"{q_subid}/{q_type}) {e}",
-                    exc_info=True,
-                )
-
-        # Return responses
-        return [{"linkId": k, "answer": FHIR.Resources._questionnaire_response_answer(v)} for k, v in responses.items()]

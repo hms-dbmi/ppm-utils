@@ -2347,10 +2347,11 @@ class FHIR:
         # Query resources
         bundle = FHIR.query_qualtrics_questionnaire(survey_id=survey_id)
 
-        return next(
-            (r.resource.as_json() for r in bundle.entry if r.resource.resource_type == "Questionnaire"),
-            None,
-        )
+        if bundle and bundle.entry:
+            return next(
+                (r.resource.as_json() for r in bundle.entry if r.resource.resource_type == "Questionnaire"),
+                None,
+            )
 
     @staticmethod
     def get_questionnaire(questionnaire_id, flatten_return=False):
@@ -6510,7 +6511,7 @@ class FHIR:
             """
             from ppmutils.qualtrics import Qualtrics
 
-            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning, stacklevel=2)
+            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning)
             return Qualtrics.ppm_qualtrics_survey_questionnaire(study, questionnaire_id, survey_id, survey)
 
         def ppm_qualtrics_survey_questionnaire_items(survey, blocks):
@@ -6529,7 +6530,7 @@ class FHIR:
             """
             from ppmutils.qualtrics import Qualtrics
 
-            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning, stacklevel=2)
+            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning)
             return Qualtrics.ppm_qualtrics_survey_questionnaire_items(survey, blocks)
 
         def ppm_qualtrics_survey_questionnaire_item(survey, qid, question):
@@ -6549,7 +6550,7 @@ class FHIR:
             """
             from ppmutils.qualtrics import Qualtrics
 
-            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning, stacklevel=2)
+            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning)
             return Qualtrics.ppm_qualtrics_survey_questionnaire_item(survey, qid, question)
 
         @staticmethod
@@ -6580,8 +6581,8 @@ class FHIR:
             """
             from ppmutils.qualtrics import Qualtrics
 
-            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning, stacklevel=2)
-            return Qualtrics.ppm_qualtrics_survey_questionnaire_response(
+            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning)
+            return Qualtrics.questionnaire_response(
                 study, ppm_id, questionnaire_id, survey_id, survey, response_id, response
             )
 
@@ -6605,10 +6606,10 @@ class FHIR:
             """
             from ppmutils.qualtrics import Qualtrics
 
-            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning, stacklevel=2)
-            return Qualtrics.ppm_qualtrics_survey_questionnaire_response_items(survey, response, blocks)
+            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning)
+            return Qualtrics.questionnaire_response_item_generator(survey, response, blocks)
 
-        def ppm_qualtrics_survey_questionnaire_response_item_(survey, response, key, loop=None):
+        def ppm_qualtrics_survey_questionnaire_response_item(survey, response, key, loop=None):
             """
             Returns a FHIR QuestionnaireResponse.Item resource for the passed
             Qualtrics survey question response key and loop (if applicable).
@@ -6628,26 +6629,8 @@ class FHIR:
             """
             from ppmutils.qualtrics import Qualtrics
 
-            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning, stacklevel=2)
-            return Qualtrics.ppm_qualtrics_survey_questionnaire_response_item_(survey, response, key, loop)
-
-        def ppm_qualtrics_survey_questionnaire_response_item(survey, response):
-            """
-            Returns a list of FHIR QuestionnaireResponse.Item resource
-            for the passed Qualtrics survey question response.
-
-            :param survey: The Qualtrics survey object
-            :type survey: object
-            :param response: The Qualtrics survey response item
-            :type response: object
-            :raises Exception: Raises exception if value is an unhandled type
-            :return: A list of FHIR QuestionnaireResponse.Item resources
-            :rtype: list
-            """
-            from ppmutils.qualtrics import Qualtrics
-
-            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning, stacklevel=2)
-            return Qualtrics.ppm_qualtrics_survey_questionnaire_response_item(survey, response)
+            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning)
+            return Qualtrics.questionnaire_response_item(survey, response, key, loop)
 
         def _questionnaire_response_answer(value):
             """
