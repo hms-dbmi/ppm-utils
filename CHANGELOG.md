@@ -1,3 +1,15 @@
+# [0.10.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.9.13...v0.10.0) (2021-03-15)
+
+
+### Bug Fixes
+
+* **ppm:** PPM-690 - Fixed Environment queries ([aa47b61](https://github.com/hms-dbmi/ppm-utils/commit/aa47b61b0a89759439ad9583f8a839d581621baa))
+
+
+### Features
+
+* **fhir/qualtrics:** PPM-697 - Fixed handling of subquestions in Qualtrics; naming tweaks ([361251b](https://github.com/hms-dbmi/ppm-utils/commit/361251b52a707f9eb1774e2fea327d4164f0fa6d))
+
 ## [0.9.13](https://github.com/hms-dbmi/ppm-utils/compare/v0.9.12...v0.9.13) (2021-03-03)
 
 
