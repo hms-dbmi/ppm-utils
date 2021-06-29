@@ -5000,7 +5000,8 @@ class FHIR:
             response[text] = answer
 
         # Get repeating groups
-        for group in [i for i in questionnaire_response.item if i.answer[0].item]:
+        groups = [i for i in questionnaire_response.item if i.answer and next(iter(i.answer)).item]
+        for group in groups:
 
             # Parse answers
             for group_answer in group.answer:
