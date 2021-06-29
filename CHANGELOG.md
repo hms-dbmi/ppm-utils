@@ -1,3 +1,19 @@
+# [1.0.0-beta.7](https://github.com/hms-dbmi/ppm-utils/compare/v1.0.0-beta.6...v1.0.0-beta.7) (2021-06-29)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-694 - Fixed Qualtrics survey handling when converting to Questionnaire/QuestionnaireResponse ([b7c75ed](https://github.com/hms-dbmi/ppm-utils/commit/b7c75ed0dc3e2a68b34a11043eb6a575babf1087))
+* **fhir:** PPM-702 - Fixed FHIR Questionnaire parsing bug ([d1febd1](https://github.com/hms-dbmi/ppm-utils/commit/d1febd18df703ea5121c0b4e48c4b8d1d7dbe79d))
+* **p2md:** PPM-HOTFIX-021621 - Fixed PPM admin query method ([7aca343](https://github.com/hms-dbmi/ppm-utils/commit/7aca3436a3a9bcc056925362efeae9237367116b))
+* **ppm:** Fixed reference to non-existent RANT consent questionnaire ([6edb1a4](https://github.com/hms-dbmi/ppm-utils/commit/6edb1a423613b3ca6132641e9610050259f78c12))
+* **ppm:** PPM-690 - Fixed Environment queries ([aa47b61](https://github.com/hms-dbmi/ppm-utils/commit/aa47b61b0a89759439ad9583f8a839d581621baa))
+
+
+### Features
+
+* **fhir/qualtrics:** PPM-697 - Fixed handling of subquestions in Qualtrics; naming tweaks ([361251b](https://github.com/hms-dbmi/ppm-utils/commit/361251b52a707f9eb1774e2fea327d4164f0fa6d))
+
 ## [0.10.1](https://github.com/hms-dbmi/ppm-utils/compare/v0.10.0...v0.10.1) (2021-06-29)
 
 
