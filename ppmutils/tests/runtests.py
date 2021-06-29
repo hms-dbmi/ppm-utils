@@ -10,7 +10,6 @@ from django_nose import NoseTestSuiteRunner
 from django.conf import settings
 
 EXTERNAL_APPS = [
-    "django.contrib.admin",
     "django.contrib.admindocs",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -28,7 +27,12 @@ INSTALLED_APPS = EXTERNAL_APPS + INTERNAL_APPS
 
 if not settings.configured:
     settings.configure(
-        DATABASES={"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:",}},
+        DATABASES={
+            "default": {
+                "ENGINE": "django.db.backends.sqlite3",
+                "NAME": ":memory:",
+            }
+        },
         INSTALLED_APPS=INSTALLED_APPS,
         PPM_CONFIG={"FHIR_URL": "https://fhir.ppm.dbmi.hms.harvard.edu/baseDstu3"},
     )

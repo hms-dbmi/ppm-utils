@@ -14,7 +14,10 @@ def get_version(package):
     Return package version as listed in `__version__` in `init.py`.
     """
     init_py = open(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), os.path.join(package, "__init__.py"),)
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            os.path.join(package, "__init__.py"),
+        )
     ).read()
     return re.search("__version__ = ['\"]([^'\"]+)['\"]", init_py).group(1)
 
@@ -43,6 +46,10 @@ setup(
         "Framework :: Django :: 1.11",
         "Framework :: Django :: 2.0",
         "Framework :: Django :: 2.1",
+        "Framework :: Django :: 2.2",
+        "Framework :: Django :: 3.0",
+        "Framework :: Django :: 3.1",
+        "Framework :: Django :: 3.2",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: BSD License",  # example license
         "Operating System :: OS Independent",
