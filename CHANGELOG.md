@@ -1,3 +1,10 @@
+## [0.10.1](https://github.com/hms-dbmi/ppm-utils/compare/v0.10.0...v0.10.1) (2021-06-29)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-702 - Fixed FHIR Questionnaire parsing bug ([d1febd1](https://github.com/hms-dbmi/ppm-utils/commit/d1febd18df703ea5121c0b4e48c4b8d1d7dbe79d))
+
 # [0.10.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.9.13...v0.10.0) (2021-03-15)
 
 
