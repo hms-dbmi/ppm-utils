@@ -39,8 +39,17 @@ class PPMEnum(Enum):
                 return item
 
             # Compare titles
-            if item.value in dict(cls.choices()) and dict(cls.choices())[item.value] == enum:
-                return item
+            title = dict(cls.choices()).get(item.value)
+            if title and type(enum) is str:
+
+                # Check title
+                if title == enum:
+                    return item
+
+                # If case-insensitive, check titles again
+                elif title.lower() == enum.lower():
+                    logger.info(f"PPM: Used case-insensitive check for " f"'{enum}' -> '{item}'")
+                    return item
 
         raise ValueError('Value "{}" is not a valid {}'.format(enum, cls.__name__))
 
@@ -67,6 +76,20 @@ class PPMEnum(Enum):
         return cls.enum(value)
 
     @classmethod
+    def check(cls, enum):
+        """
+        Checks whether the passed value belongs to an enum or not
+        :param enum: The study value string, name or enum
+        :type enum: Object
+        :return: Whether the value is mapped to a valid enum or not
+        :rtype: bool
+        """
+        try:
+            return bool(cls.enum(enum))
+        except Exception:
+            return False
+
+    @classmethod
     def title(cls, enum):
         """
         Returns the title to be used for the given enum.
@@ -88,7 +111,7 @@ class PPMEnum(Enum):
         from names/values here as this is the source for pulling enum titles.
         :return: ((str, str), )
         """
-        return tuple((e.name, e.value) for e in cls)
+        return tuple((e.value, e.name) for e in cls)
 
 
 class PPM:
@@ -99,10 +122,45 @@ class PPM:
 
     # Set values for determining environments
     class Environment(PPMEnum):
-        Local = "local"
+        Loc = "loc"
         Dev = "dev"
-        Staging = "staging"
+        Stg = "stg"
         Prod = "prod"
+
+        @classmethod
+        def choices(cls):
+            """
+            Returns a choices tuple of tuples. Define enum titles if different
+            from names/values here as this is the source for pulling enum titles.
+            :return: ((str, str), )
+            """
+            return (
+                (cls.Loc.value, "Local"),
+                (cls.Dev.value, "Development"),
+                (cls.Stg.value, "Staging"),
+                (cls.Prod.value, "Production"),
+            )
+
+        @classmethod
+        def get_environment(cls):
+            """
+            Checks the current environment and returns whether it
+            is local, dev, stagin or prod.
+
+            :raises SystemError: If environment can not be determined
+            :return: The current environment enum
+            :rtype: PPM.Environment
+            """
+            # Check environment
+            env = os.environ.get("PPM_ENV", os.environ.get("DBMI_ENV"))
+            if not env:
+                raise SystemError("Current environment could not be determined")
+
+            # See if it's valid
+            elif not cls.check(env.lower()):
+                raise ValueError(f"Configured environment '{env}' is invalid")
+
+            return cls.get(env.lower())
 
     @staticmethod
     def is_tester(email):
@@ -827,6 +885,9 @@ class PPM:
 
         # Post-approval surveys/questionnaires
         ASDQuestionnaire = "ppm-asd-questionnaire"
+        NEERRISCQuestionnaire = "ppm-neer-risc-questionnaire"
+        NEERDietQuestionnaire = "ppm-neer-diet-questionnaire"
+        NEERCAMQuestionnaire = "ppm-neer-cam-questionnaire"
         RANTPointsOfCareQuestionnaire = "ppm-rant-points-of-care-questionnaire"
         RANTRASymptomQuestionnaire = "ppm-rant-ra-symptom-questionnaire"
         RANTCOVIDQuestionnaire = "ppm-rant-covid-questionnaire"
@@ -849,6 +910,9 @@ class PPM:
             return (
                 (PPM.Questionnaire.EXAMPLEQuestionnaire.value, "Example Registration Questionnaire"),
                 (PPM.Questionnaire.NEERQuestionnaire.value, "NEER Registration Questionnaire"),
+                (PPM.Questionnaire.NEERRISCQuestionnaire.value, "NEER CD-RISC Resilience Scale Questionnaire"),
+                (PPM.Questionnaire.NEERDietQuestionnaire.value, "NEER Diet Questionnaire"),
+                (PPM.Questionnaire.NEERCAMQuestionnaire.value, "NEER CAM Questionnaire"),
                 (PPM.Questionnaire.ASDQuestionnaire.value, "ASD Registration Questionnaire"),
                 (PPM.Questionnaire.RANTQuestionnaire.value, "RANT Registration Questionnaire"),
                 (PPM.Questionnaire.RANTPointsOfCareQuestionnaire.value, "RANT Points of Care Questionnaire"),
@@ -1146,9 +1210,6 @@ class PPM:
                     "question-3": "284036006",
                     "question-4": "702475000",
                 }
-
-            elif questionnaire_id == PPM.Questionnaire.RANTConsent.value:
-                return {}
 
             elif questionnaire_id == PPM.Questionnaire.EXAMPLEConsent.value:
                 return {
