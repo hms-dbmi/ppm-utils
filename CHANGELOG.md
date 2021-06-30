@@ -1,3 +1,10 @@
+# [1.0.0-beta.8](https://github.com/hms-dbmi/ppm-utils/compare/v1.0.0-beta.7...v1.0.0-beta.8) (2021-06-30)
+
+
+### Bug Fixes
+
+* **version,email:** Fixed PPM email sending to multiple recipients; fixed Django version specification ([2427b54](https://github.com/hms-dbmi/ppm-utils/commit/2427b5478fed8ff4b6f49ed89bfcabf0be986e74))
+
 # [1.0.0-beta.7](https://github.com/hms-dbmi/ppm-utils/compare/v1.0.0-beta.6...v1.0.0-beta.7) (2021-06-29)
 
 
