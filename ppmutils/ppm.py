@@ -1427,7 +1427,7 @@ class PPM:
 
                     logger.debug(f'Email: Sent email "{email.value}" for study "{study}" -> "{recipient}"')
 
-                    return True
+                return True
 
             except Exception as e:
                 logger.exception(

@@ -87,6 +87,9 @@ CONFIG_DEFAULTS = {
         "title": "Manager, People-Powered Medicine",
         "phone": "617-555-5555",
     },
+    # Configure Jira settings
+    "JIRA_PROPOSED_NOTIFICATIONS": False,
+    "JIRA_PROPOSED_NOTIFICATION_REQUEST_TYPE_ID": 62,
 }
 
 # List of settings that cannot be defaulted and must be user-defined
