@@ -1,3 +1,10 @@
+## [0.10.2](https://github.com/hms-dbmi/ppm-utils/compare/v0.10.1...v0.10.2) (2021-07-16)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-707 - Improved core resource creation to avoid duplicates; improved logging of FHIR Transaction results ([5be78f2](https://github.com/hms-dbmi/ppm-utils/commit/5be78f2a483fb1df160618164d7c6e0640e1ca15))
+
 # Changelog
 
 <!--next-version-placeholder-->
