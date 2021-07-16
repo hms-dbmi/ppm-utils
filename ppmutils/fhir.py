@@ -781,6 +781,10 @@ class FHIR:
             response = requests.post(PPM.fhir_url(), json=bundle.as_json())
             response.raise_for_status()
 
+            # Log the results of each request
+            for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+                logging.debug(f"FHIR result: {result}")
+
             return response.json()
 
         except Exception as e:
@@ -837,13 +841,13 @@ class FHIR:
         bundle.entry = [research_study_entry]
         bundle.type = "transaction"
 
-        logger.debug("Creating...")
-
         # Create the ResearchStudy on the FHIR server.
-        # If we needed the ResearchStudy resource id, we could follow the redirect
-        # returned from a successful POST operation, and get the id out of the
-        # new resource. We don't though, so we can save an HTTP request.
+        logger.debug("Creating ResearchStudy via Transaction")
         response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+
+        # Parse out created identifiers
+        for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+            logging.debug(f"FHIR result: {result}")
 
         return response.ok
 
@@ -876,6 +880,14 @@ class FHIR:
             {
                 "url": "ResearchSubject",
                 "method": "POST",
+                "ifNoneExist": str(
+                    Query(
+                        {
+                            **FHIR._patient_resource_query(patient_id, key="patient"),
+                            "identifier": f"{FHIR.research_subject_identifier_system}|{PPM.Study.fhir_id(project)}",
+                        }
+                    ),
+                ),
             }
         )
         research_subject_entry = BundleEntry({"resource": research_subject_data, "fullUrl": research_subject_id})
@@ -886,13 +898,13 @@ class FHIR:
         bundle.entry = [research_subject_entry]
         bundle.type = "transaction"
 
-        logger.debug("Creating...")
-
-        # Create the Patient and Flag on the FHIR server.
-        # If we needed the Patient resource id, we could follow the redirect
-        # returned from a successful POST operation, and get the id out of the
-        # new resource. We don't though, so we can save an HTTP request.
+        # Create the ResearchSubject resource
+        logger.debug("Creating ResearchSubject via Transaction")
         response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+
+        # Parse out created identifiers
+        for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+            logging.debug(f"FHIR result: {result}")
 
         return response.ok
 
@@ -930,15 +942,77 @@ class FHIR:
         bundle.entry = [device_entry]
         bundle.type = "transaction"
 
-        logger.debug("Creating...")
-
         # Create the Device on the FHIR server.
-        # If we needed the Patient resource id, we could follow the redirect
-        # returned from a successful POST operation, and get the id out of the
-        # new resource. We don't though, so we can save an HTTP request.
+        logger.debug("Creating Device via Transaction")
         response = requests.post(PPM.fhir_url(), json=bundle.as_json())
 
+        # Parse out created identifiers
+        for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+            logging.debug(f"FHIR result: {result}")
+
         return response.ok
+
+    @staticmethod
+    def query_ppm_study_and_patient(study, patient):
+        """
+        Performs a query for a Patient as well as a ResearchStudy matching
+        the passed study identifier.
+
+        :param study: The study identifier
+        :type study: str
+        :param patient: The patient identifier, either ID or email
+        :type patient: str
+        :return: A tuple of the research study and the patient objects, if they exist
+        :rtype: object, object
+        """
+        patient_request = BundleEntryRequest(
+            {
+                "method": "GET",
+                "url": f"Patient?{str(Query(FHIR._patient_query(patient)))}",
+            }
+        )
+        patient_entry = BundleEntry()
+        patient_entry.request = patient_request
+
+        research_study_request = BundleEntryRequest(
+            {
+                "method": "GET",
+                "url": "ResearchStudy?"
+                + str(
+                    Query(
+                        {
+                            "identifier": f"{FHIR.research_study_identifier_system}|{PPM.Study.fhir_id(study)}",
+                        }
+                    )
+                ),
+            }
+        )
+        research_study_entry = BundleEntry()
+        research_study_entry.request = research_study_request
+
+        # Validate it.
+        bundle = Bundle()
+        bundle.entry = [patient_entry, research_study_entry]
+        bundle.type = "transaction"
+
+        logger.debug(f"Querying FHIR for Patient:{str(patient)} and Study:{study}")
+
+        # Execute transaction
+        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+
+        # Get resources
+        patient = research_study = None
+        for entry in [e for entry in response.json().get("entry", []) for e in entry["resource"].get("entry", [])]:
+
+            # Check for resources
+            if entry["resource"]["resourceType"] == "Patient":
+                patient = entry["resource"]
+                logger.debug(f"Found Patient/{patient['id']}")
+            if entry["resource"]["resourceType"] == "ResearchStudy":
+                research_study = entry["resource"]
+                logger.debug(f"Found ResearchStudy/{research_study['id']}")
+
+        return research_study, patient
 
     @staticmethod
     def create_patient(form, project):
@@ -946,12 +1020,14 @@ class FHIR:
         Create a Patient resource in the FHIR server.
         """
         try:
-            # Get the study, or create it
-            study = FHIR._query_resources(
-                "ResearchStudy",
-                query={"identifier": "{}|{}".format(FHIR.research_study_identifier_system, PPM.Study.fhir_id(project))},
-            )
-            if not study:
+            # Check for existing study and patient
+            research_study, patient = FHIR.query_ppm_study_and_patient(project, form["email"])
+            if patient:
+                logger.warning(f"Patient already exists for {form['email']}, nothing to do")
+                return
+
+            # Create study if it doesn't exist
+            if not research_study:
                 FHIR.create_ppm_research_study(project, PPM.Study.title(project))
 
             # Build out patient JSON
@@ -975,13 +1051,7 @@ class FHIR:
                 {
                     "url": "Patient",
                     "method": "POST",
-                    "ifNoneExist": str(
-                        Query(
-                            {
-                                "identifier": "http://schema.org/email|" + form.get("email"),
-                            }
-                        )
-                    ),
+                    "ifNoneExist": str(Query({**FHIR._patient_query(form["email"])})),
                 }
             )
             patient_entry = BundleEntry({"resource": patient_data, "fullUrl": patient_uuid.urn})
@@ -989,13 +1059,44 @@ class FHIR:
 
             # Build enrollment flag.
             flag = Flag(FHIR.Resources.enrollment_flag(patient_uuid.urn, "registered"))
-            flag_request = BundleEntryRequest({"url": "Flag", "method": "POST"})
+            # TODO: Include the study in this resource once PPM needs
+            # to support participants with multiple studies
+            # flag = Flag(project, FHIR.Resources.enrollment_flag(patient_uuid.urn, "registered"))
+            flag_request = BundleEntryRequest(
+                {
+                    "url": "Flag",
+                    "method": "POST",
+                    "ifNoneExist": str(
+                        Query(
+                            {
+                                # TODO: Include the study in this conditional once PPM needs
+                                # to support participants with multiple studies
+                                # "encounter": f"ResearchStudy/{PPM.Study.fhir_id(study)}"
+                                **FHIR._patient_resource_query(form["email"], key="patient"),
+                            }
+                        ),
+                    ),
+                }
+            )
             flag_entry = BundleEntry({"resource": flag.as_json()})
             flag_entry.request = flag_request
 
             # Build research subject
             research_subject_data = FHIR.Resources.ppm_research_subject(project, patient_uuid.urn, "candidate")
-            research_subject_request = BundleEntryRequest({"url": "ResearchSubject", "method": "POST"})
+            research_subject_request = BundleEntryRequest(
+                {
+                    "url": "ResearchSubject",
+                    "method": "POST",
+                    "ifNoneExist": str(
+                        Query(
+                            {
+                                "identifier": f"{FHIR.research_subject_identifier_system}|{PPM.Study.fhir_id(project)}",
+                                **FHIR._patient_resource_query(form["email"], key="patient"),
+                            }
+                        ),
+                    ),
+                }
+            )
             research_subject_entry = BundleEntry({"resource": research_subject_data})
             research_subject_entry.request = research_subject_request
 
@@ -1004,21 +1105,13 @@ class FHIR:
             bundle.entry = [patient_entry, flag_entry, research_subject_entry]
             bundle.type = "transaction"
 
-            logger.debug("Creating...")
-
-            # Create the Patient and Flag on the FHIR server.
-            # If we needed the Patient resource id, we could follow the redirect
-            # returned from a successful POST operation, and get the id out of the
-            # new resource. We don't though, so we can save an HTTP request.
+            # Create the resources on the FHIR server.
+            logger.debug("Creating Patient/ResearchSubject/Flag via Transaction")
             response = requests.post(PPM.fhir_url(), json=bundle.as_json())
 
             # Parse out created identifiers
-            for result in response.json():
-
-                # Do something
-                logging.debug("Created: {}".format(result))
-
-                pass
+            for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+                logging.debug(f"FHIR result: {result}")
 
             return response.ok
 
@@ -1030,9 +1123,12 @@ class FHIR:
     def create_patient_enrollment(patient_id, status="registered"):
         """
         Create a Flag resource in the FHIR server to indicate a user's enrollment.
-        :param patient_id:
-        :param status:
-        :return:
+        :param patient_id: The patient identifier
+        :type patient_id: str or object
+        :param status: The enrollment status to set for the flag
+        :type status: str
+        :return: Whether the request was successful or not
+        :rtype: bool
         """
         logger.debug("Patient: {}".format(patient_id))
 
@@ -1046,16 +1142,41 @@ class FHIR:
             period.start = now
             flag.period = period
 
-        # Build the FHIR Flag destination URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append("Flag")
+        # Build enrollment flag.
+        flag_request = BundleEntryRequest(
+            {
+                "url": "Flag",
+                "method": "POST",
+                "ifNoneExist": str(
+                    Query(
+                        {
+                            # TODO: Include the study in this conditional once PPM needs
+                            # to support participants with multiple studies
+                            # "encounter": f"ResearchStudy/{PPM.Study.fhir_id(study)}"
+                            **FHIR._patient_resource_query(patient_id, key="patient"),
+                        }
+                    ),
+                ),
+            }
+        )
+        flag_entry = BundleEntry({"resource": flag.as_json()})
+        flag_entry.request = flag_request
 
-        logger.debug("Creating flag at: {}".format(url.url))
+        # Validate it.
+        bundle = Bundle()
+        bundle.entry = [flag_entry]
+        bundle.type = "transaction"
 
-        response = requests.post(url.url, json=flag.as_json())
-        logger.debug("Response: {}".format(response.status_code))
+        logger.debug("Creating Flag via Transaction")
 
-        return response
+        # Create the Flag resource
+        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
+
+        # Parse out created identifiers
+        for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+            logging.debug(f"FHIR result: {result}")
+
+        return response.ok
 
     @staticmethod
     def create_communication(patient_id, content, identifier):
@@ -1151,6 +1272,10 @@ class FHIR:
             logger.debug("Response: {}".format(response.status_code))
             response.raise_for_status()
 
+            # Parse out created identifiers
+            for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+                logging.debug(f"FHIR result: {result}")
+
             return response.json()
 
         except Exception as e:
@@ -1220,6 +1345,10 @@ class FHIR:
             response = requests.post(PPM.fhir_url(), json=bundle.as_json())
             logger.debug("Response: {}".format(response.status_code))
             response.raise_for_status()
+
+            # Parse out created identifiers
+            for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+                logging.debug(f"FHIR result: {result}")
 
             return response.json()
 
@@ -1331,6 +1460,10 @@ class FHIR:
         full_bundle.type = "transaction"
 
         response = requests.post(url=PPM.fhir_url(), json=full_bundle.as_json())
+
+        # Parse out created identifiers
+        for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+            logging.debug(f"FHIR result: {result}")
 
         return response.ok
 
@@ -1460,6 +1593,10 @@ class FHIR:
             # Post the transaction
             response = requests.post(PPM.fhir_url(), json=bundle.as_json())
             response.raise_for_status()
+
+            # Parse out created identifiers
+            for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+                logging.debug(f"FHIR result: {result}")
 
             # Check response
             return response.ok
@@ -4749,14 +4886,14 @@ class FHIR:
 
             # Map linkIds to keys
             text_answers = {
-                "question-12": "diagnosis",
-                "question-24": "pcp",
-                "question-25": "oncologist",
+                "question-8": "diagnosis",
+                "question-20": "pcp",
+                "question-21": "oncologist",
             }
 
             date_answers = {
-                "question-5": "birthdate",
-                "question-14": "date_diagnosis",
+                "question-1": "birthdate",
+                "question-10": "date_diagnosis",
             }
 
             # Iterate items
@@ -6256,6 +6393,9 @@ class FHIR:
                     "text": status.title(),
                 },
                 "subject": {"reference": patient_ref},
+                # TODO: Include the study in this conditional once PPM needs
+                # to support participants with multiple studies
+                # "encounter": {"reference": f"ResearchStudy/{PPM.Study.fhir_id(study)}"}
             }
 
             # Set dates if specified.
@@ -6465,7 +6605,7 @@ class FHIR:
                 )
 
             if form.get("how_did_you_hear_about_us"):
-                logger.debug('Adding "How did you hear about is"')
+                logger.debug('Adding "How did you hear about us"')
                 patient_data["extension"] = [
                     {
                         "url": FHIR.referral_extension_url,
