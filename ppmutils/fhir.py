@@ -5121,7 +5121,7 @@ class FHIR:
 
                     # Check if dependent and was enabled (or should have an answer but doesn't)
                     if FHIR.questionnaire_response_is_required(questionnaire, questionnaire_response, linkId):
-                        logger.error(
+                        logger.warning(
                             f"FHIR Questionnaire: No answer found for {linkId}",
                             extra={
                                 "questionnaire": questionnaire_id,
