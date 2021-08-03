@@ -797,16 +797,25 @@ class PPM:
         # Pre-approval survey/Questionnaires
         EXAMPLEQuestionnaire = "ppm-example-registration-questionnaire"
         NEERQuestionnaire = "ppm-neer-registration-questionnaire"
-        RANTQuestionnaire = "ppm-rant-registration-questionnaire"
+        RANTQuestionnaire = "ppm-rant-eligibility-questionnaire"
 
         # Post-approval surveys/questionnaires
         ASDQuestionnaire = "ppm-asd-questionnaire"
+
+        # NEER
         NEERRISCQuestionnaire = "ppm-neer-risc-questionnaire"
         NEERDietQuestionnaire = "ppm-neer-diet-questionnaire"
         NEERCAMQuestionnaire = "ppm-neer-cam-questionnaire"
+
+        # RANT
         RANTPointsOfCareQuestionnaire = "ppm-rant-points-of-care-questionnaire"
         RANTRASymptomQuestionnaire = "ppm-rant-ra-symptom-questionnaire"
         RANTCOVIDQuestionnaire = "ppm-rant-covid-questionnaire"
+
+        # Example
+        EXAMPLEPointsOfCareQuestionnaire = "ppm-example-points-of-care-questionnaire"
+        EXAMPLERASymptomQuestionnaire = "ppm-example-ra-symptom-questionnaire"
+        EXAMPLECOVIDQuestionnaire = "ppm-example-covid-questionnaire"
 
         # Consents (Current)
         EXAMPLEConsent = "example-signature"
@@ -830,7 +839,6 @@ class PPM:
                 (PPM.Questionnaire.NEERDietQuestionnaire.value, "NEER Diet Questionnaire"),
                 (PPM.Questionnaire.NEERCAMQuestionnaire.value, "NEER CAM Questionnaire"),
                 (PPM.Questionnaire.ASDQuestionnaire.value, "ASD Registration Questionnaire"),
-                (PPM.Questionnaire.RANTQuestionnaire.value, "RANT Registration Questionnaire"),
                 (PPM.Questionnaire.RANTPointsOfCareQuestionnaire.value, "RANT Points of Care Questionnaire"),
                 (PPM.Questionnaire.RANTRASymptomQuestionnaire.value, "RANT RA Symptom Questionnaire"),
                 (PPM.Questionnaire.RANTCOVIDQuestionnaire.value, "RANT COVID Questionnaire"),
@@ -845,6 +853,10 @@ class PPM:
                 (PPM.Questionnaire.ASDConsentGuardianSignature1Questionnaire.value, "ASD Guardian Consent Signature"),
                 (PPM.Questionnaire.ASDConsentGuardianSignature2Questionnaire.value, "ASD Guardian Consent Signature"),
                 (PPM.Questionnaire.ASDConsentGuardianSignature3Questionnaire.value, "ASD Guardian Assent Signature"),
+                (PPM.Questionnaire.RANTQuestionnaire.value, "RANT Eligibility Questionnaire"),
+                (PPM.Questionnaire.EXAMPLEPointsOfCareQuestionnaire.value, "Example Points of Care Questionnaire"),
+                (PPM.Questionnaire.EXAMPLERASymptomQuestionnaire.value, "Example RA Symptom Questionnaire"),
+                (PPM.Questionnaire.EXAMPLECOVIDQuestionnaire.value, "Example COVID Questionnaire"),
             )
 
         @classmethod
