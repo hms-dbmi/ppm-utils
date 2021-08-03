@@ -448,13 +448,32 @@ class P2MD(PPM.Service):
     @classmethod
     def get_qualtrics_surveys(cls, request, study):
         """
-        Make a request to P2MD to get available Qualtrics surveys
+        Make a request to P2MD to get available Qualtrics surveys that
+        are active for the passed study.
         :param request: The current request
         :param study: The study for which the surveys should be returned
         :return: list
         """
         # Return response
         return cls.get(request, f"/sources/api/qualtrics/surveys/{study}/")
+
+    @classmethod
+    def get_eligibility_survey(cls, request, study):
+        """
+        Make a request to P2MD to get the eligibility survey for this study
+        :param request: The current request
+        :param study: The study for which the surveys should be returned
+        :param disabled: Whether to include disabled surveys in the request
+        :return: list
+        """
+        # Set query for request
+        data = {
+            "eligibility_for": study,
+            "is_enabled": True,
+        }
+
+        # Return response
+        return next(iter(cls.get(request, f"/ppm/api/survey/", data=data)), None)
 
     @classmethod
     def check_qualtrics_survey(cls, request, study, ppm_id, survey_id):
@@ -497,6 +516,34 @@ class P2MD(PPM.Service):
         url = cls._build_url(path=f"/sources/api/qualtrics/{study}/{ppm_id}/{survey_id}/")
 
         return url
+
+    @classmethod
+    def check_qualtrics_contact(cls, request, study, ppm_id):
+        """
+        Checks if the contact exists in P2MD and Qualtrics or not.
+        :param request: The current request
+        :param study: The study for which the contact will be taking surveys
+        :param study: The PPM identifier for the contact to add
+        :return: bool
+        """
+        # Return response
+        response = cls.head(request, f"/sources/api/qualtrics/contact/{study}/{ppm_id}/", raw=True)
+        if response:
+            return response.ok
+
+        return False
+
+    @classmethod
+    def create_qualtrics_contact(cls, request, study, ppm_id):
+        """
+        Make a request to P2MD to get available Qualtrics surveys
+        :param request: The current request
+        :param study: The study for which the contact will be taking surveys
+        :param study: The PPM identifier for the contact to add
+        :return: bool
+        """
+        # Return response
+        return cls.post(request, f"/sources/api/qualtrics/contact/{study}/{ppm_id}/")
 
     @classmethod
     def get_qualtrics_survey_data(cls, request, study, ppm_id, survey_id, response_id=None, older_than=None):
