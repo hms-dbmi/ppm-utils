@@ -1,3 +1,10 @@
+# [0.11.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.10.2...v0.11.0) (2021-08-03)
+
+
+### Features
+
+* **ppm/fhir:** PPM-709 - Questionnaire processing is more dynamic; initial efforts to allow a single participant in multiple studies ([5a8b980](https://github.com/hms-dbmi/ppm-utils/commit/5a8b980be8080dd7d65fe425fbc878dd10f8252c))
+
 ## [0.10.2](https://github.com/hms-dbmi/ppm-utils/compare/v0.10.1...v0.10.2) (2021-07-16)
 
 
