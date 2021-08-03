@@ -797,7 +797,7 @@ class PPM:
         # Pre-approval survey/Questionnaires
         EXAMPLEQuestionnaire = "ppm-example-registration-questionnaire"
         NEERQuestionnaire = "ppm-neer-registration-questionnaire"
-        RANTQuestionnaire = "ppm-rant-eligibility-questionnaire"
+        RANTQuestionnaire = "ppm-rant-registration-questionnaire"
 
         # Post-approval surveys/questionnaires
         ASDQuestionnaire = "ppm-asd-questionnaire"
@@ -853,7 +853,7 @@ class PPM:
                 (PPM.Questionnaire.ASDConsentGuardianSignature1Questionnaire.value, "ASD Guardian Consent Signature"),
                 (PPM.Questionnaire.ASDConsentGuardianSignature2Questionnaire.value, "ASD Guardian Consent Signature"),
                 (PPM.Questionnaire.ASDConsentGuardianSignature3Questionnaire.value, "ASD Guardian Assent Signature"),
-                (PPM.Questionnaire.RANTQuestionnaire.value, "RANT Eligibility Questionnaire"),
+                (PPM.Questionnaire.RANTQuestionnaire.value, "RANT Registration Questionnaire"),
                 (PPM.Questionnaire.EXAMPLEPointsOfCareQuestionnaire.value, "Example Points of Care Questionnaire"),
                 (PPM.Questionnaire.EXAMPLERASymptomQuestionnaire.value, "Example RA Symptom Questionnaire"),
                 (PPM.Questionnaire.EXAMPLECOVIDQuestionnaire.value, "Example COVID Questionnaire"),
