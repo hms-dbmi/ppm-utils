@@ -546,7 +546,9 @@ class P2MD(PPM.Service):
         return cls.post(request, f"/sources/api/qualtrics/contact/{study}/{ppm_id}/")
 
     @classmethod
-    def get_qualtrics_survey_data(cls, request, study, ppm_id, survey_id, response_id=None, older_than=None):
+    def get_qualtrics_survey_data(
+        cls, request, study, ppm_id, survey_id, response_id=None, older_than=None, force=False
+    ):
         """
         Make a call to P2MD to look for a survey response
         """
@@ -559,6 +561,9 @@ class P2MD(PPM.Service):
 
         if older_than:
             data["older_than"] = older_than
+
+        if force:
+            data["force"] = force
 
         # Make the request
         response = cls.post(request, url.pathstr, data, raw=True)

@@ -536,11 +536,15 @@ class Qualtrics:
         return item
 
     @classmethod
-    def questionnaire_response(cls, study, ppm_id, questionnaire_id, survey_id, survey, response_id, response):
+    def questionnaire_response(
+        cls, study, ppm_id, questionnaire_id, survey_id, response_id, survey=None, response=None
+    ):
         """
         Returns QuestionnaireResponse resource for a survey taken through
         Qualtrics. This method requires that Qualtrics question names are
-        matched to the FHIR Questionnaire linkIds.
+        matched to the FHIR Questionnaire linkIds. If the response data is not
+        available, an empty QuestionnaireResponse is created to be updated
+        at a later time.
 
         :param study: The study for which the questionnaire was given
         :type study: PPM.Study
@@ -550,27 +554,16 @@ class Qualtrics:
         :type questionnaire_id: str
         :param survey_id: The ID of the Qualtrics survey
         :type survey_id: str
-        :param survey: The Qualtrics survey object
-        :type survey: dict
         :param response_id: The ID of the Qualtrics survey response
         :type response_id: str
+        :param survey: The Qualtrics survey object
+        :type survey: dict, defaults to None
         :param response: The Qualtrics survey response object
-        :type response: dict
+        :type response: dict, defaults to None
         :return: The QuestionnaireResponse resource
         :rtype: dict
         """
-        # Build a dictionary describing block and question order
-        blocks = {
-            f["id"]: [
-                e["questionId"] for e in survey["blocks"][f["id"]].get("elements", []) if e.get("type") == "Question"
-            ]
-            for f in survey["flow"]
-            if f.get("type") == "Block"
-        }
-
-        # Build response groups
-        items = list(cls.questionnaire_response_item_generator(survey, response, blocks))
-
+        # Prepare resource properties
         data = {
             "resourceType": "QuestionnaireResponse",
             "meta": {"lastUpdated": datetime.now().isoformat()},
@@ -590,12 +583,28 @@ class Qualtrics:
                     "valueString": survey_id,
                 }
             ],
-            "item": items,
         }
 
-        # Set dates if specified.
-        if response.get("endDate"):
-            data["authored"] = response["endDate"]
+        # If response, parse answers
+        if response and survey:
+
+            # Build a dictionary describing block and question order
+            blocks = {
+                f["id"]: [
+                    e["questionId"]
+                    for e in survey["blocks"][f["id"]].get("elements", [])
+                    if e.get("type") == "Question"
+                ]
+                for f in survey["flow"]
+                if f.get("type") == "Block"
+            }
+
+            # Build response groups and add it to the questionnair response
+            data["item"] = list(cls.questionnaire_response_item_generator(survey, response, blocks))
+
+            # Set dates if specified.
+            if response.get("endDate"):
+                data["authored"] = response["endDate"]
 
         return data
 

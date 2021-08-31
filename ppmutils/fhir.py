@@ -5232,164 +5232,175 @@ class FHIR:
             logger.debug("User has no responses for Questionnaire/{}, returning".format(questionnaire_id))
             return None
 
-        # Get questions and answers
-        questions = FHIR._questions(questionnaire.item)
-        answers = FHIR._answers(questionnaire_response.item)
+        # If no items, return empty
+        if questionnaire_response.item:
 
-        # Process sub-questions first
-        for linkId, condition in {
-            linkId: condition for linkId, condition in questions.items() if type(condition) is dict
-        }.items():
-            try:
-                # Assume only one condition, fetch the parent question linkId
-                parent = next(iter(condition))
-                if not parent:
-                    logger.warning(
-                        "FHIR Error: Subquestion not properly specified: {}:{}".format(linkId, condition),
-                        extra={
-                            "questionnaire": questionnaire_id,
-                            "ppm_id": questionnaire_response.source,
-                            "questionnaire_response": questionnaire_response.id,
-                        },
-                    )
-                    continue
+            # Get questions and answers
+            questions = FHIR._questions(questionnaire.item)
+            answers = FHIR._answers(questionnaire_response.item)
 
-                if len(condition) > 1:
-                    logger.warning(
-                        "FHIR Error: Subquestion has multiple conditions: {}:{}".format(linkId, condition),
-                        extra={
-                            "questionnaire": questionnaire_id,
-                            "ppm_id": questionnaire_response.source,
-                            "questionnaire_response": questionnaire_response.id,
-                        },
-                    )
-
-                # Ensure they've answered this one
-                if not answers.get(parent) or condition[parent] not in answers.get(parent):
-                    continue
-
-                # Get the question and answer item
-                answer = answers[parent]
-                index = answer.index(condition[parent])
-
-                # Check for commas
-                sub_answers = answers[linkId]
-                if "," in next(iter(sub_answers)):
-
-                    # Split it
-                    sub_answers = [sub.strip() for sub in next(iter(sub_answers)).split(",")]
-
-                # Format them
-                value = '{} <span class="label label-primary">{}</span>'.format(
-                    answer[index],
-                    '</span>&nbsp;<span class="label label-primary">'.join(sub_answers),
-                )
-
-                # Append the value
-                answer[index] = mark_safe(value)
-
-            except Exception as e:
-                logger.exception(
-                    "FHIR error: {}".format(e),
-                    exc_info=True,
-                    extra={
-                        "questionnaire": questionnaire_id,
-                        "link_id": linkId,
-                        "ppm_id": questionnaire_response.source,
-                    },
-                )
-
-        # Build the response
-        response = collections.OrderedDict()
-
-        # Determine index
-        indices = FHIR.get_answer_indices(questionnaire, questions)
-        for linkId, question in questions.items():
-
-            # Check for the answer
-            answer = answers.get(linkId)
-            if not answer:
-
-                # Check if group or in a repeating group
-                item = FHIR.find_questionnaire_item(questionnaire.item, linkId)
-
-                # Skip repeating groups, those are handled below
-                if FHIR.get_questionnaire_repeating_group(questionnaire, linkId):
-                    # If it's in a repeating group with no answer, then the
-                    # group should be hidden
-                    continue
-
-                elif item.type == "group" and item.item:
-
-                    # This is a header
-                    answer = []
-
-                # Check if dependent and enabled
-                elif FHIR.question_is_conditionally_enabled(
-                    questionnaire, linkId
-                ) and not FHIR.questionnaire_response_is_enabled(questionnaire, questionnaire_response, linkId):
-
-                    # If it's a sub-question, hide it
-                    if re.match(r"question\-[\d]+\-[\d]+", linkId):
-                        continue
-
-                    # Else, show it as unanswered
-                    else:
-                        answer = [mark_safe('<span class="label label-info">N/A</span>')]
-
-                else:
-                    # Set a default answer
-                    answer = [mark_safe('<span class="label label-warning">N/A</span>')]
-
-                    # Check if dependent and was enabled (or should have an answer but doesn't)
-                    if FHIR.questionnaire_response_is_required(questionnaire, questionnaire_response, linkId):
-                        logger.error(
-                            f"FHIR Questionnaire: No answer found for {linkId}",
+            # Process sub-questions first
+            for linkId, condition in {
+                linkId: condition for linkId, condition in questions.items() if type(condition) is dict
+            }.items():
+                try:
+                    # Assume only one condition, fetch the parent question linkId
+                    parent = next(iter(condition))
+                    if not parent:
+                        logger.warning(
+                            "FHIR Error: Subquestion not properly specified: {}:{}".format(linkId, condition),
                             extra={
                                 "questionnaire": questionnaire_id,
-                                "link_id": linkId,
                                 "ppm_id": questionnaire_response.source,
+                                "questionnaire_response": questionnaire_response.id,
+                            },
+                        )
+                        continue
+
+                    if len(condition) > 1:
+                        logger.warning(
+                            "FHIR Error: Subquestion has multiple conditions: {}:{}".format(linkId, condition),
+                            extra={
+                                "questionnaire": questionnaire_id,
+                                "ppm_id": questionnaire_response.source,
+                                "questionnaire_response": questionnaire_response.id,
                             },
                         )
 
-            # Format the question text
-            text = "{} {}".format(indices.get(linkId), question)
+                    # Ensure they've answered this one
+                    if not answers.get(parent) or condition[parent] not in answers.get(parent):
+                        continue
 
-            # Add the answer
-            response[text] = answer
+                    # Get the question and answer item
+                    answer = answers[parent]
+                    index = answer.index(condition[parent])
 
-        # Get repeating groups
-        groups = [i for i in questionnaire_response.item if i.answer and next(iter(i.answer)).item]
-        for group in groups:
+                    # Check for commas
+                    sub_answers = answers[linkId]
+                    if "," in next(iter(sub_answers)):
 
-            # Parse answers
-            for group_answer in group.answer:
+                        # Split it
+                        sub_answers = [sub.strip() for sub in next(iter(sub_answers)).split(",")]
 
-                # Parse answers
-                group_answers = FHIR._answers(group_answer.item)
+                    # Format them
+                    value = '{} <span class="label label-primary">{}</span>'.format(
+                        answer[index],
+                        '</span>&nbsp;<span class="label label-primary">'.join(sub_answers),
+                    )
 
-                # Set a header
-                response[f"Response #{group_answer.valueInteger}"] = []
+                    # Append the value
+                    answer[index] = mark_safe(value)
 
-                for linkId, question in questions.items():
+                except Exception as e:
+                    logger.exception(
+                        "FHIR error: {}".format(e),
+                        exc_info=True,
+                        extra={
+                            "questionnaire": questionnaire_id,
+                            "link_id": linkId,
+                            "ppm_id": questionnaire_response.source,
+                        },
+                    )
 
-                    # Check for the answer
-                    answer = group_answers.get(linkId)
-                    if not answer:
+            # Build the response
+            response = collections.OrderedDict()
 
-                        # Skip if not in this group
-                        if not FHIR.get_questionnaire_repeating_group(questionnaire, linkId):
+            # Determine index
+            indices = FHIR.get_answer_indices(questionnaire, questions)
+            for linkId, question in questions.items():
+
+                # Check for the answer
+                answer = answers.get(linkId)
+                if not answer:
+
+                    # Check if group or in a repeating group
+                    item = FHIR.find_questionnaire_item(questionnaire.item, linkId)
+
+                    # Skip repeating groups, those are handled below
+                    if FHIR.get_questionnaire_repeating_group(questionnaire, linkId):
+                        # If it's in a repeating group with no answer, then the
+                        # group should be hidden
+                        continue
+
+                    elif item.type == "group" and item.item:
+
+                        # This is a header
+                        answer = []
+
+                    # Check if dependent and enabled
+                    elif FHIR.question_is_conditionally_enabled(
+                        questionnaire, linkId
+                    ) and not FHIR.questionnaire_response_is_enabled(questionnaire, questionnaire_response, linkId):
+
+                        # If it's a sub-question, hide it
+                        if re.match(r"question\-[\d]+\-[\d]+", linkId):
                             continue
 
+                        # Else, show it as unanswered
                         else:
-                            # Set as unanswered
                             answer = [mark_safe('<span class="label label-info">N/A</span>')]
 
-                    # Format the question text
-                    text = "{}| {} {}".format(group_answer.valueInteger, indices.get(linkId), question)
+                    else:
+                        # Set a default answer
+                        answer = [mark_safe('<span class="label label-warning">N/A</span>')]
 
-                    # Add the answer
-                    response[text] = answer
+                        # Check if dependent and was enabled (or should have an answer but doesn't)
+                        if FHIR.questionnaire_response_is_required(questionnaire, questionnaire_response, linkId):
+                            logger.error(
+                                f"FHIR Questionnaire: No answer found for {linkId}",
+                                extra={
+                                    "questionnaire": questionnaire_id,
+                                    "link_id": linkId,
+                                    "ppm_id": questionnaire_response.source,
+                                },
+                            )
+
+                # Format the question text
+                text = "{} {}".format(indices.get(linkId), question)
+
+                # Add the answer
+                response[text] = answer
+
+            # Get repeating groups
+            groups = [i for i in questionnaire_response.item if i.answer and next(iter(i.answer)).item]
+            for group in groups:
+
+                # Parse answers
+                for group_answer in group.answer:
+
+                    # Parse answers
+                    group_answers = FHIR._answers(group_answer.item)
+
+                    # Set a header
+                    response[f"Response #{group_answer.valueInteger}"] = []
+
+                    for linkId, question in questions.items():
+
+                        # Check for the answer
+                        answer = group_answers.get(linkId)
+                        if not answer:
+
+                            # Skip if not in this group
+                            if not FHIR.get_questionnaire_repeating_group(questionnaire, linkId):
+                                continue
+
+                            else:
+                                # Set as unanswered
+                                answer = [mark_safe('<span class="label label-info">N/A</span>')]
+
+                        # Format the question text
+                        text = "{}| {} {}".format(group_answer.valueInteger, indices.get(linkId), question)
+
+                        # Add the answer
+                        response[text] = answer
+
+        else:
+            # Set an empty response
+            response = {}
+            logger.warning(
+                f"PPM/FHIR: Empty QuestionnaireResponse/"
+                f"{questionnaire_response.id} for Questionnaire/{questionnaire_id}"
+            )
 
         # Add the date that the questionnaire was completed
         authored_date = questionnaire_response.authored.origval
