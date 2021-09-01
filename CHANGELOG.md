@@ -1,3 +1,17 @@
+# [0.12.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.11.1...v0.12.0) (2021-09-01)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-711 - Added a method for updating QuestionnaireResponses ([8e541bb](https://github.com/hms-dbmi/ppm-utils/commit/8e541bb46de14ad400487aa9efa2fe92d005d9c1))
+* **fhir:** PPM-711 - Fixed method bug if resource could not be found ([91e740b](https://github.com/hms-dbmi/ppm-utils/commit/91e740b391848d8be03554d3f1adffddb71b32a0))
+* **fhir/p2md:** PPM-711 - Set RANT eligibility questionnaire to Qualtrics survey; made QuestionnaireResponse placeholders possible for Qualtrics surveys ([108d295](https://github.com/hms-dbmi/ppm-utils/commit/108d2951895a183f2ccd68f5d46b836f10f81ea9))
+
+
+### Features
+
+* **fhir:** PPM-711 - Added a generic create method ([b878248](https://github.com/hms-dbmi/ppm-utils/commit/b87824834433c4024062446efab20e36fcf2ec59))
+
 ## [0.11.1](https://github.com/hms-dbmi/ppm-utils/compare/v0.11.0...v0.11.1) (2021-08-03)
 
 
