@@ -805,6 +805,111 @@ class FHIR:
     #
 
     @staticmethod
+    def create(study, patient, resource_type, resource, replace=False, query=None):
+        """
+        A generic method implementation for creating a FHIR resource. This
+        will replace an existing resource if it is found via the optional
+        query.
+
+        :param study: The PPM study for which the resource is related
+        :type study: str
+        :param patient: The PPM participant that owns the resource
+        :type patient: str
+        :param resource_type: The FHIR resource type
+        :type resource_type: str
+        :param resource: The FHIR resource to persist
+        :type resource: dict, defaults to None
+        :param replace: Whether existing resources should be replaced or not
+        :type replace: bool, defaults to False
+        :param query: A query meant to find an existing resource to replace
+        :type query: dict, defaults to None
+        :return: The result of the operation
+        :rtype: Response
+        """
+        logger.debug(f"PPM/{study}/{patient}: Create resource: {resource_type}")
+
+        content = None
+        resource_id = None
+        try:
+            # Check if we need to replace an existing resource
+            if replace:
+
+                # If no query, try on Patient identifier
+                if not query:
+                    query = FHIR._patient_resource_query(identifier=patient)
+
+                # Check if one exsits
+                existing_resources = FHIR._query_resources(resource_type=resource_type, query=query)
+
+                # Check multiple
+                if existing_resources and len(existing_resources) > 1:
+                    logger.error(
+                        f"PPM/{patient}/{study}/FHIR: Multiple resources " f"found, cannot replace",
+                        extra={
+                            "study": study,
+                            "patient": patient,
+                            "resource_type": resource_type,
+                            "query": query,
+                            "existing_resources": existing_resources,
+                        },
+                    )
+
+                # Get ID
+                elif existing_resources:
+                    resource_id = next(iter(existing_resources))["id"]
+                    logger.debug(
+                        f"PPM/{patient}/{study}/FHIR: Will replace " f"{resource_type}/{resource_id}",
+                    )
+
+            # Set the URL
+            url = furl(PPM.fhir_url())
+
+            # Create the questionnaire response
+            action = getattr(requests, "put" if resource_id else "post", None)
+            if resource_id:
+
+                # Add QuestionnaireResponse path
+                url.path.segments.extend([resource_type, resource_id])
+
+            # Make the request
+            logger.debug(f"PPM/{patient}/{study}/FHIR: HTTP {action} to {url.url}")
+            response = action(url.url, json=resource.as_json())
+            content = response.content
+            logger.debug(f"PPM/{patient}/{study}/FHIR: Response {response.status_code}")
+
+            # Check the response
+            response.raise_for_status()
+
+            return response.json()
+
+        except requests.HTTPError as e:
+            logger.debug(f"PPM/{study}/{patient}/FHIR: Create resource response: {content}")
+            logger.exception(
+                f"PPM/{study}/{patient}/FHIR: Create resource request error: {e}",
+                extra={
+                    "study": study,
+                    "patient": patient,
+                    "resource_type": resource_type,
+                    "query": query,
+                    "resource_id": resource_id,
+                    "content": content,
+                },
+            )
+
+        except Exception as e:
+            logger.exception(
+                f"PPM/{study}/{patient}/FHIR: Create resource error: {e}",
+                exc_info=True,
+                extra={
+                    "study": study,
+                    "patient": patient,
+                    "resource_type": resource_type,
+                    "query": query,
+                    "resource_id": resource_id,
+                },
+            )
+
+    @staticmethod
     def create_ppm_research_study(project, title):
         """
         Creates a project list if not already created
