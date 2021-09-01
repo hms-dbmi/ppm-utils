@@ -2643,6 +2643,21 @@ class FHIR:
 
     @staticmethod
     def get_questionnaire_response(patient, questionnaire_id, flatten_return=False):
+        """
+        Returns the QuestionnaireResponse for the given patient and
+        questionnaire. If specified to do so, the response object will be
+        flattened to an easier to parse dictionary object. Returns None if
+        not QuestionnaireResponse is found.add()
+
+        :param patient: The PPM participant to find the response for
+        :type patient: str
+        :param questionnaire_id: The ID of the Questionnaire the response was for
+        :type questionnaire_id: str
+        :param flatten_return: Whether to flatten the resource or not, defaults to False
+        :type flatten_return: bool, optional
+        :return: The QuestionnaireResponse object
+        :rtype: dict, or None
+        """
 
         # Build the query
         query = {
@@ -2657,18 +2672,23 @@ class FHIR:
         # Query resources
         bundle = FHIR._query_bundle("QuestionnaireResponse", query=query)
 
-        if flatten_return:
+        # Ensure we've got resources
+        if bundle.entry:
 
-            # We need the whole bundle to flatten it
-            return FHIR.flatten_questionnaire_response(bundle, questionnaire_id)
+            if flatten_return:
+
+                # We need the whole bundle to flatten it
+                return FHIR.flatten_questionnaire_response(bundle, questionnaire_id)
+            else:
+
+                # Fetch the questionnaire response from the bundle
+                questionnaire_response = next(
+                    (r.resource.as_json() for r in bundle.entry if r.resource.resource_type == "QuestionnaireResponse"),
+                    None,
+                )
+                return questionnaire_response
         else:
-
-            # Fetch the questionnaire response from the bundle
-            questionnaire_response = next(
-                (r.resource for r in bundle.entry if r.resource.resource_type == "QuestionnaireResponse"),
-                None,
-            )
-            return questionnaire_response.as_json()
+            logger.warning(f"PPM/FHIR: No QuestionnaireResponse for query: {query}")
 
     @staticmethod
     def get_qualtrics_questionnaire_response(patient, survey_id, flatten_return=False):
