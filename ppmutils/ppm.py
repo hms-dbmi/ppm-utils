@@ -795,7 +795,7 @@ class PPM:
         """
 
         # Pre-approval survey/Questionnaires
-        EXAMPLEQuestionnaire = "ppm-example-registration-questionnaire"
+        EXAMPLEQuestionnaire = "ppm-example-eligibility-questionnaire"
         NEERQuestionnaire = "ppm-neer-registration-questionnaire"
         RANTQuestionnaire = "ppm-rant-eligibility-questionnaire"
 
