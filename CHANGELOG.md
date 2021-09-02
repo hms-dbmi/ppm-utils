@@ -1,3 +1,10 @@
+## [0.12.1](https://github.com/hms-dbmi/ppm-utils/compare/v0.12.0...v0.12.1) (2021-09-02)
+
+
+### Bug Fixes
+
+* **ppm:** PPM-711 - Fixed EXAMPLE's questionnaire ID ([d2a6cd4](https://github.com/hms-dbmi/ppm-utils/commit/d2a6cd442a1376d973713deb7f74af1678d8616f))
+
 # [0.12.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.11.1...v0.12.0) (2021-09-01)
 
 
