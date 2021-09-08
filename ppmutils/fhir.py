@@ -2029,97 +2029,26 @@ class FHIR:
         return FHIR.query_participants(studies, enrollments, active, testing)
 
     @staticmethod
-    def query_participant(patient, flatten_return=False):
-
-        # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append("Patient")
-        url.query.params.add("_include", "*")
-        url.query.params.add("_revinclude", "*")
-
-        # Add patient query
-        for key, value in FHIR._patient_query(patient).items():
-            url.query.params.add(key, value)
-
-        # Make the call
-        content = None
-        try:
-            # Make the FHIR request.
-            response = requests.get(url.url)
-            content = response.content
-
-            if flatten_return:
-                return FHIR.flatten_participant(bundle=response.json())
-            else:
-                return response.json()
-
-        except requests.HTTPError as e:
-            logger.exception(
-                "FHIR Connection Error: {}".format(e),
-                exc_info=True,
-                extra={"response": content},
-            )
-
-        except KeyError as e:
-            logger.exception("FHIR Error: {}".format(e), exc_info=True, extra={"response": content})
-
-        return None
-
-    # TODO: Remove this method
-    @staticmethod
-    def query_patient(patient, flatten_return=False):
-
-        # Build the FHIR Consent URL.
-        url = furl(PPM.fhir_url())
-        url.path.segments.append("Patient")
-
-        # Get flags for current user
-        query = FHIR._patient_query(patient)
-
-        # Make the call
-        content = None
-        try:
-            # Make the FHIR request.
-            response = requests.get(url.url, params=query)
-            content = response.content
-
-            # Ensure we have a resource
-            bundle = response.json()
-
-            if flatten_return:
-                return FHIR.flatten_patient(bundle)
-            else:
-                return [entry["resource"] for entry in bundle.get("entry", [])]
-
-        except requests.HTTPError as e:
-            logger.exception(
-                "FHIR Connection Error: {}".format(e),
-                exc_info=True,
-                extra={"response": content},
-            )
-
-        except KeyError as e:
-            logger.exception("FHIR Error: {}".format(e), exc_info=True, extra={"response": content})
-
-        return None
-
-    @staticmethod
-    def get_participant(patient, questionnaires=None, flatten_return=False):
+    def get_participant(patient, eligibility_questionnaire_id=None, questionnaire_ids=None, flatten_return=False):
         """
         This method fetches a participant's entire FHIR record and returns it.
         If specified, the record will be flattened into a dictionary. Otherwise,
         a list of all resources belonging to the participant are returned.
+        Optional values include questionnaire IDs
+        to be flattened. If these are not specified, hard-coded values from the
+        PPM module will be used, althought this is deprecated behavior.
 
         :param patient: The participant identifier, PPM ID or email
         :type patient: str
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
+        :param questionnaire_ids: The list of study questionnaires to include
+        :type questionnaire_ids: list, defaults to None
         :param flatten_return: Whether to flatten the resources or not
         :type flatten_return: bool, defaults to False
-        :param questionnaires: The list of study questionnaires to include
-        :type questionnaire: list, defaults to None
         :returns: A dictionary comprising the user's record
         :rtype: dict
         """
-
         # Build the FHIR Consent URL.
         url = furl(PPM.fhir_url())
         url.path.segments.append("Patient")
@@ -2131,7 +2060,7 @@ class FHIR:
             url.query.params.add(key, value)
 
         # Make the call
-        content = None
+        content = response = None
         try:
             # Make the FHIR request.
             response = requests.get(url.url)
@@ -2141,18 +2070,28 @@ class FHIR:
             # Check for entries
             bundle = response.json()
             if not bundle.get("entry") or not FHIR._find_resources(bundle, "Patient"):
+                logger.debug(f"PPM/FHIR: Empty and/or no Patient for {patient}")
                 return {}
 
             if flatten_return:
-                return FHIR.flatten_participant(bundle=response.json(), questionnaires=questionnaires)
+                return FHIR.flatten_participant(
+                    bundle=response.json(),
+                    eligibility_questionnaire_id=eligibility_questionnaire_id,
+                    questionnaire_ids=questionnaire_ids,
+                )
             else:
                 return [entry["resource"] for entry in bundle.get("entry")]
 
         except requests.HTTPError as e:
+            logger.debug(f"PPM/FHIR: Patient request response: {content}")
             logger.exception(
-                "FHIR Connection Error: {}".format(e),
-                exc_info=True,
-                extra={"response": content},
+                f"PPM/FHIR: Patient request error: {e}",
+                extra={
+                    "patient": patient,
+                    "url": url,
+                    "response": response,
+                    "content": content,
+                },
             )
 
         except KeyError as e:
@@ -2161,13 +2100,47 @@ class FHIR:
         return None
 
     @staticmethod
-    def get_patient(patient, flatten_return=False):
+    def query_participant(patient, eligibility_questionnaire_id=None, questionnaire_ids=None, flatten_return=False):
+        """
+        This method queries a participant's entire FHIR record and returns it
+        if available. If specified, the record will be flattened into a
+        dictionary. Otherwise, a list of all resources belonging to the
+        participant are returned. Optional values include questionnaire IDs
+        to be flattened. If these are not specified, hard-coded values from the
+        PPM module will be used, althought this is deprecated behavior.
 
+        :param patient: The participant identifier, PPM ID or email
+        :type patient: str
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
+        :param questionnaire_ids: The list of study questionnaires to include
+        :type questionnaire_ids: list, defaults to None
+        :param flatten_return: Whether to flatten the resources or not
+        :type flatten_return: bool, defaults to False
+        :returns: A dictionary comprising the user's record
+        :rtype: dict
+        """
+        logger.warning('PPM/FHIR: Method "query_participant" is deprecated')
+        warnings.warn(f'PPM/FHIR: "query_participant" is deprecated, use "get_participant" instead', DeprecationWarning)
+        return FHIR.get_participant(patient, eligibility_questionnaire_id, questionnaire_ids, flatten_return)
+
+    @staticmethod
+    def get_patient(patient, flatten_return=False):
+        """
+        This method queries a participant's FHIR Patient record and returns it
+        if available. If specified, the record will be flattened into a
+        dictionary. Otherwise, a list of relevant resources will be returned.
+
+        :param patient: The participant identifier, PPM ID or email
+        :type patient: str
+        :param flatten_return: Whether to flatten the resources or not
+        :type flatten_return: bool, defaults to False
+        :returns: A dictionary comprising the user's Patient record
+        :rtype: dict
+        """
         # Build the FHIR Consent URL.
         url = furl(PPM.fhir_url())
         url.path.segments.append("Patient")
-        url.query.params.add("_include", "*")
-        url.query.params.add("_revinclude", "*")
 
         # Add query for patient
         for key, value in FHIR._patient_query(patient).items():
@@ -2189,16 +2162,48 @@ class FHIR:
                 )
 
         except requests.HTTPError as e:
+            logger.debug(f"PPM/FHIR: Patient request response: {content}")
             logger.exception(
-                "FHIR Connection Error: {}".format(e),
-                exc_info=True,
-                extra={"response": content},
+                f"PPM/FHIR: Patient request error: {e}",
+                extra={
+                    "patient": patient,
+                    "url": url,
+                    "response": response,
+                    "content": content,
+                },
             )
 
         except KeyError as e:
-            logger.exception("FHIR Error: {}".format(e), exc_info=True, extra={"response": content})
+            logger.exception(
+                f"PPM/FHIR Error: {e}",
+                exc_info=True,
+                extra={
+                    "patient": patient,
+                    "url": url,
+                    "response": response,
+                    "content": content,
+                },
+            )
 
         return None
+
+    @staticmethod
+    def query_patient(patient, flatten_return=False):
+        """
+        This method queries a participant's FHIR Patient record and returns it
+        if available. If specified, the record will be flattened into a
+        dictionary. Otherwise, a list of relevant resources will be returned.
+
+        :param patient: The participant identifier, PPM ID or email
+        :type patient: str
+        :param flatten_return: Whether to flatten the resources or not
+        :type flatten_return: bool, defaults to False
+        :returns: A dictionary comprising the user's Patient record
+        :rtype: dict
+        """
+        logger.warning('PPM/FHIR: Method "query_patient" is deprecated')
+        warnings.warn(f'PPM/FHIR: "query_patient" is deprecated, use "get_patient" instead', DeprecationWarning)
+        return FHIR.get_patient(patient, flatten_return)
 
     # TODO: This method is deprecated
     @staticmethod
@@ -2211,7 +2216,10 @@ class FHIR:
         :type flatten_return: bool
         :return: The Composition object
         """
-        logger.warning("DEPRECATED: This method should not be used for fetching consent composition resources")
+        logger.warning('PPM/FHIR: Method "get_composition" is deprecated')
+        warnings.warn(
+            f'PPM/FHIR: "get_composition" is deprecated, use "query_consent_compositions" instead', DeprecationWarning
+        )
 
         # Just return the first from querying
         compositions = FHIR.query_consent_compositions(patient=patient, flatten_return=flatten_return)
@@ -4647,7 +4655,7 @@ class FHIR:
         return " ".join(names)
 
     @staticmethod
-    def flatten_participant(bundle, study=None, questionnaires=None):
+    def flatten_participant(bundle, study=None, eligibility_questionnaire_id=None, questionnaire_ids=None):
         """
         Accepts a Bundle containing everything related to a Patient resource
         and flattens the data into something easier to build templates/views with.
@@ -4655,8 +4663,10 @@ class FHIR:
         :type bundle: dict
         :param study: The study for which this participant's record should be constructed
         :type study: str, defaults to None
-        :param questionnaires: A list of the study questionnaires to include
-        :type questionnaires: list, defaults to None
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
+        :param questionnaire_ids: A list of the study questionnaire IDs to include in the record
+        :type questionnaire_ids: list, defaults to None
         :return: A flattened dictionary of the Participant/Patient's entire FHIR data record
         :rtype: dict
         """
@@ -4755,38 +4765,37 @@ class FHIR:
             # Questionnaires
             ####################################################################
 
-            # Get the project
-            _questionnaire_id = PPM.Questionnaire.questionnaire_for_study(study=study)
+            # Collect flattened questionnaires
+            participant["questionnaires"] = {}
 
-            # Parse out the responses
-            questionnaire_response = FHIR.flatten_questionnaire_response(bundle, _questionnaire_id)
-
-            # Add primary questionnaire and all questionnaires
-            participant["questionnaire"] = questionnaire_response
-            participant["questionnaires"] = {_questionnaire_id: questionnaire_response}
-
-            # Add additional questionnaires
-            for questionnaire in PPM.Questionnaire.extra_questionnaires_for_study(study=study):
-
-                # Attempt to parse it
-                participant["questionnaires"][questionnaire.value] = FHIR.flatten_questionnaire_response(
-                    bundle, questionnaire.value
+            # If not specified, use the value hard-coded in the PPM module
+            if not eligibility_questionnaire_id:
+                eligibility_questionnaire_id = PPM.Questionnaire.questionnaire_for_study(study=study)
+                logger.warning(
+                    f"PPM/{study}/{ppm_id}: Using deprecated PPM.Questionnaire eligibility questionnaires: "
+                    f" {eligibility_questionnaire_id}"
                 )
 
-            # Check for questionnaires based on Qualtrics surveys
-            if questionnaires:
-                for questionnaire in questionnaires:
+            # Handle eligibility questionnaire
+            logger.debug(f"PPM/{study}/{ppm_id}: Eligibility questionnaire: {eligibility_questionnaire_id}")
+            questionnaire = FHIR.flatten_questionnaire_response(bundle, eligibility_questionnaire_id)
+            participant["questionnaire"] = participant["questionnaires"][eligibility_questionnaire_id] = questionnaire
 
-                    # Get the ID
-                    questionnaire_id = questionnaire["questionnaire_id"]
+            # If not specified, use hard-coded questionnaire IDs from PPM module
+            if not questionnaire_ids:
+                questionnaire_ids = [q.value for q in PPM.Questionnaire.extra_questionnaires_for_study(study=study)]
+                logger.warning(
+                    f"PPM/{study}/{ppm_id}: Using deprecated PPM.Questionnaire questionnaires: " f" {questionnaire_ids}"
+                )
 
-                    # Attempt to parse it if not yet added
-                    if questionnaire_id not in participant["questionnaires"]:
-                        participant["questionnaires"][questionnaire_id] = FHIR.flatten_questionnaire_response(
-                            bundle, questionnaire_id
-                        )
-                    else:
-                        logger.warning(f"PPM/{study}/FHIR: Questionnaire defined in ppmutils.PPM and in PPM API")
+            # Parse remaining questionnaires
+            logger.debug(f"PPM/{study}/{ppm_id}: Study questionnaires: {questionnaire_ids}")
+            for questionnaire_id in questionnaire_ids:
+
+                # Parse it and add it
+                participant["questionnaires"][questionnaire_id] = FHIR.flatten_questionnaire_response(
+                    bundle, questionnaire_id
+                )
 
             ####################################################################
             # Points of care
@@ -4820,7 +4829,7 @@ class FHIR:
 
                 # Run it
                 values, study_values = getattr(FHIR, f"_flatten_{study}_participant")(
-                    bundle=bundle, ppm_id=ppm_id, questionnaires=questionnaires
+                    bundle=bundle, ppm_id=ppm_id, questionnaire_ids=questionnaire_ids
                 )
 
                 # Set them
@@ -4837,7 +4846,7 @@ class FHIR:
         return participant
 
     @staticmethod
-    def _flatten_asd_participant(bundle, ppm_id, questionnaires=None):
+    def _flatten_asd_participant(bundle, ppm_id, questionnaire_ids=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -4848,8 +4857,8 @@ class FHIR:
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
-        :param questionnaires: A list of the study questionnaires to include
-        :type questionnaires: list, defaults to None
+        :param questionnaire_ids: A list of the study questionnaires to include
+        :type questionnaire_ids: list, defaults to None
         :returns: A tuple of properties for the root participant object, and for
         the study sub-object
         :rtype: dict, dict
@@ -4882,7 +4891,7 @@ class FHIR:
         return values, study_values
 
     @staticmethod
-    def _flatten_neer_participant(bundle, ppm_id, questionnaires=None):
+    def _flatten_neer_participant(bundle, ppm_id, questionnaire_ids=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -4893,8 +4902,8 @@ class FHIR:
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
-        :param questionnaires: A list of the study questionnaires to include
-        :type questionnaires: list, defaults to None
+        :param questionnaire_ids: A list of the study questionnaires to include
+        :type questionnaire_ids: list, defaults to None
         :returns: A tuple of properties for the root participant object, and for
         the study sub-object
         :rtype: dict, dict
@@ -5010,7 +5019,7 @@ class FHIR:
         return values, study_values
 
     @staticmethod
-    def _flatten_rant_participant(bundle, ppm_id, questionnaires=None):
+    def _flatten_rant_participant(bundle, ppm_id, questionnaire_ids=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -5021,8 +5030,8 @@ class FHIR:
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
-        :param questionnaires: A list of the study questionnaires to include
-        :type questionnaires: list, defaults to None
+        :param questionnaire_ids: A list of the study questionnaires to include
+        :type questionnaire_ids: list, defaults to None
         :returns: A tuple of properties for the root participant object, and for
         the study sub-object
         :rtype: dict, dict
@@ -5159,7 +5168,7 @@ class FHIR:
         return values, study_values
 
     @staticmethod
-    def _flatten_example_participant(bundle, ppm_id, questionnaires=None):
+    def _flatten_example_participant(bundle, ppm_id, questionnaire_ids=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -5170,8 +5179,8 @@ class FHIR:
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
-        :param questionnaires: A list of the study questionnaires to include
-        :type questionnaires: list, defaults to None
+        :param questionnaire_ids: A list of the study questionnaires to include
+        :type questionnaire_ids: list, defaults to None
         :returns: A tuple of properties for the root participant object, and for
         the study sub-object
         :rtype: dict, dict
@@ -5441,7 +5450,7 @@ class FHIR:
 
         # Ensure resources exist
         if not questionnaire or not questionnaire_response:
-            logger.debug("User has no responses for Questionnaire/{}, returning".format(questionnaire_id))
+            logger.debug(f"PPM/FHIR: No response for Questionnaire/{questionnaire_id}")
             return None
 
         # If no items, return empty
