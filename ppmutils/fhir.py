@@ -5052,7 +5052,9 @@ class FHIR:
             ),
             None,
         )
-        if questionnaire_response:
+
+        # Check if it exists and actually has data to parse
+        if questionnaire_response and questionnaire_response.get("item"):
 
             # Set a list
             values["points_of_care"] = []
@@ -5200,7 +5202,7 @@ class FHIR:
             ),
             None,
         )
-        if questionnaire_response:
+        if questionnaire_response and questionnaire_response.get("item"):
             logger.debug(f"PPM/{ppm_id}/FHIR: Flattening QuestionnaireResponse/" f'{questionnaire_response["id"]}')
 
             # Map linkIds to keys
@@ -5303,7 +5305,7 @@ class FHIR:
             ),
             None,
         )
-        if questionnaire_response:
+        if questionnaire_response and questionnaire_response.get("item"):
 
             # Set a list
             values["points_of_care"] = []
@@ -5417,6 +5419,85 @@ class FHIR:
                     values["points_of_care"].append(additional_points_of_care)
 
         return values, study_values
+
+    @staticmethod
+    def get_questionnaire_response_item_value(questionnaire_response, link_id):
+        """
+        Returns the value for the given questionnaire response and link ID.
+
+        :param questionnaire_response: The QuestionnaireResponse resource to check
+        :type questionnaire_response: dict
+        :param link_id: The link ID of the item's value to return
+        :type link_id: str
+        :return: The value object
+        :rtype: object
+        """
+        questionnaire_response_id = answer = None
+        try:
+            # Get ID
+            questionnaire_response_id = questionnaire_response["id"]
+
+            # Get the item
+            answer = next(
+                (next(a for a in i["answer"]) for i in questionnaire_response["item"] if i["linkId"] == link_id),
+                None,
+            )
+
+            # If answer, parse answer
+            if not answer:
+                logger.debug(
+                    f"PPM/FHIR/QuestionnaireResponse/{questionnaire_response_id}: " f"No answer for item {link_id}"
+                )
+                return None
+
+            # Check types
+            if answer.get("valueString"):
+                return answer["valueString"]
+            elif answer.get("valueBoolean"):
+                return answer["valueBoolean"]
+            elif answer.get("valueInteger"):
+                return answer["valueInteger"]
+            elif answer.get("valueDecimal"):
+                return answer["valueDecimal"]
+            elif answer.get("valueDate"):
+                try:
+                    return parse(answer["valueDate"])
+                except ValueError as e:
+                    logger.exception(
+                        f"PPM/FHIR: Date error: {e}",
+                        exc_info=True,
+                        extra={
+                            "questionnaire_response": questionnaire_response_id,
+                            "link_id": link_id,
+                            "answer": answer,
+                        },
+                    )
+            elif answer.get("valueDateTime"):
+                try:
+                    return parse(answer["valueDateTime"])
+                except ValueError as e:
+                    logger.exception(
+                        f"PPM/FHIR: Date error: {e}",
+                        exc_info=True,
+                        extra={
+                            "questionnaire_response": questionnaire_response_id,
+                            "link_id": link_id,
+                            "answer": answer,
+                        },
+                    )
+            else:
+                raise ValueError(f"Unhandled FHIR answer type: {answer}")
+
+        except Exception as e:
+            logger.exception(
+                f"PPM/FHIR: Error getting item value: {e}",
+                exc_info=True,
+                extra={
+                    "questionnaire_response": questionnaire_response_id,
+                    "link_id": link_id,
+                    "answer": answer,
+                },
+            )
 
     @staticmethod
     def flatten_questionnaire_response(bundle_dict, questionnaire_id):
