@@ -461,7 +461,6 @@ class P2MD(PPM.Service):
         """
         # Get surveys
         surveys = P2MD.get_qualtrics_surveys(request, study=study)
-        logger.error(surveys)
         questionnaire_ids = [s["questionnaire_id"] for s in surveys if s.get("questionnaire_id")]
         eligibility_questionnaire_id = next((s["questionnaire_id"] for s in surveys if s.get("eligibility_for")), None)
 
