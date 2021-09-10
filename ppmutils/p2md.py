@@ -430,15 +430,59 @@ class P2MD(PPM.Service):
         return cls.delete(request, f"/sources/api/consent/{study}/{ppm_id}", data)
 
     @classmethod
+    def get_study_questionnaires(cls, request, study):
+        """
+        Make a request to P2MD to get questionnaires for the current study.
+        This returns a tuple of eligibility questionnaire ID, if any, and a
+        list of questionnaire IDs, if any.
+
+        :param request: The current request
+        :type request: HttpRequest
+        :param study: The study for which the surveys should be returned
+        :type study: str
+        :returns: A tuple of eligibility questionnaire ID and other questionnaire IDs
+        :rtype: str, list
+        """
+        # Get surveys
+        surveys = P2MD.get_qualtrics_surveys(request, study=study)
+        questionnaire_ids = [s["questionnaire_id"] for s in surveys if s.get("questionnaire_id")]
+        eligibility_questionnaire_id = next((s["questionnaire_id"] for s in surveys if s.get("eligibility_for")), None)
+
+        # Ensure the eligibility does not appear twice
+        if eligibility_questionnaire_id and eligibility_questionnaire_id in questionnaire_ids:
+            questionnaire_ids.remove(eligibility_questionnaire_id)
+
+        return eligibility_questionnaire_id, questionnaire_ids
+
+    @classmethod
     def get_qualtrics_surveys(cls, request, study):
         """
-        Make a request to P2MD to get available Qualtrics surveys
+        Make a request to P2MD to get available Qualtrics surveys that
+        are active for the passed study.
         :param request: The current request
         :param study: The study for which the surveys should be returned
         :return: list
         """
         # Return response
         return cls.get(request, f"/sources/api/qualtrics/surveys/{study}/")
+
+    @classmethod
+    def get_eligibility_survey(cls, request, study):
+        """
+        Make a request to P2MD to get the eligibility survey for this study
+        :param request: The current request
+        :param study: The study for which the surveys should be returned
+        :param disabled: Whether to include disabled surveys in the request
+        :return: list
+        """
+        # Set query for request
+        data = {
+            "eligibility_for": study,
+            "is_enabled": True,
+        }
+
+        # Return response
+        return next(iter(cls.get(request, f"/ppm/api/survey/", data=data)), None)
 
     @classmethod
     def check_qualtrics_survey(cls, request, study, ppm_id, survey_id):
@@ -483,7 +527,37 @@ class P2MD(PPM.Service):
         return url
 
     @classmethod
-    def get_qualtrics_survey_data(cls, request, study, ppm_id, survey_id, response_id=None, older_than=None):
+    def check_qualtrics_contact(cls, request, study, ppm_id):
+        """
+        Checks if the contact exists in P2MD and Qualtrics or not.
+        :param request: The current request
+        :param study: The study for which the contact will be taking surveys
+        :param study: The PPM identifier for the contact to add
+        :return: bool
+        """
+        # Return response
+        response = cls.head(request, f"/sources/api/qualtrics/contact/{study}/{ppm_id}/", raw=True)
+        if response:
+            return response.ok
+
+        return False
+
+    @classmethod
+    def create_qualtrics_contact(cls, request, study, ppm_id):
+        """
+        Make a request to P2MD to get available Qualtrics surveys
+        :param request: The current request
+        :param study: The study for which the contact will be taking surveys
+        :param study: The PPM identifier for the contact to add
+        :return: bool
+        """
+        # Return response
+        return cls.post(request, f"/sources/api/qualtrics/contact/{study}/{ppm_id}/")
+
+    @classmethod
+    def get_qualtrics_survey_data(
+        cls, request, study, ppm_id, survey_id, response_id=None, older_than=None, force=False
+    ):
         """
         Make a call to P2MD to look for a survey response
         """
@@ -496,6 +570,9 @@ class P2MD(PPM.Service):
 
         if older_than:
             data["older_than"] = older_than
+
+        if force:
+            data["force"] = force
 
         # Make the request
         response = cls.post(request, url.pathstr, data, raw=True)

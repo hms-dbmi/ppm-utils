@@ -831,6 +831,10 @@ class FHIR(PPM.Service):
             response = requests.post(FHIR.service_url(), json=bundle.as_json())
             response.raise_for_status()
 
+            # Log the results of each request
+            for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+                logging.debug(f"FHIR result: {result}")
+
             return response.json()
 
         except Exception as e:
@@ -848,6 +852,111 @@ class FHIR(PPM.Service):
     #
     # CREATE
     #
+
+    @staticmethod
+    def create(study, patient, resource_type, resource, replace=False, query=None):
+        """
+        A generic method implementation for creating a FHIR resource. This
+        will replace an existing resource if it is found via the optional
+        query.
+
+        :param study: The PPM study for which the resource is related
+        :type study: str
+        :param patient: The PPM participant that owns the resource
+        :type patient: str
+        :param resource_type: The FHIR resource type
+        :type resource_type: str
+        :param resource: The FHIR resource to persist
+        :type resource: dict, defaults to None
+        :param replace: Whether existing resources should be replaced or not
+        :type replace: bool, defaults to False
+        :param query: A query meant to find an existing resource to replace
+        :type query: dict, defaults to None
+        :return: The result of the operation
+        :rtype: Response
+        """
+        logger.debug(f"PPM/{study}/{patient}: Create resource: {resource_type}")
+
+        content = None
+        resource_id = None
+        try:
+            # Check if we need to replace an existing resource
+            if replace:
+
+                # If no query, try on Patient identifier
+                if not query:
+                    query = FHIR._patient_resource_query(identifier=patient)
+
+                # Check if one exsits
+                existing_resources = FHIR._query_resources(resource_type=resource_type, query=query)
+
+                # Check multiple
+                if existing_resources and len(existing_resources) > 1:
+                    logger.error(
+                        f"PPM/{patient}/{study}/FHIR: Multiple resources " f"found, cannot replace",
+                        extra={
+                            "study": study,
+                            "patient": patient,
+                            "resource_type": resource_type,
+                            "query": query,
+                            "existing_resources": existing_resources,
+                        },
+                    )
+
+                # Get ID
+                elif existing_resources:
+                    resource_id = next(iter(existing_resources))["id"]
+                    logger.debug(
+                        f"PPM/{patient}/{study}/FHIR: Will replace " f"{resource_type}/{resource_id}",
+                    )
+
+            # Set the URL
+            url = furl(FHIR.service_url())
+
+            # Create the questionnaire response
+            action = getattr(requests, "put" if resource_id else "post", None)
+            if resource_id:
+
+                # Add QuestionnaireResponse path
+                url.path.segments.extend([resource_type, resource_id])
+
+            # Make the request
+            logger.debug(f"PPM/{patient}/{study}/FHIR: HTTP {action} to {url.url}")
+            response = action(url.url, json=resource.as_json())
+            content = response.content
+            logger.debug(f"PPM/{patient}/{study}/FHIR: Response {response.status_code}")
+
+            # Check the response
+            response.raise_for_status()
+
+            return response.json()
+
+        except requests.HTTPError as e:
+            logger.debug(f"PPM/{study}/{patient}/FHIR: Create resource response: {content}")
+            logger.exception(
+                f"PPM/{study}/{patient}/FHIR: Create resource request error: {e}",
+                extra={
+                    "study": study,
+                    "patient": patient,
+                    "resource_type": resource_type,
+                    "query": query,
+                    "resource_id": resource_id,
+                    "content": content,
+                },
+            )
+
+        except Exception as e:
+            logger.exception(
+                f"PPM/{study}/{patient}/FHIR: Create resource error: {e}",
+                exc_info=True,
+                extra={
+                    "study": study,
+                    "patient": patient,
+                    "resource_type": resource_type,
+                    "query": query,
+                    "resource_id": resource_id,
+                },
+            )
 
     @staticmethod
     def create_ppm_research_study(project, title):
@@ -887,13 +996,13 @@ class FHIR(PPM.Service):
         bundle.entry = [research_study_entry]
         bundle.type = "transaction"
 
-        logger.debug("Creating...")
-
         # Create the ResearchStudy on the FHIR server.
-        # If we needed the ResearchStudy resource id, we could follow the redirect
-        # returned from a successful POST operation, and get the id out of the
-        # new resource. We don't though, so we can save an HTTP request.
+        logger.debug("Creating ResearchStudy via Transaction")
         response = requests.post(FHIR.service_url(), json=bundle.as_json())
+
+        # Parse out created identifiers
+        for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+            logging.debug(f"FHIR result: {result}")
 
         return response.ok
 
@@ -926,6 +1035,14 @@ class FHIR(PPM.Service):
             {
                 "url": "ResearchSubject",
                 "method": "POST",
+                "ifNoneExist": str(
+                    Query(
+                        {
+                            **FHIR._patient_resource_query(patient_id, key="patient"),
+                            "identifier": f"{FHIR.research_subject_identifier_system}|{PPM.Study.fhir_id(project)}",
+                        }
+                    ),
+                ),
             }
         )
         research_subject_entry = BundleEntry({"resource": research_subject_data, "fullUrl": research_subject_id})
@@ -936,13 +1053,13 @@ class FHIR(PPM.Service):
         bundle.entry = [research_subject_entry]
         bundle.type = "transaction"
 
-        logger.debug("Creating...")
-
-        # Create the Patient and Flag on the FHIR server.
-        # If we needed the Patient resource id, we could follow the redirect
-        # returned from a successful POST operation, and get the id out of the
-        # new resource. We don't though, so we can save an HTTP request.
+        # Create the ResearchSubject resource
+        logger.debug("Creating ResearchSubject via Transaction")
         response = requests.post(FHIR.service_url(), json=bundle.as_json())
+
+        # Parse out created identifiers
+        for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+            logging.debug(f"FHIR result: {result}")
 
         return response.ok
 
@@ -980,28 +1097,102 @@ class FHIR(PPM.Service):
         bundle.entry = [device_entry]
         bundle.type = "transaction"
 
-        logger.debug("Creating...")
-
         # Create the Device on the FHIR server.
-        # If we needed the Patient resource id, we could follow the redirect
-        # returned from a successful POST operation, and get the id out of the
-        # new resource. We don't though, so we can save an HTTP request.
+        logger.debug("Creating Device via Transaction")
         response = requests.post(FHIR.service_url(), json=bundle.as_json())
+
+        # Parse out created identifiers
+        for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+            logging.debug(f"FHIR result: {result}")
 
         return response.ok
 
     @staticmethod
+    def query_ppm_study_and_patient(study, patient):
+        """
+        Performs a query for a Patient as well as a ResearchStudy matching
+        the passed study identifier.
+
+        :param study: The study identifier
+        :type study: str
+        :param patient: The patient identifier, either ID or email
+        :type patient: str
+        :return: A tuple of the research study and the patient objects, if they exist
+        :rtype: object, object
+        """
+        patient_request = BundleEntryRequest(
+            {
+                "method": "GET",
+                "url": f"Patient?{str(Query(FHIR._patient_query(patient)))}",
+            }
+        )
+        patient_entry = BundleEntry()
+        patient_entry.request = patient_request
+
+        research_study_request = BundleEntryRequest(
+            {
+                "method": "GET",
+                "url": "ResearchStudy?"
+                + str(
+                    Query(
+                        {
+                            "identifier": f"{FHIR.research_study_identifier_system}|{PPM.Study.fhir_id(study)}",
+                        }
+                    )
+                ),
+            }
+        )
+        research_study_entry = BundleEntry()
+        research_study_entry.request = research_study_request
+
+        # Validate it.
+        bundle = Bundle()
+        bundle.entry = [patient_entry, research_study_entry]
+        bundle.type = "transaction"
+
+        logger.debug(f"Querying FHIR for Patient:{str(patient)} and Study:{study}")
+
+        # Execute transaction
+        response = requests.post(FHIR.service_url(), json=bundle.as_json())
+
+        # Get resources
+        patient = research_study = None
+        for entry in [e for entry in response.json().get("entry", []) for e in entry["resource"].get("entry", [])]:
+
+            # Check for resources
+            if entry["resource"]["resourceType"] == "Patient":
+                patient = entry["resource"]
+                logger.debug(f"Found Patient/{patient['id']}")
+            if entry["resource"]["resourceType"] == "ResearchStudy":
+                research_study = entry["resource"]
+                logger.debug(f"Found ResearchStudy/{research_study['id']}")
+
+        return research_study, patient
+
+    @staticmethod
     def create_patient(form, project):
         """
-        Create a Patient resource in the FHIR server.
+        Creates the core resources necessary for a participant in PPM. Resources
+        include a Patient, a Flag and a ResearchSubject. The flag tracks
+        enrollment state for the specific study and the research subject
+        resource includes a participant in a specific PPM study.add()
+
+        :param form: The registration form filled out by the participant
+        :type form: dict
+        :param project: The name of the study for which the enrollment was for
+        :type project: str
+        :return: A tuple of the created resource IDs
+        :rtype: str, str, str
         """
         try:
-            # Get the study, or create it
-            study = FHIR._query_resources(
-                "ResearchStudy",
-                query={"identifier": "{}|{}".format(FHIR.research_study_identifier_system, PPM.Study.fhir_id(project))},
-            )
-            if not study:
+            # Check for existing study and patient
+            research_study, patient = FHIR.query_ppm_study_and_patient(project, form["email"])
+            if patient:
+                logger.warning(f"Patient already exists for {form['email']}, nothing to do")
+                return
+
+            # Create study if it doesn't exist
+            if not research_study:
                 FHIR.create_ppm_research_study(project, PPM.Study.title(project))
 
             # Build out patient JSON
@@ -1025,13 +1216,7 @@ class FHIR(PPM.Service):
                 {
                     "url": "Patient",
                     "method": "POST",
-                    "ifNoneExist": str(
-                        Query(
-                            {
-                                "identifier": "http://schema.org/email|" + form.get("email"),
-                            }
-                        )
-                    ),
+                    "ifNoneExist": str(Query({**FHIR._patient_query(form["email"])})),
                 }
             )
             patient_entry = BundleEntry({"resource": patient_data, "fullUrl": patient_uuid.urn})
@@ -1039,13 +1224,44 @@ class FHIR(PPM.Service):
 
             # Build enrollment flag.
             flag = Flag(FHIR.Resources.enrollment_flag(patient_uuid.urn, "registered"))
-            flag_request = BundleEntryRequest({"url": "Flag", "method": "POST"})
+            # TODO: Include the study in this resource once PPM needs
+            # to support participants with multiple studies
+            # flag = Flag(project, FHIR.Resources.enrollment_flag(patient_uuid.urn, "registered"))
+            flag_request = BundleEntryRequest(
+                {
+                    "url": "Flag",
+                    "method": "POST",
+                    "ifNoneExist": str(
+                        Query(
+                            {
+                                # TODO: Include the study in this conditional once PPM needs
+                                # to support participants with multiple studies
+                                # "encounter": f"ResearchStudy/{PPM.Study.fhir_id(study)}"
+                                **FHIR._patient_resource_query(form["email"], key="patient"),
+                            }
+                        ),
+                    ),
+                }
+            )
             flag_entry = BundleEntry({"resource": flag.as_json()})
             flag_entry.request = flag_request
 
             # Build research subject
             research_subject_data = FHIR.Resources.ppm_research_subject(project, patient_uuid.urn, "candidate")
-            research_subject_request = BundleEntryRequest({"url": "ResearchSubject", "method": "POST"})
+            research_subject_request = BundleEntryRequest(
+                {
+                    "url": "ResearchSubject",
+                    "method": "POST",
+                    "ifNoneExist": str(
+                        Query(
+                            {
+                                "identifier": f"{FHIR.research_subject_identifier_system}|{PPM.Study.fhir_id(project)}",
+                                **FHIR._patient_resource_query(form["email"], key="patient"),
+                            }
+                        ),
+                    ),
+                }
+            )
             research_subject_entry = BundleEntry({"resource": research_subject_data})
             research_subject_entry.request = research_subject_request
 
@@ -1054,23 +1270,36 @@ class FHIR(PPM.Service):
             bundle.entry = [patient_entry, flag_entry, research_subject_entry]
             bundle.type = "transaction"
 
-            logger.debug("Creating...")
-
-            # Create the Patient and Flag on the FHIR server.
-            # If we needed the Patient resource id, we could follow the redirect
-            # returned from a successful POST operation, and get the id out of the
-            # new resource. We don't though, so we can save an HTTP request.
+            # Create the resources on the FHIR server.
+            logger.debug("Creating Patient/ResearchSubject/Flag via Transaction")
             response = requests.post(FHIR.service_url(), json=bundle.as_json())
 
             # Parse out created identifiers
-            for result in response.json():
+            patient_id = None
+            flag_id = None
+            research_subject_id = None
 
-                # Do something
-                logging.debug("Created: {}".format(result))
+            # Iterate results
+            for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+                logging.debug(f"FHIR result: {result}")
 
-                pass
+                # Get the location
+                location = result.get("location")
+                if not location:
+                    continue
 
-            return response.ok
+                # Get the ID
+                resource_id = re.search(r"^[A-Za-z-_]+\/([0-9]+)\/_history\/[0-9]+$", location, re.IGNORECASE).group(1)
+
+                # Get resource ID
+                if location.startswith("Patient/"):
+                    patient_id = resource_id
+                elif location.startswith("Flag/"):
+                    flag_id = resource_id
+                elif location.startswith("ResearchSubject/"):
+                    research_subject_id = resource_id
+
+            return patient_id, flag_id, research_subject_id
 
         except Exception as e:
             logger.exception(e)
@@ -1080,9 +1309,12 @@ class FHIR(PPM.Service):
     def create_patient_enrollment(patient_id, status="registered"):
         """
         Create a Flag resource in the FHIR server to indicate a user's enrollment.
-        :param patient_id:
-        :param status:
-        :return:
+        :param patient_id: The patient identifier
+        :type patient_id: str or object
+        :param status: The enrollment status to set for the flag
+        :type status: str
+        :return: Whether the request was successful or not
+        :rtype: bool
         """
         logger.debug("Patient: {}".format(patient_id))
 
@@ -1096,16 +1328,41 @@ class FHIR(PPM.Service):
             period.start = now
             flag.period = period
 
-        # Build the FHIR Flag destination URL.
-        url = furl(FHIR.service_url())
-        url.path.segments.append("Flag")
+        # Build enrollment flag.
+        flag_request = BundleEntryRequest(
+            {
+                "url": "Flag",
+                "method": "POST",
+                "ifNoneExist": str(
+                    Query(
+                        {
+                            # TODO: Include the study in this conditional once PPM needs
+                            # to support participants with multiple studies
+                            # "encounter": f"ResearchStudy/{PPM.Study.fhir_id(study)}"
+                            **FHIR._patient_resource_query(patient_id, key="patient"),
+                        }
+                    ),
+                ),
+            }
+        )
+        flag_entry = BundleEntry({"resource": flag.as_json()})
+        flag_entry.request = flag_request
 
-        logger.debug("Creating flag at: {}".format(url.url))
+        # Validate it.
+        bundle = Bundle()
+        bundle.entry = [flag_entry]
+        bundle.type = "transaction"
 
-        response = requests.post(url.url, json=flag.as_json())
-        logger.debug("Response: {}".format(response.status_code))
+        logger.debug("Creating Flag via Transaction")
 
-        return response
+        # Create the Flag resource
+        response = requests.post(FHIR.service_url(), json=bundle.as_json())
+
+        # Parse out created identifiers
+        for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+            logging.debug(f"FHIR result: {result}")
+
+        return response.ok
 
     @staticmethod
     def create_communication(patient_id, content, identifier):
@@ -1201,6 +1458,10 @@ class FHIR(PPM.Service):
             logger.debug("Response: {}".format(response.status_code))
             response.raise_for_status()
 
+            # Parse out created identifiers
+            for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+                logging.debug(f"FHIR result: {result}")
+
             return response.json()
 
         except Exception as e:
@@ -1269,6 +1530,10 @@ class FHIR(PPM.Service):
             # Create the organization
             response = requests.post(FHIR.service_url(), json=bundle.as_json())
             response.raise_for_status()
+
+            # Parse out created identifiers
+            for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+                logging.debug(f"FHIR result: {result}")
 
             return response.json()
 
@@ -1380,6 +1645,10 @@ class FHIR(PPM.Service):
         full_bundle.type = "transaction"
 
         response = requests.post(url=FHIR.service_url(), json=full_bundle.as_json())
+
+        # Parse out created identifiers
+        for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+            logging.debug(f"FHIR result: {result}")
 
         return response.ok
 
@@ -1509,6 +1778,10 @@ class FHIR(PPM.Service):
             # Post the transaction
             response = requests.post(FHIR.service_url(), json=bundle.as_json())
             response.raise_for_status()
+
+            # Parse out created identifiers
+            for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+                logging.debug(f"FHIR result: {result}")
 
             # Check response
             return response.ok
@@ -1804,97 +2077,26 @@ class FHIR(PPM.Service):
         return FHIR.query_participants(studies, enrollments, active, testing)
 
     @staticmethod
-    def query_participant(patient, flatten_return=False):
-
-        # Build the FHIR Consent URL.
-        url = furl(FHIR.service_url())
-        url.path.segments.append("Patient")
-        url.query.params.add("_include", "*")
-        url.query.params.add("_revinclude", "*")
-
-        # Add patient query
-        for key, value in FHIR._patient_query(patient).items():
-            url.query.params.add(key, value)
-
-        # Make the call
-        content = None
-        try:
-            # Make the FHIR request.
-            response = requests.get(url.url)
-            content = response.content
-
-            if flatten_return:
-                return FHIR.flatten_participant(response.json())
-            else:
-                return response.json()
-
-        except requests.HTTPError as e:
-            logger.exception(
-                "FHIR Connection Error: {}".format(e),
-                exc_info=True,
-                extra={"response": content},
-            )
-
-        except KeyError as e:
-            logger.exception("FHIR Error: {}".format(e), exc_info=True, extra={"response": content})
-
-        return None
-
-    # TODO: Remove this method
-    @staticmethod
-    def query_patient(patient, flatten_return=False):
-
-        # Build the FHIR Consent URL.
-        url = furl(FHIR.service_url())
-        url.path.segments.append("Patient")
-
-        # Get flags for current user
-        query = FHIR._patient_query(patient)
-
-        # Make the call
-        content = None
-        try:
-            # Make the FHIR request.
-            response = requests.get(url.url, params=query)
-            content = response.content
-
-            # Ensure we have a resource
-            bundle = response.json()
-
-            if flatten_return:
-                return FHIR.flatten_patient(bundle)
-            else:
-                return [entry["resource"] for entry in bundle.get("entry", [])]
-
-        except requests.HTTPError as e:
-            logger.exception(
-                "FHIR Connection Error: {}".format(e),
-                exc_info=True,
-                extra={"response": content},
-            )
-
-        except KeyError as e:
-            logger.exception("FHIR Error: {}".format(e), exc_info=True, extra={"response": content})
-
-        return None
-
-    @staticmethod
-    def get_participant(patient, flatten_return=False, questionnaire_ids=None):
+    def get_participant(patient, eligibility_questionnaire_id=None, questionnaire_ids=None, flatten_return=False):
         """
         This method fetches a participant's entire FHIR record and returns it.
         If specified, the record will be flattened into a dictionary. Otherwise,
         a list of all resources belonging to the participant are returned.
+        Optional values include questionnaire IDs
+        to be flattened. If these are not specified, hard-coded values from the
+        PPM module will be used, althought this is deprecated behavior.
 
         :param patient: The participant identifier, PPM ID or email
         :type patient: str
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
+        :param questionnaire_ids: The list of study questionnaires to include
+        :type questionnaire_ids: list, defaults to None
         :param flatten_return: Whether to flatten the resources or not
         :type flatten_return: bool, defaults to False
-        :param questionnaire_ids: The list of Questionnaire IDs to include
-        :type questionnaire_ids: list, defaults to None
         :returns: A dictionary comprising the user's record
         :rtype: dict
         """
-
         # Build the FHIR Consent URL.
         url = furl(FHIR.service_url())
         url.path.segments.append("Patient")
@@ -1906,7 +2108,7 @@ class FHIR(PPM.Service):
             url.query.params.add(key, value)
 
         # Make the call
-        content = None
+        content = response = None
         try:
             # Make the FHIR request.
             response = requests.get(url.url)
@@ -1916,18 +2118,28 @@ class FHIR(PPM.Service):
             # Check for entries
             bundle = response.json()
             if not bundle.get("entry") or not FHIR._find_resources(bundle, "Patient"):
+                logger.debug(f"PPM/FHIR: Empty and/or no Patient for {patient}")
                 return {}
 
             if flatten_return:
-                return FHIR.flatten_participant(response.json(), questionnaire_ids)
+                return FHIR.flatten_participant(
+                    bundle=response.json(),
+                    eligibility_questionnaire_id=eligibility_questionnaire_id,
+                    questionnaire_ids=questionnaire_ids,
+                )
             else:
                 return [entry["resource"] for entry in bundle.get("entry")]
 
         except requests.HTTPError as e:
+            logger.debug(f"PPM/FHIR: Patient request response: {content}")
             logger.exception(
-                "FHIR Connection Error: {}".format(e),
-                exc_info=True,
-                extra={"response": content},
+                f"PPM/FHIR: Patient request error: {e}",
+                extra={
+                    "patient": patient,
+                    "url": url,
+                    "response": response,
+                    "content": content,
+                },
             )
 
         except KeyError as e:
@@ -1936,13 +2148,47 @@ class FHIR(PPM.Service):
         return None
 
     @staticmethod
-    def get_patient(patient, flatten_return=False):
+    def query_participant(patient, eligibility_questionnaire_id=None, questionnaire_ids=None, flatten_return=False):
+        """
+        This method queries a participant's entire FHIR record and returns it
+        if available. If specified, the record will be flattened into a
+        dictionary. Otherwise, a list of all resources belonging to the
+        participant are returned. Optional values include questionnaire IDs
+        to be flattened. If these are not specified, hard-coded values from the
+        PPM module will be used, althought this is deprecated behavior.
 
+        :param patient: The participant identifier, PPM ID or email
+        :type patient: str
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
+        :param questionnaire_ids: The list of study questionnaires to include
+        :type questionnaire_ids: list, defaults to None
+        :param flatten_return: Whether to flatten the resources or not
+        :type flatten_return: bool, defaults to False
+        :returns: A dictionary comprising the user's record
+        :rtype: dict
+        """
+        logger.warning('PPM/FHIR: Method "query_participant" is deprecated')
+        warnings.warn(f'PPM/FHIR: "query_participant" is deprecated, use "get_participant" instead', DeprecationWarning)
+        return FHIR.get_participant(patient, eligibility_questionnaire_id, questionnaire_ids, flatten_return)
+
+    @staticmethod
+    def get_patient(patient, flatten_return=False):
+        """
+        This method queries a participant's FHIR Patient record and returns it
+        if available. If specified, the record will be flattened into a
+        dictionary. Otherwise, a list of relevant resources will be returned.
+
+        :param patient: The participant identifier, PPM ID or email
+        :type patient: str
+        :param flatten_return: Whether to flatten the resources or not
+        :type flatten_return: bool, defaults to False
+        :returns: A dictionary comprising the user's Patient record
+        :rtype: dict
+        """
         # Build the FHIR Consent URL.
         url = furl(FHIR.service_url())
         url.path.segments.append("Patient")
-        url.query.params.add("_include", "*")
-        url.query.params.add("_revinclude", "*")
 
         # Add query for patient
         for key, value in FHIR._patient_query(patient).items():
@@ -1964,16 +2210,48 @@ class FHIR(PPM.Service):
                 )
 
         except requests.HTTPError as e:
+            logger.debug(f"PPM/FHIR: Patient request response: {content}")
             logger.exception(
-                "FHIR Connection Error: {}".format(e),
-                exc_info=True,
-                extra={"response": content},
+                f"PPM/FHIR: Patient request error: {e}",
+                extra={
+                    "patient": patient,
+                    "url": url,
+                    "response": response,
+                    "content": content,
+                },
             )
 
         except KeyError as e:
-            logger.exception("FHIR Error: {}".format(e), exc_info=True, extra={"response": content})
+            logger.exception(
+                f"PPM/FHIR Error: {e}",
+                exc_info=True,
+                extra={
+                    "patient": patient,
+                    "url": url,
+                    "response": response,
+                    "content": content,
+                },
+            )
 
         return None
+
+    @staticmethod
+    def query_patient(patient, flatten_return=False):
+        """
+        This method queries a participant's FHIR Patient record and returns it
+        if available. If specified, the record will be flattened into a
+        dictionary. Otherwise, a list of relevant resources will be returned.
+
+        :param patient: The participant identifier, PPM ID or email
+        :type patient: str
+        :param flatten_return: Whether to flatten the resources or not
+        :type flatten_return: bool, defaults to False
+        :returns: A dictionary comprising the user's Patient record
+        :rtype: dict
+        """
+        logger.warning('PPM/FHIR: Method "query_patient" is deprecated')
+        warnings.warn(f'PPM/FHIR: "query_patient" is deprecated, use "get_patient" instead', DeprecationWarning)
+        return FHIR.get_patient(patient, flatten_return)
 
     # TODO: This method is deprecated
     @staticmethod
@@ -1986,7 +2264,10 @@ class FHIR(PPM.Service):
         :type flatten_return: bool
         :return: The Composition object
         """
-        logger.warning("DEPRECATED: This method should not be used for fetching consent composition resources")
+        logger.warning('PPM/FHIR: Method "get_composition" is deprecated')
+        warnings.warn(
+            f'PPM/FHIR: "get_composition" is deprecated, use "query_consent_compositions" instead', DeprecationWarning
+        )
 
         # Just return the first from querying
         compositions = FHIR.query_consent_compositions(patient=patient, flatten_return=flatten_return)
@@ -2417,6 +2698,21 @@ class FHIR(PPM.Service):
 
     @staticmethod
     def get_questionnaire_response(patient, questionnaire_id, flatten_return=False):
+        """
+        Returns the QuestionnaireResponse for the given patient and
+        questionnaire. If specified to do so, the response object will be
+        flattened to an easier to parse dictionary object. Returns None if
+        not QuestionnaireResponse is found.add()
+
+        :param patient: The PPM participant to find the response for
+        :type patient: str
+        :param questionnaire_id: The ID of the Questionnaire the response was for
+        :type questionnaire_id: str
+        :param flatten_return: Whether to flatten the resource or not, defaults to False
+        :type flatten_return: bool, optional
+        :return: The QuestionnaireResponse object
+        :rtype: dict, or None
+        """
 
         # Build the query
         query = {
@@ -2431,18 +2727,23 @@ class FHIR(PPM.Service):
         # Query resources
         bundle = FHIR._query_bundle("QuestionnaireResponse", query=query)
 
-        if flatten_return:
+        # Ensure we've got resources
+        if bundle.entry:
 
-            # We need the whole bundle to flatten it
-            return FHIR.flatten_questionnaire_response(bundle, questionnaire_id)
+            if flatten_return:
+
+                # We need the whole bundle to flatten it
+                return FHIR.flatten_questionnaire_response(bundle, questionnaire_id)
+            else:
+
+                # Fetch the questionnaire response from the bundle
+                questionnaire_response = next(
+                    (r.resource.as_json() for r in bundle.entry if r.resource.resource_type == "QuestionnaireResponse"),
+                    None,
+                )
+                return questionnaire_response
         else:
-
-            # Fetch the questionnaire response from the bundle
-            questionnaire_response = next(
-                (r.resource for r in bundle.entry if r.resource.resource_type == "QuestionnaireResponse"),
-                None,
-            )
-            return questionnaire_response.as_json()
+            logger.warning(f"PPM/FHIR: No QuestionnaireResponse for query: {query}")
 
     @staticmethod
     def get_qualtrics_questionnaire_response(patient, survey_id, flatten_return=False):
@@ -3778,6 +4079,93 @@ class FHIR(PPM.Service):
 
         return False
 
+    @staticmethod
+    def update_questionnaire_response(patient, study, questionnaire_id, questionnaire_response, create=True):
+        """
+        Updates a participant's questionnaire response. If enabled to do so,
+        the QuestionnaireResponse will be created if an existing one does not
+        exist.
+
+        :param patient: The patient's identifier
+        :type create: str
+        :param study: The study for which this consent was signed
+        :type create: str
+        :param questionnaire_id: The ID of the Questionnaire the response was for
+        :type create: str
+        :param questionnaire_response: The update QuestionnaireResponse object to persist
+        :type create: dict
+        :param create: If the QuestionnaireResponse doesn't exist, should this one be created anyways?
+        :type create: bool
+        :return:
+        """
+        logger.debug(f"PPM/{study}/{patient}: Updating response for Questionnaire/{questionnaire_id}")
+
+        content = None
+        questionnaire_response_id = None
+        try:
+            # Get the existing questionnaire response
+            questionnaire_response = FHIR.get_questionnaire_response(
+                patient=patient,
+                questionnaire_id=questionnaire_id,
+                flatten_return=False,
+            )
+
+            # Check if it exists
+            if not questionnaire_response:
+                if create:
+                    return FHIR.save_questionnaire_response(
+                        patient_id=patient,
+                        questionnaire_id=questionnaire_id,
+                        questionnaire_response=questionnaire_response,
+                    )
+                else:
+                    logger.error(
+                        f"PPM/{patient}/FHIR: Cannot update Questionnaire"
+                        f"Response for Questionnaire/{questionnaire_id} as "
+                        f"it does not exist"
+                    )
+                    return False
+
+            # Get the ID
+            questionnaire_response_id = questionnaire_response["id"]
+
+            # Build the URL
+            url = furl(FHIR.service_url())
+            url.path.segments.append("QuestionnaireResponse")
+            url.path.segments.append(questionnaire_response_id)
+
+            # Put it
+            response = requests.put(url.url, json=questionnaire_response)
+            content = response.content
+            response.raise_for_status()
+
+            return response.ok
+
+        except requests.HTTPError as e:
+            logger.debug(f"PPM/{study}/{patient}: FHIR Error content: {content}")
+            logger.error(
+                f"PPM/{study}/{patient}: FHIR Request Error: {e}",
+                extra={
+                    "patient": patient,
+                    "response": content,
+                    "questionnaire_id": questionnaire_id,
+                    "questionnaire_response_id": questionnaire_response_id,
+                },
+            )
+
+        except Exception as e:
+            logger.error(
+                f"PPM/{study}/{patient}: FHIR Error: {e}",
+                exc_info=True,
+                extra={
+                    "patient": patient,
+                    "questionnaire_id": questionnaire_id,
+                    "questionnaire_response_id": questionnaire_response_id,
+                },
+            )
+
+        return False
+
     #
     # DELETE
     #
@@ -4309,14 +4697,18 @@ class FHIR(PPM.Service):
         return " ".join(names)
 
     @staticmethod
-    def flatten_participant(bundle, questionnaire_ids=None):
+    def flatten_participant(bundle, study=None, eligibility_questionnaire_id=None, questionnaire_ids=None):
         """
         Accepts a Bundle containing everything related to a Patient resource
         and flattens the data into something easier to build templates/views with.
         :param bundle: The Patient resource bundle as JSON/dict
         :type bundle: dict
-        :param questionnaire_ids: A dictionary of Questionnaires to include if available
-        :type questionnaire_ids: dict, defaults to None
+        :param study: The study for which this participant's record should be constructed
+        :type study: str, defaults to None
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
+        :param questionnaire_ids: A list of the study questionnaire IDs to include in the record
+        :type questionnaire_ids: list, defaults to None
         :return: A flattened dictionary of the Participant/Patient's entire FHIR data record
         :rtype: dict
         """
@@ -4339,13 +4731,44 @@ class FHIR(PPM.Service):
             ppm_id = participant["fhir_id"]
             email = participant["email"]
 
+            ####################################################################
+            # Study
+            ####################################################################
+
             # Get the PPM study/project resources
             studies = FHIR.flatten_ppm_studies(bundle)
-            if len(studies) > 1:
-                logger.warning("Patient/{} has more than one PPM study: {}".format(ppm_id, studies))
+
+            # Ensure they are in this study
+            if study and not next((s for s in studies if s["study"] == study), None):
+                logger.error(
+                    f"PPM/{ppm_id}: Participant no in study: {study}",
+                    extra={"study": study, "ppm_id": ppm_id, "studies": studies},
+                )
+                raise ValueError(f"Participant does not exist in study {study}")
+
+            # If they're in multiple studies, ensure the specific study is defined
+            elif not study and len(studies) > 1:
+                logger.error(
+                    f"PPM/{ppm_id}: Multiple PPM studies: {studies}",
+                    extra={"study": study, "ppm_id": ppm_id, "studies": studies},
+                )
+                raise ValueError(f"Participant has multiple studies but requested study has not been defined")
+
+            # If study wasn't passed, get it from the single entry list
+            elif not study:
+
+                # Get the study from the bundle
+                study = studies[0]["study"]
+
+            # Validate it
+            study = PPM.Study.enum(study).value
+
+            ####################################################################
+            # Enrollment
+            ####################################################################
 
             # Check for accepted and a start date
-            participant["project"] = participant["study"] = studies[0]["study"]
+            participant["project"] = participant["study"] = study
             participant["date_registered"] = FHIR._format_date(studies[0]["start"], "%m/%d/%Y")
             participant["datetime_registered"] = studies[0]["start"]
 
@@ -4373,91 +4796,102 @@ class FHIR(PPM.Service):
             # else:
             #     participant['enrollment_terminated_date'] = ''
 
+            ####################################################################
+            # Consent
+            ####################################################################
+
             # Flatten consent composition
             participant["composition"] = FHIR.flatten_consent_composition(bundle)
 
-            # Get the project
-            _questionnaire_id = PPM.Questionnaire.questionnaire_for_study(study=participant["project"])
+            ####################################################################
+            # Questionnaires
+            ####################################################################
 
-            # Parse out the responses
-            questionnaire_response = FHIR.flatten_questionnaire_response(bundle, _questionnaire_id)
+            # Collect flattened questionnaires
+            participant["questionnaires"] = {}
 
-            # Add primary questionnaire and all questionnaires
-            participant["questionnaire"] = questionnaire_response
-            participant["questionnaires"] = {_questionnaire_id: questionnaire_response}
-
-            # Add additional questionnaires
-            for questionnaire in PPM.Questionnaire.extra_questionnaires_for_study(participant["project"]):
-
-                # Attempt to parse it
-                participant["questionnaires"][questionnaire.value] = FHIR.flatten_questionnaire_response(
-                    bundle, questionnaire.value
+            # If not specified, use the value hard-coded in the PPM module
+            if not eligibility_questionnaire_id:
+                eligibility_questionnaire_id = PPM.Questionnaire.questionnaire_for_study(study=study)
+                logger.warning(
+                    f"PPM/{study}/{ppm_id}: Using deprecated PPM.Questionnaire eligibility questionnaires: "
+                    f" {eligibility_questionnaire_id}"
                 )
 
-            # Add additional questionnaires
-            if questionnaire_ids:
-                for questionnaire_id in questionnaire_ids:
+            # Handle eligibility questionnaire
+            logger.debug(f"PPM/{study}/{ppm_id}: Eligibility questionnaire: {eligibility_questionnaire_id}")
+            questionnaire = FHIR.flatten_questionnaire_response(bundle, eligibility_questionnaire_id)
+            participant["questionnaire"] = participant["questionnaires"][eligibility_questionnaire_id] = questionnaire
 
-                    # Attempt to parse it
-                    participant["questionnaires"][questionnaire_id] = FHIR.flatten_questionnaire_response(
-                        bundle, questionnaire_id
-                    )
+            # If not specified, use hard-coded questionnaire IDs from PPM module
+            if not questionnaire_ids:
+                questionnaire_ids = [q.value for q in PPM.Questionnaire.extra_questionnaires_for_study(study=study)]
+                logger.warning(
+                    f"PPM/{study}/{ppm_id}: Using deprecated PPM.Questionnaire questionnaires: " f" {questionnaire_ids}"
+                )
+
+            # Parse remaining questionnaires
+            logger.debug(f"PPM/{study}/{ppm_id}: Study questionnaires: {questionnaire_ids}")
+            for questionnaire_id in questionnaire_ids:
+
+                # Parse it and add it
+                participant["questionnaires"][questionnaire_id] = FHIR.flatten_questionnaire_response(
+                    bundle, questionnaire_id
+                )
+
+            ####################################################################
+            # Points of care
+            ####################################################################
 
             # Flatten points of care
             participant["points_of_care"] = FHIR.flatten_list(bundle, "Organization")
 
+            ####################################################################
+            # Devices
+            ####################################################################
+
             # Flatten consent composition
             participant["devices"] = FHIR.flatten_ppm_devices(bundle)
+
+            ####################################################################
+            # Research Studies
+            ####################################################################
 
             # Check for research studies
             research_studies = FHIR.get_research_studies(bundle)
             if research_studies:
                 participant["research_studies"] = research_studies
 
-            # Autism has a special consent with a quiz, get that content and add it
-            if participant["project"] == PPM.Study.ASD.value:
-
-                # Initially none
-                participant["consent_quiz"] = None
-                participant["consent_quiz_answers"] = None
-
-                # Check if they've even consented
-                if participant.get("composition"):
-
-                    # Get the Questionnaire ID used for the quiz portion of the consent
-                    quiz_id = PPM.Questionnaire.questionnaire_for_consent(participant.get("composition"))
-
-                    # Flatten the Q's and A's for output
-                    quiz = FHIR.flatten_questionnaire_response(bundle, quiz_id)
-                    if quiz:
-
-                        # Add it
-                        participant["consent_quiz"] = quiz
-                        participant["consent_quiz_answers"] = FHIR.questionnaire_answers(bundle, quiz_id)
+            ####################################################################
+            # Study-sepcific Resources
+            ####################################################################
 
             # Get study specific resources
-            if hasattr(FHIR, f"_flatten_{PPM.Study.enum(participant['study']).value}_participant"):
+            if hasattr(FHIR, f"_flatten_{study}_participant"):
 
                 # Run it
-                values, study_values = getattr(
-                    FHIR, f"_flatten_{PPM.Study.enum(participant['study']).value}_participant"
-                )(bundle=bundle, ppm_id=ppm_id)
+                values, study_values = getattr(FHIR, f"_flatten_{study}_participant")(
+                    bundle=bundle,
+                    ppm_id=ppm_id,
+                    eligibility_questionnaire_id=eligibility_questionnaire_id,
+                    questionnaire_ids=questionnaire_ids,
+                )
 
                 # Set them
                 participant.update(values)
-                participant[PPM.Study.enum(participant["study"]).value] = study_values
+                participant[study] = study_values
 
         except Exception as e:
             logger.exception(
                 "FHIR error: {}".format(e),
                 exc_info=True,
-                extra={"ppm_id": ppm_id, "email": email},
+                extra={"study": study, "ppm_id": ppm_id, "email": email},
             )
 
         return participant
 
     @staticmethod
-    def _flatten_asd_participant(bundle, ppm_id):
+    def _flatten_asd_participant(bundle, ppm_id, eligibility_questionnaire_id=None, questionnaire_ids=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -4468,6 +4902,10 @@ class FHIR(PPM.Service):
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
+        :param questionnaire_ids: A list of the study questionnaires to include
+        :type questionnaire_ids: list, defaults to None
         :returns: A tuple of properties for the root participant object, and for
         the study sub-object
         :rtype: dict, dict
@@ -4478,13 +4916,29 @@ class FHIR(PPM.Service):
         values = {}
         study_values = {}
 
-        # TODO: Implement this
-        logger.warning(f"PPM/ASD/{ppm_id}/FHIR: Flattening ASD participant needs to be fully implemented")
+        # Initially none
+        values["consent_quiz"] = None
+        values["consent_quiz_answers"] = None
+
+        # Check if they've even consented
+        composition = FHIR.flatten_consent_composition(bundle)
+        if composition:
+
+            # Get the Questionnaire ID used for the quiz portion of the consent
+            quiz_id = PPM.Questionnaire.questionnaire_for_consent(composition)
+
+            # Flatten the Q's and A's for output
+            quiz = FHIR.flatten_questionnaire_response(bundle, quiz_id)
+            if quiz:
+
+                # Add it
+                values["consent_quiz"] = quiz
+                values["consent_quiz_answers"] = FHIR.questionnaire_answers(bundle, quiz_id)
 
         return values, study_values
 
     @staticmethod
-    def _flatten_neer_participant(bundle, ppm_id):
+    def _flatten_neer_participant(bundle, ppm_id, eligibility_questionnaire_id=None, questionnaire_ids=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -4495,6 +4949,10 @@ class FHIR(PPM.Service):
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
+        :param questionnaire_ids: A list of the study questionnaires to include
+        :type questionnaire_ids: list, defaults to None
         :returns: A tuple of properties for the root participant object, and for
         the study sub-object
         :rtype: dict, dict
@@ -4610,7 +5068,7 @@ class FHIR(PPM.Service):
         return values, study_values
 
     @staticmethod
-    def _flatten_rant_participant(bundle, ppm_id):
+    def _flatten_rant_participant(bundle, ppm_id, eligibility_questionnaire_id=None, questionnaire_ids=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -4621,6 +5079,10 @@ class FHIR(PPM.Service):
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
+        :param questionnaire_ids: A list of the study questionnaires to include
+        :type questionnaire_ids: list, defaults to None
         :returns: A tuple of properties for the root participant object, and for
         the study sub-object
         :rtype: dict, dict
@@ -4641,7 +5103,9 @@ class FHIR(PPM.Service):
             ),
             None,
         )
-        if questionnaire_response:
+
+        # Check if it exists and actually has data to parse
+        if questionnaire_response and questionnaire_response.get("item"):
 
             # Set a list
             values["points_of_care"] = []
@@ -4757,7 +5221,7 @@ class FHIR(PPM.Service):
         return values, study_values
 
     @staticmethod
-    def _flatten_example_participant(bundle, ppm_id):
+    def _flatten_example_participant(bundle, ppm_id, eligibility_questionnaire_id=None, questionnaire_ids=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -4768,6 +5232,10 @@ class FHIR(PPM.Service):
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
+        :param questionnaire_ids: A list of the study questionnaires to include
+        :type questionnaire_ids: list, defaults to None
         :returns: A tuple of properties for the root participant object, and for
         the study sub-object
         :rtype: dict, dict
@@ -4787,19 +5255,19 @@ class FHIR(PPM.Service):
             ),
             None,
         )
-        if questionnaire_response:
+        if questionnaire_response and questionnaire_response.get("item"):
             logger.debug(f"PPM/{ppm_id}/FHIR: Flattening QuestionnaireResponse/" f'{questionnaire_response["id"]}')
 
             # Map linkIds to keys
             text_answers = {
-                "question-12": "diagnosis",
-                "question-24": "pcp",
-                "question-25": "oncologist",
+                "question-8": "diagnosis",
+                "question-20": "pcp",
+                "question-21": "oncologist",
             }
 
             date_answers = {
-                "question-5": "birthdate",
-                "question-14": "date_diagnosis",
+                "question-1": "birthdate",
+                "question-10": "date_diagnosis",
             }
 
             # Iterate items
@@ -4880,7 +5348,209 @@ class FHIR(PPM.Service):
                     # Assign default value
                     study_values[key] = "---"
 
+        # Check for points of care questionnaire
+        questionnaire_response = next(
+            (
+                q
+                for q in FHIR._find_resources(bundle, "QuestionnaireResponse")
+                if q["questionnaire"]["reference"]
+                == f"Questionnaire/{PPM.Questionnaire.EXAMPLEPointsOfCareQuestionnaire.value}"
+            ),
+            None,
+        )
+        if questionnaire_response and questionnaire_response.get("item"):
+
+            # Set a list
+            values["points_of_care"] = []
+
+            # Parse answers
+            diagnosing_name = next(
+                (
+                    next(a["valueString"] for a in i["answer"])
+                    for i in questionnaire_response["item"]
+                    if i["linkId"] == "question-1"
+                ),
+                None,
+            )
+            diagnosing_address = next(
+                (
+                    next(a["valueString"] for a in i["answer"])
+                    for i in questionnaire_response["item"]
+                    if i["linkId"] == "question-2"
+                ),
+                None,
+            )
+            diagnosing_phone = next(
+                (
+                    next(a["valueString"] for a in i["answer"])
+                    for i in questionnaire_response["item"]
+                    if i["linkId"] == "question-3"
+                ),
+                None,
+            )
+
+            # Add it.
+            values["points_of_care"].append(f"{diagnosing_name}, {diagnosing_phone}, {diagnosing_address}")
+
+            # Check for another
+            if (
+                next(
+                    (
+                        next(a["valueString"] for a in i["answer"])
+                        for i in questionnaire_response["item"]
+                        if i["linkId"] == "question-4"
+                    ),
+                    "",
+                )
+                == "No"
+            ):
+
+                # Parse answers
+                current_name = next(
+                    (
+                        next(a["valueString"] for a in i["answer"])
+                        for i in questionnaire_response["item"]
+                        if i["linkId"] == "question-5"
+                    ),
+                    None,
+                )
+                current_address = next(
+                    (
+                        next(a["valueString"] for a in i["answer"])
+                        for i in questionnaire_response["item"]
+                        if i["linkId"] == "question-6"
+                    ),
+                    None,
+                )
+                current_phone = next(
+                    (
+                        next(a["valueString"] for a in i["answer"])
+                        for i in questionnaire_response["item"]
+                        if i["linkId"] == "question-7"
+                    ),
+                    None,
+                )
+
+                # Add it.
+                values["points_of_care"].append(f"{current_name}, {current_phone}, {current_address}")
+
+            # Get remaining RA places
+            additional_ra_points_of_care = next(
+                (
+                    next(a["valueString"] for a in i["answer"])
+                    for i in questionnaire_response["item"]
+                    if i["linkId"] == "question-8"
+                ),
+                None,
+            )
+            if additional_ra_points_of_care:
+                values["points_of_care"].append(additional_ra_points_of_care)
+
+            # Check for another
+            if (
+                next(
+                    (
+                        next(a["valueString"] for a in i["answer"])
+                        for i in questionnaire_response["item"]
+                        if i["linkId"] == "question-9"
+                    ),
+                    "",
+                )
+                == "Yes"
+            ):
+
+                # Get remaining places
+                additional_points_of_care = next(
+                    (
+                        next(a["valueString"] for a in i["answer"])
+                        for i in questionnaire_response["item"]
+                        if i["linkId"] == "question-10"
+                    ),
+                    None,
+                )
+                if additional_points_of_care:
+                    values["points_of_care"].append(additional_points_of_care)
+
         return values, study_values
+
+    @staticmethod
+    def get_questionnaire_response_item_value(questionnaire_response, link_id):
+        """
+        Returns the value for the given questionnaire response and link ID.
+
+        :param questionnaire_response: The QuestionnaireResponse resource to check
+        :type questionnaire_response: dict
+        :param link_id: The link ID of the item's value to return
+        :type link_id: str
+        :return: The value object
+        :rtype: object
+        """
+        questionnaire_response_id = answer = None
+        try:
+            # Get ID
+            questionnaire_response_id = questionnaire_response["id"]
+
+            # Get the item
+            answer = next(
+                (next(a for a in i["answer"]) for i in questionnaire_response["item"] if i["linkId"] == link_id),
+                None,
+            )
+
+            # If answer, parse answer
+            if not answer:
+                logger.debug(
+                    f"PPM/FHIR/QuestionnaireResponse/{questionnaire_response_id}: " f"No answer for item {link_id}"
+                )
+                return None
+
+            # Check types
+            if answer.get("valueString"):
+                return answer["valueString"]
+            elif answer.get("valueBoolean"):
+                return answer["valueBoolean"]
+            elif answer.get("valueInteger"):
+                return answer["valueInteger"]
+            elif answer.get("valueDecimal"):
+                return answer["valueDecimal"]
+            elif answer.get("valueDate"):
+                try:
+                    return parse(answer["valueDate"])
+                except ValueError as e:
+                    logger.exception(
+                        f"PPM/FHIR: Date error: {e}",
+                        exc_info=True,
+                        extra={
+                            "questionnaire_response": questionnaire_response_id,
+                            "link_id": link_id,
+                            "answer": answer,
+                        },
+                    )
+            elif answer.get("valueDateTime"):
+                try:
+                    return parse(answer["valueDateTime"])
+                except ValueError as e:
+                    logger.exception(
+                        f"PPM/FHIR: Date error: {e}",
+                        exc_info=True,
+                        extra={
+                            "questionnaire_response": questionnaire_response_id,
+                            "link_id": link_id,
+                            "answer": answer,
+                        },
+                    )
+            else:
+                raise ValueError(f"Unhandled FHIR answer type: {answer}")
+
+        except Exception as e:
+            logger.exception(
+                f"PPM/FHIR: Error getting item value: {e}",
+                exc_info=True,
+                extra={
+                    "questionnaire_response": questionnaire_response_id,
+                    "link_id": link_id,
+                    "answer": answer,
+                },
+            )
 
     @staticmethod
     def flatten_questionnaire_response(bundle_dict, questionnaire_id):
@@ -4892,6 +5562,7 @@ class FHIR(PPM.Service):
         :param questionnaire_id: The ID of the Questionnaire to parse for
         :return: dict
         """
+        logger.debug(f"PPM/FHIR: Flattening {questionnaire_id}")
 
         # Build the bundle
         bundle = Bundle(bundle_dict)
@@ -4913,167 +5584,178 @@ class FHIR(PPM.Service):
 
         # Ensure resources exist
         if not questionnaire or not questionnaire_response:
-            logger.debug("User has no responses for Questionnaire/{}, returning".format(questionnaire_id))
+            logger.debug(f"PPM/FHIR: No response for Questionnaire/{questionnaire_id}")
             return None
 
-        # Get questions and answers
-        questions = FHIR._questions(questionnaire.item)
-        answers = FHIR._answers(questionnaire_response.item)
+        # If no items, return empty
+        if questionnaire_response.item:
 
-        # Process sub-questions first
-        for linkId, condition in {
-            linkId: condition for linkId, condition in questions.items() if type(condition) is dict
-        }.items():
-            try:
-                # Assume only one condition, fetch the parent question linkId
-                parent = next(iter(condition))
-                if not parent:
-                    logger.warning(
-                        "FHIR Error: Subquestion not properly specified: {}:{}".format(linkId, condition),
-                        extra={
-                            "questionnaire": questionnaire_id,
-                            "ppm_id": questionnaire_response.source,
-                            "questionnaire_response": questionnaire_response.id,
-                        },
-                    )
-                    continue
+            # Get questions and answers
+            questions = FHIR._questions(questionnaire.item)
+            answers = FHIR._answers(questionnaire_response.item)
 
-                if len(condition) > 1:
-                    logger.warning(
-                        "FHIR Error: Subquestion has multiple conditions: {}:{}".format(linkId, condition),
-                        extra={
-                            "questionnaire": questionnaire_id,
-                            "ppm_id": questionnaire_response.source,
-                            "questionnaire_response": questionnaire_response.id,
-                        },
-                    )
-
-                # Ensure they've answered this one
-                if not answers.get(parent) or condition[parent] not in answers.get(parent):
-                    continue
-
-                # Get the question and answer item
-                answer = answers[parent]
-                index = answer.index(condition[parent])
-
-                # Check for commas
-                sub_answers = answers[linkId]
-                if "," in next(iter(sub_answers)):
-
-                    # Split it
-                    sub_answers = [sub.strip() for sub in next(iter(sub_answers)).split(",")]
-
-                # Format them
-                value = '{} <span class="label label-primary">{}</span>'.format(
-                    answer[index],
-                    '</span>&nbsp;<span class="label label-primary">'.join(sub_answers),
-                )
-
-                # Append the value
-                answer[index] = mark_safe(value)
-
-            except Exception as e:
-                logger.exception(
-                    "FHIR error: {}".format(e),
-                    exc_info=True,
-                    extra={
-                        "questionnaire": questionnaire_id,
-                        "link_id": linkId,
-                        "ppm_id": questionnaire_response.source,
-                    },
-                )
-
-        # Build the response
-        response = collections.OrderedDict()
-
-        # Determine index
-        indices = FHIR.get_answer_indices(questionnaire, questions)
-        for linkId, question in questions.items():
-
-            # Check for the answer
-            answer = answers.get(linkId)
-            if not answer:
-
-                # Check if group or in a repeating group
-                item = FHIR.find_questionnaire_item(questionnaire.item, linkId)
-
-                # Skip repeating groups, those are handled below
-                if FHIR.get_questionnaire_repeating_group(questionnaire, linkId):
-                    # If it's in a repeating group with no answer, then the
-                    # group should be hidden
-                    continue
-
-                elif item.type == "group" and item.item:
-
-                    # This is a header
-                    answer = []
-
-                # Check if dependent and enabled
-                elif FHIR.question_is_conditionally_enabled(
-                    questionnaire, linkId
-                ) and not FHIR.questionnaire_response_is_enabled(questionnaire, questionnaire_response, linkId):
-
-                    # If it's a sub-question, hide it
-                    if re.match(r"question\-[\d]+\-[\d]+", linkId):
-                        continue
-
-                    # Else, show it as unanswered
-                    else:
-                        answer = [mark_safe('<span class="label label-info">N/A</span>')]
-
-                else:
-                    # Set a default answer
-                    answer = [mark_safe('<span class="label label-warning">N/A</span>')]
-
-                    # Check if dependent and was enabled (or should have an answer but doesn't)
-                    if FHIR.questionnaire_response_is_required(questionnaire, questionnaire_response, linkId):
-                        logger.error(
-                            f"FHIR Questionnaire: No answer found for {linkId}",
+            # Process sub-questions first
+            for linkId, condition in {
+                linkId: condition for linkId, condition in questions.items() if type(condition) is dict
+            }.items():
+                try:
+                    # Assume only one condition, fetch the parent question linkId
+                    parent = next(iter(condition))
+                    if not parent:
+                        logger.warning(
+                            "FHIR Error: Subquestion not properly specified: {}:{}".format(linkId, condition),
                             extra={
                                 "questionnaire": questionnaire_id,
-                                "link_id": linkId,
                                 "ppm_id": questionnaire_response.source,
+                                "questionnaire_response": questionnaire_response.id,
+                            },
+                        )
+                        continue
+
+                    if len(condition) > 1:
+                        logger.warning(
+                            "FHIR Error: Subquestion has multiple conditions: {}:{}".format(linkId, condition),
+                            extra={
+                                "questionnaire": questionnaire_id,
+                                "ppm_id": questionnaire_response.source,
+                                "questionnaire_response": questionnaire_response.id,
                             },
                         )
 
-            # Format the question text
-            text = "{} {}".format(indices.get(linkId), question)
+                    # Ensure they've answered this one
+                    if not answers.get(parent) or condition[parent] not in answers.get(parent):
+                        continue
 
-            # Add the answer
-            response[text] = answer
+                    # Get the question and answer item
+                    answer = answers[parent]
+                    index = answer.index(condition[parent])
 
-        # Get repeating groups
-        groups = [i for i in questionnaire_response.item if i.answer and next(iter(i.answer)).item]
-        for group in groups:
+                    # Check for commas
+                    sub_answers = answers[linkId]
+                    if "," in next(iter(sub_answers)):
 
-            # Parse answers
-            for group_answer in group.answer:
+                        # Split it
+                        sub_answers = [sub.strip() for sub in next(iter(sub_answers)).split(",")]
 
-                # Parse answers
-                group_answers = FHIR._answers(group_answer.item)
+                    # Format them
+                    value = '{} <span class="label label-primary">{}</span>'.format(
+                        answer[index],
+                        '</span>&nbsp;<span class="label label-primary">'.join(sub_answers),
+                    )
 
-                # Set a header
-                response[f"Response #{group_answer.valueInteger}"] = []
+                    # Append the value
+                    answer[index] = mark_safe(value)
 
-                for linkId, question in questions.items():
+                except Exception as e:
+                    logger.exception(
+                        "FHIR error: {}".format(e),
+                        exc_info=True,
+                        extra={
+                            "questionnaire": questionnaire_id,
+                            "link_id": linkId,
+                            "ppm_id": questionnaire_response.source,
+                        },
+                    )
 
-                    # Check for the answer
-                    answer = group_answers.get(linkId)
-                    if not answer:
+            # Build the response
+            response = collections.OrderedDict()
 
-                        # Skip if not in this group
-                        if not FHIR.get_questionnaire_repeating_group(questionnaire, linkId):
+            # Determine index
+            indices = FHIR.get_answer_indices(questionnaire, questions)
+            for linkId, question in questions.items():
+
+                # Check for the answer
+                answer = answers.get(linkId)
+                if not answer:
+
+                    # Check if group or in a repeating group
+                    item = FHIR.find_questionnaire_item(questionnaire.item, linkId)
+
+                    # Skip repeating groups, those are handled below
+                    if FHIR.get_questionnaire_repeating_group(questionnaire, linkId):
+                        # If it's in a repeating group with no answer, then the
+                        # group should be hidden
+                        continue
+
+                    elif item.type == "group" and item.item:
+
+                        # This is a header
+                        answer = []
+
+                    # Check if dependent and enabled
+                    elif FHIR.question_is_conditionally_enabled(
+                        questionnaire, linkId
+                    ) and not FHIR.questionnaire_response_is_enabled(questionnaire, questionnaire_response, linkId):
+
+                        # If it's a sub-question, hide it
+                        if re.match(r"question\-[\d]+\-[\d]+", linkId):
                             continue
 
+                        # Else, show it as unanswered
                         else:
-                            # Set as unanswered
                             answer = [mark_safe('<span class="label label-info">N/A</span>')]
 
-                    # Format the question text
-                    text = "{}| {} {}".format(group_answer.valueInteger, indices.get(linkId), question)
+                    else:
+                        # Set a default answer
+                        answer = [mark_safe('<span class="label label-warning">N/A</span>')]
 
-                    # Add the answer
-                    response[text] = answer
+                        # Check if dependent and was enabled (or should have an answer but doesn't)
+                        if FHIR.questionnaire_response_is_required(questionnaire, questionnaire_response, linkId):
+                            logger.error(
+                                f"FHIR Questionnaire: No answer found for {linkId}",
+                                extra={
+                                    "questionnaire": questionnaire_id,
+                                    "link_id": linkId,
+                                    "ppm_id": questionnaire_response.source,
+                                },
+                            )
+
+                # Format the question text
+                text = "{} {}".format(indices.get(linkId), question)
+
+                # Add the answer
+                response[text] = answer
+
+            # Get repeating groups
+            groups = [i for i in questionnaire_response.item if i.answer and next(iter(i.answer)).item]
+            for group in groups:
+
+                # Parse answers
+                for group_answer in group.answer:
+
+                    # Parse answers
+                    group_answers = FHIR._answers(group_answer.item)
+
+                    # Set a header
+                    response[f"Response #{group_answer.valueInteger}"] = []
+
+                    for linkId, question in questions.items():
+
+                        # Check for the answer
+                        answer = group_answers.get(linkId)
+                        if not answer:
+
+                            # Skip if not in this group
+                            if not FHIR.get_questionnaire_repeating_group(questionnaire, linkId):
+                                continue
+
+                            else:
+                                # Set as unanswered
+                                answer = [mark_safe('<span class="label label-info">N/A</span>')]
+
+                        # Format the question text
+                        text = "{}| {} {}".format(group_answer.valueInteger, indices.get(linkId), question)
+
+                        # Add the answer
+                        response[text] = answer
+
+        else:
+            # Set an empty response
+            response = {}
+            logger.warning(
+                f"PPM/FHIR: Empty QuestionnaireResponse/"
+                f"{questionnaire_response.id} for Questionnaire/{questionnaire_id}"
+            )
 
         # Add the date that the questionnaire was completed
         authored_date = questionnaire_response.authored.origval
@@ -6309,6 +6991,9 @@ class FHIR(PPM.Service):
                     "text": status.title(),
                 },
                 "subject": {"reference": patient_ref},
+                # TODO: Include the study in this conditional once PPM needs
+                # to support participants with multiple studies
+                # "encounter": {"reference": f"ResearchStudy/{PPM.Study.fhir_id(study)}"}
             }
 
             # Set dates if specified.
@@ -6518,7 +7203,7 @@ class FHIR(PPM.Service):
                 )
 
             if form.get("how_did_you_hear_about_us"):
-                logger.debug('Adding "How did you hear about is"')
+                logger.debug('Adding "How did you hear about us"')
                 patient_data["extension"] = [
                     {
                         "url": FHIR.referral_extension_url,

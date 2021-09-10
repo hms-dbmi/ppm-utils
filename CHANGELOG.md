@@ -1,6 +1,61 @@
 # Changelog
 
-<!--next-version-placeholder-->
+# [0.13.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.12.1...v0.13.0) (2021-09-10)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-705 - Fixed bug where empty QuestionnaireResponse resources would fail parsing ([e4c12c4](https://github.com/hms-dbmi/ppm-utils/commit/e4c12c4fab842ab63264f9c7ca165148a4af865c))
+* **fhir:** PPM-705 - Pass all questionnaire IDs through to study-specific parsing methods ([3863933](https://github.com/hms-dbmi/ppm-utils/commit/38639337c1c68930d6c54a7cf33df6cc58f23d92))
+* **p2md:** PPM-705 - Removed extraneous logging statement ([a777db7](https://github.com/hms-dbmi/ppm-utils/commit/a777db74f9e0b94e01a3e41037a604a836fd42a5))
+
+
+### Features
+
+* **fhir:** PPM-705 - Refactored how to pass study Survey/Questionnaires into Participant parsing ([32f12e1](https://github.com/hms-dbmi/ppm-utils/commit/32f12e1684670f43aa08ea81f596b1e646c7eaf6))
+
+## [0.12.1](https://github.com/hms-dbmi/ppm-utils/compare/v0.12.0...v0.12.1) (2021-09-02)
+
+
+### Bug Fixes
+
+* **ppm:** PPM-711 - Fixed EXAMPLE's questionnaire ID ([d2a6cd4](https://github.com/hms-dbmi/ppm-utils/commit/d2a6cd442a1376d973713deb7f74af1678d8616f))
+
+# [0.12.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.11.1...v0.12.0) (2021-09-01)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-711 - Added a method for updating QuestionnaireResponses ([8e541bb](https://github.com/hms-dbmi/ppm-utils/commit/8e541bb46de14ad400487aa9efa2fe92d005d9c1))
+* **fhir:** PPM-711 - Fixed method bug if resource could not be found ([91e740b](https://github.com/hms-dbmi/ppm-utils/commit/91e740b391848d8be03554d3f1adffddb71b32a0))
+* **fhir/p2md:** PPM-711 - Set RANT eligibility questionnaire to Qualtrics survey; made QuestionnaireResponse placeholders possible for Qualtrics surveys ([108d295](https://github.com/hms-dbmi/ppm-utils/commit/108d2951895a183f2ccd68f5d46b836f10f81ea9))
+
+
+### Features
+
+* **fhir:** PPM-711 - Added a generic create method ([b878248](https://github.com/hms-dbmi/ppm-utils/commit/b87824834433c4024062446efab20e36fcf2ec59))
+
+## [0.11.1](https://github.com/hms-dbmi/ppm-utils/compare/v0.11.0...v0.11.1) (2021-08-03)
+
+
+### Bug Fixes
+
+* **ppm:** PPM-709 - Undo change of RANT registration questionnaire FHIR ID ([9d27ecd](https://github.com/hms-dbmi/ppm-utils/commit/9d27ecdedb5948154fab06a5f4cfa47dfb3b93db))
+
+# [0.11.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.10.2...v0.11.0) (2021-08-03)
+
+
+### Features
+
+* **ppm/fhir:** PPM-709 - Questionnaire processing is more dynamic; initial efforts to allow a single participant in multiple studies ([5a8b980](https://github.com/hms-dbmi/ppm-utils/commit/5a8b980be8080dd7d65fe425fbc878dd10f8252c))
+
+## [0.10.2](https://github.com/hms-dbmi/ppm-utils/compare/v0.10.1...v0.10.2) (2021-07-16)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-707 - Improved core resource creation to avoid duplicates; improved logging of FHIR Transaction results ([5be78f2](https://github.com/hms-dbmi/ppm-utils/commit/5be78f2a483fb1df160618164d7c6e0640e1ca15))
+
 
 # [1.0.0-beta.8](https://github.com/hms-dbmi/ppm-utils/compare/v1.0.0-beta.7...v1.0.0-beta.8) (2021-06-30)
 
