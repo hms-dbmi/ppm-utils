@@ -4829,7 +4829,10 @@ class FHIR:
 
                 # Run it
                 values, study_values = getattr(FHIR, f"_flatten_{study}_participant")(
-                    bundle=bundle, ppm_id=ppm_id, questionnaire_ids=questionnaire_ids
+                    bundle=bundle,
+                    ppm_id=ppm_id,
+                    eligibility_questionnaire_id=eligibility_questionnaire_id,
+                    questionnaire_ids=questionnaire_ids,
                 )
 
                 # Set them
@@ -4846,7 +4849,7 @@ class FHIR:
         return participant
 
     @staticmethod
-    def _flatten_asd_participant(bundle, ppm_id, questionnaire_ids=None):
+    def _flatten_asd_participant(bundle, ppm_id, eligibility_questionnaire_id=None, questionnaire_ids=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -4857,6 +4860,8 @@ class FHIR:
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
         :param questionnaire_ids: A list of the study questionnaires to include
         :type questionnaire_ids: list, defaults to None
         :returns: A tuple of properties for the root participant object, and for
@@ -4891,7 +4896,7 @@ class FHIR:
         return values, study_values
 
     @staticmethod
-    def _flatten_neer_participant(bundle, ppm_id, questionnaire_ids=None):
+    def _flatten_neer_participant(bundle, ppm_id, eligibility_questionnaire_id=None, questionnaire_ids=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -4902,6 +4907,8 @@ class FHIR:
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
         :param questionnaire_ids: A list of the study questionnaires to include
         :type questionnaire_ids: list, defaults to None
         :returns: A tuple of properties for the root participant object, and for
@@ -5019,7 +5026,7 @@ class FHIR:
         return values, study_values
 
     @staticmethod
-    def _flatten_rant_participant(bundle, ppm_id, questionnaire_ids=None):
+    def _flatten_rant_participant(bundle, ppm_id, eligibility_questionnaire_id=None, questionnaire_ids=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -5030,6 +5037,8 @@ class FHIR:
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
         :param questionnaire_ids: A list of the study questionnaires to include
         :type questionnaire_ids: list, defaults to None
         :returns: A tuple of properties for the root participant object, and for
@@ -5170,7 +5179,7 @@ class FHIR:
         return values, study_values
 
     @staticmethod
-    def _flatten_example_participant(bundle, ppm_id, questionnaire_ids=None):
+    def _flatten_example_participant(bundle, ppm_id, eligibility_questionnaire_id=None, questionnaire_ids=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -5181,6 +5190,8 @@ class FHIR:
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
+        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
+        :type eligibility_questionnaire_id: str, defaults to None
         :param questionnaire_ids: A list of the study questionnaires to include
         :type questionnaire_ids: list, defaults to None
         :returns: A tuple of properties for the root participant object, and for
