@@ -1,3 +1,17 @@
+# [0.13.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.12.1...v0.13.0) (2021-09-10)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-705 - Fixed bug where empty QuestionnaireResponse resources would fail parsing ([e4c12c4](https://github.com/hms-dbmi/ppm-utils/commit/e4c12c4fab842ab63264f9c7ca165148a4af865c))
+* **fhir:** PPM-705 - Pass all questionnaire IDs through to study-specific parsing methods ([3863933](https://github.com/hms-dbmi/ppm-utils/commit/38639337c1c68930d6c54a7cf33df6cc58f23d92))
+* **p2md:** PPM-705 - Removed extraneous logging statement ([a777db7](https://github.com/hms-dbmi/ppm-utils/commit/a777db74f9e0b94e01a3e41037a604a836fd42a5))
+
+
+### Features
+
+* **fhir:** PPM-705 - Refactored how to pass study Survey/Questionnaires into Participant parsing ([32f12e1](https://github.com/hms-dbmi/ppm-utils/commit/32f12e1684670f43aa08ea81f596b1e646c7eaf6))
+
 ## [0.12.1](https://github.com/hms-dbmi/ppm-utils/compare/v0.12.0...v0.12.1) (2021-09-02)
 
 
