@@ -446,6 +446,31 @@ class P2MD(PPM.Service):
         return cls.delete(request, f"/sources/api/consent/{study}/{ppm_id}", data)
 
     @classmethod
+    def get_study_questionnaires(cls, request, study):
+        """
+        Make a request to P2MD to get questionnaires for the current study.
+        This returns a tuple of eligibility questionnaire ID, if any, and a
+        list of questionnaire IDs, if any.
+
+        :param request: The current request
+        :type request: HttpRequest
+        :param study: The study for which the surveys should be returned
+        :type study: str
+        :returns: A tuple of eligibility questionnaire ID and other questionnaire IDs
+        :rtype: str, list
+        """
+        # Get surveys
+        surveys = P2MD.get_qualtrics_surveys(request, study=study)
+        questionnaire_ids = [s["questionnaire_id"] for s in surveys if s.get("questionnaire_id")]
+        eligibility_questionnaire_id = next((s["questionnaire_id"] for s in surveys if s.get("eligibility_for")), None)
+
+        # Ensure the eligibility does not appear twice
+        if eligibility_questionnaire_id and eligibility_questionnaire_id in questionnaire_ids:
+            questionnaire_ids.remove(eligibility_questionnaire_id)
+
+        return eligibility_questionnaire_id, questionnaire_ids
+
+    @classmethod
     def get_qualtrics_surveys(cls, request, study):
         """
         Make a request to P2MD to get available Qualtrics surveys that
