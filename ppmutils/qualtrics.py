@@ -675,11 +675,8 @@ class Qualtrics:
 
                 else:
                     # Filter values to those for this block/group
-                    values = {
-                        k: v
-                        for k, v in response["values"].items()
-                        if re.match(rf"^({'|'.join(question_ids)}[^\d]?)", k)
-                    }
+                    pattern = rf"^({'|'.join(question_ids)})(?![S\d])"
+                    values = {k: v for k, v in response["values"].items() if re.match(pattern, k)}
                     if not values:
                         logger.warning(f"PPM/FHIR/Qualtrics: Cannot find values for '{block_id}/{question_ids}'")
                         continue
@@ -812,7 +809,8 @@ class Qualtrics:
 
                 else:
                     logger.error(
-                        f"PPM/Questionnaire: Unhandled singular hot spot Qualtrics " f"answer item: {key} = {value}"
+                        f"PPM/QuestionnaireResponse/{key}: Unhandled "
+                        f"singular hot spot Qualtrics answer item: {value}"
                     )
                     return None
 
@@ -848,7 +846,7 @@ class Qualtrics:
 
                     else:
                         logger.error(
-                            f"PPM/Questionnaire: Unhandled drill down Qualtrics " f"answer item: {key} = {value}"
+                            f"PPM/QuestionnaireResponse/{key}: Unhandled " f"drill down Qualtrics answer item: {value}"
                         )
                         return None
 
@@ -871,8 +869,20 @@ class Qualtrics:
             # This is a multiple-choice scale, multiple answer question (matrix)
             elif question_type == "MC" and type(value) is list:
 
-                # Index to a list of options
-                value_list = response["labels"].get(key)
+                # If the answer is empty but this is a forced response, it's likely that this question has
+                # a "None of the above" option and that's what was selected. Qualtrics just returns an empty
+                # response in this instance.
+                none_of_the_above = next(
+                    (v["choiceText"] for k, v in question["choices"].items() if v.get("analyze") is False), None
+                )
+                if len(value) == 0 and question.get("validation", {}).get("doesForceResponse") and none_of_the_above:
+
+                    # Use that answer
+                    value_list = [none_of_the_above]
+
+                else:
+                    # Index to a list of options
+                    value_list = response["labels"].get(key)
 
                 # Set link ID for sub question
                 if q_subid:
@@ -898,19 +908,31 @@ class Qualtrics:
 
             else:
                 logger.error(
-                    f"PPM/Questionnaire: Unhandled Qualtrics "
-                    f"answer item: {key} = {value} ({q_id}/"
+                    f"PPM/QuestionnaireResponse/{key}: Unhandled Qualtrics "
+                    f"answer item: {value} ({q_id}/"
                     f"{q_subid}/{q_type})"
                 )
 
         except (IndexError, ValueError, KeyError, TypeError) as e:
             logger.exception(
-                f"PPM/Questionnaire: Unhandled Qualtrics " f"answer item: {key}: {e}",
+                f"PPM/QuestionnaireResponse/{key}: Unhandled " f" Qualtrics answer item: {key}: {e}",
                 exc_info=True,
             )
 
         # Check
-        if not link_id or not answer:
+        if not link_id:
+            logger.debug(
+                f"Qualtrics/QuestionnaireResponse/{key}:" f"Ignoring Qualtrics response answer item due to no link ID"
+            )
+            return None
+
+        # Check answer
+        if answer is None:
+            logger.debug(
+                f"Qualtrics/QuestionnaireResponse/{key}:"
+                f"Ignoring Qualtrics response due to no answer: "
+                f"{value} = {answer}"
+            )
             return None
 
         # Return response after formatting answer
