@@ -5447,8 +5447,10 @@ class FHIR:
         if questionnaire_response.item:
 
             # Get questions and answers
-            questions = FHIR._questions(questionnaire.item)
-            answers = FHIR._answers(questionnaire_response.item)
+            questions = FHIR.questionnaire_questions(questionnaire, questionnaire.item)
+            answers = FHIR.questionnaire_response_answers(
+                questionnaire, questionnaire_response, questionnaire_response.item
+            )
 
             # Process sub-questions first
             for linkId, condition in {
@@ -5580,7 +5582,9 @@ class FHIR:
                 for group_answer in group.answer:
 
                     # Parse answers
-                    group_answers = FHIR._answers(group_answer.item)
+                    group_answers = FHIR.questionnaire_response_answers(
+                        questionnaire, questionnaire_response, group_answer.item
+                    )
 
                     # Set a header
                     response[f"Response #{group_answer.valueInteger}"] = []
@@ -5943,6 +5947,9 @@ class FHIR:
                 elif enable_when.answerInteger is not None:
                     if enable_when.answerInteger not in answer:
                         return False
+                elif enable_when.answerDecimal is not None:
+                    if enable_when.answerDecimal not in answer:
+                        return False
                 else:
                     logger.error(f"PPM/FHIR: Unhandled enableWhen answer type: {enable_when.as_json()}")
                     return False
@@ -5988,7 +5995,23 @@ class FHIR:
         return True
 
     @staticmethod
-    def _questions(items):
+    def questionnaire_questions(questionnaire, items):
+        """
+        This accepts a questionnaire resource and a specific
+        item from the questionnaire and returns a dictionary of
+        question linkIds mapped to parsed question texts from the
+        questionnaire. will recurse into subitems and add them to the
+        mapping, although the mapping will be flat.
+
+        :param questionnaire: The FHIR Questionnaire resource
+        :type questionnaire: Questionnaire
+        :param questionnaire_response: The FHIR QuestionnaireResponse resource
+        :type questionnaire_response: QuestionnaireResponse
+        :param items: The FHIR QuestionnaireResponseItem items list
+        :type items: list
+        :return: [description]
+        :rtype: [type]
+        """
 
         # Iterate items
         questions = {}
@@ -6001,7 +6024,7 @@ class FHIR:
             elif item.type == "group" and item.item:
 
                 # Get answers
-                sub_questions = FHIR._questions(item.item)
+                sub_questions = FHIR.questionnaire_questions(questionnaire, item.item)
 
                 # Check for text
                 if item.text:
@@ -6034,7 +6057,7 @@ class FHIR:
                 # Check for subtypes
                 if item.item:
                     # Get answers
-                    sub_questions = FHIR._questions(item.item)
+                    sub_questions = FHIR.questionnaire_questions(questionnaire, item.item)
 
                     # Add them
                     questions.update(sub_questions)
@@ -6042,8 +6065,23 @@ class FHIR:
         return questions
 
     @staticmethod
-    def _answers(items):
+    def questionnaire_response_answers(questionnaire, questionnaire_response, items):
+        """
+        This accepts a questionnaire, a questionnaire response and a specific
+        item from the questionnaire response and returns a dictionary of
+        question linkIds mapped to parsed answers from the response. This
+        will recurse into subitems and add them to the mapping, although the
+        mapping will be flat.
 
+        :param questionnaire: The FHIR Questionnaire resource
+        :type questionnaire: Questionnaire
+        :param questionnaire_response: The FHIR QuestionnaireResponse resource
+        :type questionnaire_response: QuestionnaireResponse
+        :param items: The FHIR QuestionnaireResponseItem items list
+        :type items: list
+        :return: [description]
+        :rtype: [type]
+        """
         # Iterate items
         responses = {}
         for item in items:
@@ -6053,11 +6091,23 @@ class FHIR:
 
             # Ensure we've got answers
             if not item.answer:
-                logger.error(
-                    f"FHIR questionnaire error: Missing items for question {item.linkId}",
-                    extra={"link_id": item.linkId},
-                )
-                responses[item.linkId] = ["------"]
+
+                # Check if omitted due to error
+                if FHIR.questionnaire_response_is_required(questionnaire, questionnaire_response, item.linkId):
+                    logger.error(
+                        f"FHIR/QuestionnaireResponse/{item.linkId}: Missing answer item(s) for question item",
+                        extra={
+                            "questionnaire": questionnaire.id,
+                            "questionnaire_response": questionnaire_response.id,
+                            "link_id": item.linkId,
+                        },
+                    )
+
+                    # Set an N/A value
+                    responses[item.linkId] = [mark_safe('<span class="label label-warning">N/A</span>')]
+                else:
+                    # Set an N/A value
+                    responses[item.linkId] = [mark_safe('<span class="label label-info">N/A</span>')]
 
             else:
 
@@ -6079,15 +6129,21 @@ class FHIR:
                         responses[item.linkId].append(answer.valueDateTime.isostring)
 
                     else:
-                        logger.warning(
-                            "Unhandled answer value type: {}".format(answer.as_json()),
-                            extra={"link_id": item.linkId},
+                        logger.error(
+                            f"FHIR/QuestionnaireResponse/{item.linkId}: Unhandled answer value "
+                            f"type: {answer.as_json()}",
+                            extra={
+                                "questionnaire": questionnaire.id,
+                                "questionnaire_response": questionnaire_response.id,
+                                "link_id": item.linkId,
+                                "answer": answer.as_json(),
+                            },
                         )
 
             # Check for subtypes
             if item.item:
                 # Get answers
-                sub_answers = FHIR._answers(item.item)
+                sub_answers = FHIR.questionnaire_response_answers(questionnaire, questionnaire_response, item.item)
 
                 # Add them
                 responses[item.linkId].extend(sub_answers)
