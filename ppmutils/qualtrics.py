@@ -518,7 +518,7 @@ class Qualtrics:
 
             else:
                 logger.error(
-                    "PPM/Questionnaire: Unhandled survey question" f" type {survey_id}/{question_id}: {question_type}"
+                    "PPM/Questionnaire: Unhandled survey question type {survey_id}/{question_id}: {question_type}"
                 )
                 raise ValueError(f"Failed to process survey {survey_id}")
         except Exception as e:
@@ -846,7 +846,7 @@ class Qualtrics:
 
                     else:
                         logger.error(
-                            f"PPM/QuestionnaireResponse/{key}: Unhandled " f"drill down Qualtrics answer item: {value}"
+                            f"PPM/QuestionnaireResponse/{key}: Unhandled drill down Qualtrics answer item: {value}"
                         )
                         return None
 
@@ -915,14 +915,14 @@ class Qualtrics:
 
         except (IndexError, ValueError, KeyError, TypeError) as e:
             logger.exception(
-                f"PPM/QuestionnaireResponse/{key}: Unhandled " f" Qualtrics answer item: {key}: {e}",
+                f"PPM/QuestionnaireResponse/{key}: Unhandled  Qualtrics answer item: {key}: {e}",
                 exc_info=True,
             )
 
         # Check
         if not link_id:
             logger.debug(
-                f"Qualtrics/QuestionnaireResponse/{key}:" f"Ignoring Qualtrics response answer item due to no link ID"
+                f"Qualtrics/QuestionnaireResponse/{key}:Ignoring Qualtrics response answer item due to no link ID"
             )
             return None
 
@@ -1199,7 +1199,7 @@ class Qualtrics:
             # We are only processing BooleanExpressions
             if question["DisplayLogic"]["Type"] != "BooleanExpression":
                 logger.error(
-                    f"PPM/Questionnaire: Unhandled DisplayLogic " f"type {survey_id}/{qid}: {question['DisplayLogic']}"
+                    f"PPM/Questionnaire: Unhandled DisplayLogic type {survey_id}/{qid}: {question['DisplayLogic']}"
                 )
                 raise ValueError(f"Failed to process survey {survey['id']}")
 
@@ -1248,7 +1248,7 @@ class Qualtrics:
                             raise ValueError(f"Failed to process survey {survey['id']}")
 
                 else:
-                    logger.error(f"PPM/Questionnaire: Unhandled DisplayLogic " f"type {survey_id}/{qid}: {expression}")
+                    logger.error(f"PPM/Questionnaire: Unhandled DisplayLogic type {survey_id}/{qid}: {expression}")
                     raise ValueError(f"Failed to process survey {survey['id']}")
 
             # Add enableWhen's if we've got them
@@ -1436,11 +1436,11 @@ class Qualtrics:
                 item["type"] = "display"
 
             else:
-                logger.error("PPM/Questionnaire: Unhandled survey question" f" type {survey_id}/{qid}: {question_type}")
+                logger.error("PPM/Questionnaire: Unhandled survey question type {survey_id}/{qid}: {question_type}")
                 raise ValueError(f"Failed to process survey {survey['id']}")
         except Exception as e:
             logger.exception(
-                f"PPM/FHIR: Error processing question" f" {survey_id}/{qid}: {e}",
+                f"PPM/FHIR: Error processing question {survey_id}/{qid}: {e}",
                 exc_info=True,
                 extra={
                     "survey_id": survey["id"],
