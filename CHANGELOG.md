@@ -1,3 +1,12 @@
+## [0.13.1](https://github.com/hms-dbmi/ppm-utils/compare/v0.13.0...v0.13.1) (2021-09-17)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-722 - Removed unecessary processing of old EXAMPLE eligibility questionnaire ([4b3a982](https://github.com/hms-dbmi/ppm-utils/commit/4b3a982aa65f7cddfa33fc963c415dcf3073ca20))
+* **qualtrics:** PPM-722 - Fixed multiple-choice answers where "None of the Above" was selected; fixed duplicate answer items being added to the same QuestionnaireResponse ([5cebbd8](https://github.com/hms-dbmi/ppm-utils/commit/5cebbd82619b67951355694cbb3ac65447da3946))
+* **qualtrics:** PPM-722 - Removed broken log statements ([c15eec7](https://github.com/hms-dbmi/ppm-utils/commit/c15eec7bc58d6e6cbf7b970158457da454ee7b79))
+
 # [0.13.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.12.1...v0.13.0) (2021-09-10)
 
 
