@@ -29,7 +29,6 @@ from fhirclient.models.coding import Coding
 from fhirclient.models.communication import Communication
 from fhirclient.models.device import Device
 from fhirclient.models.resource import Resource
-from fhirclient.models.questionnaire import Questionnaire
 from fhirclient.models.questionnaireresponse import QuestionnaireResponse
 
 from ppmutils.ppm import PPM
@@ -1346,84 +1345,6 @@ class FHIR:
         logger.debug("Response: {}".format(response.status_code))
 
         return response
-
-    @staticmethod
-    def create_qualtrics_questionnaire(study, questionnaire_id, survey_id, survey, replace=False):
-        """
-        Create a Questionnaire resource created from the Qualtrics
-        survey.
-        :param study: The PPM study for which the survey/questionnaire is related
-        :type study: str
-        :param questionnaire_id: The questionnaire ID to use in FHIR
-        :type questionnaire_id: str
-        :param survey_id: The Qualtrics survey ID
-        :type survey_id: str
-        :param survey: The Qualtrics survey object from the Qualtrics API
-        :type survey: dict
-        :param replace: Whether existing resources should be replaced or not
-        :type replace: bool, defaults to False
-        :return: The result of the operation
-        :rtype: Response
-        """
-        logger.debug("Qualtrics survey: {}".format(survey["id"]))
-
-        # Use the FHIR client lib to validate our resource.
-        questionnaire = Questionnaire(
-            FHIR.Resources.ppm_qualtrics_survey_questionnaire(
-                study=study, questionnaire_id=questionnaire_id, survey_id=survey_id, survey=survey
-            )
-        )
-
-        # Check if exists if not replacing
-        if not replace:
-            questionnaires = FHIR._query_resources(
-                "Questionnaire",
-                query={
-                    "version": questionnaire.version,
-                },
-            )
-            if questionnaires:
-                return next(iter(questionnaires))
-
-        questionnaire_request = BundleEntryRequest(
-            {
-                "url": f"Questionnaire/{questionnaire_id}",
-                "method": "PUT",
-                "ifNoneExist": str(Query({"version:exact": questionnaire.version})),
-            }
-        )
-        questionnaire_entry = BundleEntry()
-        questionnaire_entry.resource = questionnaire
-        questionnaire_entry.request = questionnaire_request
-
-        # Validate it.
-        bundle = Bundle()
-        bundle.entry = [questionnaire_entry]
-        bundle.type = "transaction"
-
-        logger.debug("Creating Questionnaire for Qualtrics: {}".format(survey["id"]))
-
-        try:
-            # Create the organization
-            response = requests.post(PPM.fhir_url(), json=bundle.as_json())
-            logger.debug("Response: {}".format(response.status_code))
-            response.raise_for_status()
-
-            # Parse out created identifiers
-            for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
-                logging.debug(f"FHIR result: {result}")
-
-            return response.json()
-
-        except Exception as e:
-            logger.exception(
-                "PPM/FHIR: Create Questionnaire error: {}".format(e),
-                exc_info=True,
-                extra={
-                    "survey_id": survey["id"],
-                    "questionnaire_version": questionnaire.version,
-                },
-            )
 
     @staticmethod
     def create_research_study(patient_id, research_study_title):
@@ -5447,8 +5368,10 @@ class FHIR:
         if questionnaire_response.item:
 
             # Get questions and answers
-            questions = FHIR._questions(questionnaire.item)
-            answers = FHIR._answers(questionnaire_response.item)
+            questions = FHIR.questionnaire_questions(questionnaire, questionnaire.item)
+            answers = FHIR.questionnaire_response_answers(
+                questionnaire, questionnaire_response, questionnaire_response.item
+            )
 
             # Process sub-questions first
             for linkId, condition in {
@@ -5580,7 +5503,9 @@ class FHIR:
                 for group_answer in group.answer:
 
                     # Parse answers
-                    group_answers = FHIR._answers(group_answer.item)
+                    group_answers = FHIR.questionnaire_response_answers(
+                        questionnaire, questionnaire_response, group_answer.item
+                    )
 
                     # Set a header
                     response[f"Response #{group_answer.valueInteger}"] = []
@@ -5943,6 +5868,9 @@ class FHIR:
                 elif enable_when.answerInteger is not None:
                     if enable_when.answerInteger not in answer:
                         return False
+                elif enable_when.answerDecimal is not None:
+                    if enable_when.answerDecimal not in answer:
+                        return False
                 else:
                     logger.error(f"PPM/FHIR: Unhandled enableWhen answer type: {enable_when.as_json()}")
                     return False
@@ -5988,7 +5916,23 @@ class FHIR:
         return True
 
     @staticmethod
-    def _questions(items):
+    def questionnaire_questions(questionnaire, items):
+        """
+        This accepts a questionnaire resource and a specific
+        item from the questionnaire and returns a dictionary of
+        question linkIds mapped to parsed question texts from the
+        questionnaire. will recurse into subitems and add them to the
+        mapping, although the mapping will be flat.
+
+        :param questionnaire: The FHIR Questionnaire resource
+        :type questionnaire: Questionnaire
+        :param questionnaire_response: The FHIR QuestionnaireResponse resource
+        :type questionnaire_response: QuestionnaireResponse
+        :param items: The FHIR QuestionnaireResponseItem items list
+        :type items: list
+        :return: [description]
+        :rtype: [type]
+        """
 
         # Iterate items
         questions = {}
@@ -6001,7 +5945,7 @@ class FHIR:
             elif item.type == "group" and item.item:
 
                 # Get answers
-                sub_questions = FHIR._questions(item.item)
+                sub_questions = FHIR.questionnaire_questions(questionnaire, item.item)
 
                 # Check for text
                 if item.text:
@@ -6034,7 +5978,7 @@ class FHIR:
                 # Check for subtypes
                 if item.item:
                     # Get answers
-                    sub_questions = FHIR._questions(item.item)
+                    sub_questions = FHIR.questionnaire_questions(questionnaire, item.item)
 
                     # Add them
                     questions.update(sub_questions)
@@ -6042,8 +5986,23 @@ class FHIR:
         return questions
 
     @staticmethod
-    def _answers(items):
+    def questionnaire_response_answers(questionnaire, questionnaire_response, items):
+        """
+        This accepts a questionnaire, a questionnaire response and a specific
+        item from the questionnaire response and returns a dictionary of
+        question linkIds mapped to parsed answers from the response. This
+        will recurse into subitems and add them to the mapping, although the
+        mapping will be flat.
 
+        :param questionnaire: The FHIR Questionnaire resource
+        :type questionnaire: Questionnaire
+        :param questionnaire_response: The FHIR QuestionnaireResponse resource
+        :type questionnaire_response: QuestionnaireResponse
+        :param items: The FHIR QuestionnaireResponseItem items list
+        :type items: list
+        :return: [description]
+        :rtype: [type]
+        """
         # Iterate items
         responses = {}
         for item in items:
@@ -6053,11 +6012,23 @@ class FHIR:
 
             # Ensure we've got answers
             if not item.answer:
-                logger.error(
-                    f"FHIR questionnaire error: Missing items for question {item.linkId}",
-                    extra={"link_id": item.linkId},
-                )
-                responses[item.linkId] = ["------"]
+
+                # Check if omitted due to error
+                if FHIR.questionnaire_response_is_required(questionnaire, questionnaire_response, item.linkId):
+                    logger.error(
+                        f"FHIR/QuestionnaireResponse/{item.linkId}: Missing answer item(s) for question item",
+                        extra={
+                            "questionnaire": questionnaire.id,
+                            "questionnaire_response": questionnaire_response.id,
+                            "link_id": item.linkId,
+                        },
+                    )
+
+                    # Set an N/A value
+                    responses[item.linkId] = [mark_safe('<span class="label label-warning">N/A</span>')]
+                else:
+                    # Set an N/A value
+                    responses[item.linkId] = [mark_safe('<span class="label label-info">N/A</span>')]
 
             else:
 
@@ -6079,15 +6050,21 @@ class FHIR:
                         responses[item.linkId].append(answer.valueDateTime.isostring)
 
                     else:
-                        logger.warning(
-                            "Unhandled answer value type: {}".format(answer.as_json()),
-                            extra={"link_id": item.linkId},
+                        logger.error(
+                            f"FHIR/QuestionnaireResponse/{item.linkId}: Unhandled answer value "
+                            f"type: {answer.as_json()}",
+                            extra={
+                                "questionnaire": questionnaire.id,
+                                "questionnaire_response": questionnaire_response.id,
+                                "link_id": item.linkId,
+                                "answer": answer.as_json(),
+                            },
                         )
 
             # Check for subtypes
             if item.item:
                 # Get answers
-                sub_answers = FHIR._answers(item.item)
+                sub_answers = FHIR.questionnaire_response_answers(questionnaire, questionnaire_response, item.item)
 
                 # Add them
                 responses[item.linkId].extend(sub_answers)
@@ -7085,147 +7062,6 @@ class FHIR:
             Returns a coding resource
             """
             return {"coding": [{"system": system, "code": code}]}
-
-        @staticmethod
-        def ppm_qualtrics_survey_questionnaire(study, questionnaire_id, survey_id, survey):
-            """
-            Returns QuestionnaireResponse resource for a survey taken through
-            Qualtrics. This method requires that Qualtrics question names are
-            matched to the FHIR Questionnaire linkIds.
-
-            :param study: The study for which the questionnaire was given
-            :type study: PPM.Study
-            :param questionnaire_id: The ID for the related FHIR Questionnaire
-            :type questionnaire_id: str
-            :param survey_id: The ID of the Qualtrics survey
-            :type survey_id: str
-            :param survey: The survey object from Qualtrics
-            :type survey: dict
-            :return: The QuestionnaireResponse resource
-            :rtype: dict
-            """
-            from ppmutils.qualtrics import Qualtrics
-
-            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning)
-            return Qualtrics.ppm_qualtrics_survey_questionnaire(study, questionnaire_id, survey_id, survey)
-
-        def ppm_qualtrics_survey_questionnaire_items(survey, blocks):
-            """
-            Accepts the survey object as well as the list of blocks and their
-            respective questions and yields a set of QuestionnareItem
-            resources to be set for the Questionnaire.
-
-            :param survey: The Qualtrics survey object
-            :type survey: object
-            :param blocks: The dictionary of blocks comprising the survey
-            :type blocks: dict
-            :raises Exception: Raises exception if value is an unhandled type
-            :returns A generator of QuestionnaireItem resources
-            :rtype generator
-            """
-            from ppmutils.qualtrics import Qualtrics
-
-            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning)
-            return Qualtrics.ppm_qualtrics_survey_questionnaire_items(survey, blocks)
-
-        def ppm_qualtrics_survey_questionnaire_item(survey, qid, question):
-            """
-            Returns a FHIR resource for a QuestionnaireItem parsed from
-            the Qualtrics survey's question
-
-            :param survey: The Qualtrics survey object
-            :type survey: dict
-            :param qid: The Qualtrics survey question identifier
-            :type qid: str
-            :param question: The Qualtrics survey question object
-            :type question: dict
-            :raises Exception: Raises exception if question is an unhandled type
-            :return: The FHIR QuestionnaireItem resource
-            :rtype: dict
-            """
-            from ppmutils.qualtrics import Qualtrics
-
-            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning)
-            return Qualtrics.ppm_qualtrics_survey_questionnaire_item(survey, qid, question)
-
-        @staticmethod
-        def ppm_qualtrics_survey_questionnaire_response(
-            study, ppm_id, questionnaire_id, survey_id, survey, response_id, response
-        ):
-            """
-            Returns QuestionnaireResponse resource for a survey taken through
-            Qualtrics. This method requires that Qualtrics question names are
-            matched to the FHIR Questionnaire linkIds.
-
-            :param study: The study for which the questionnaire was given
-            :type study: PPM.Study
-            :param ppm_id: The PPM ID for the participant who took the survey
-            :type ppm_id: str
-            :param questionnaire_id: The ID for the related FHIR Questionnaire
-            :type questionnaire_id: str
-            :param survey_id: The ID of the Qualtrics survey
-            :type survey_id: str
-            :param survey: The Qualtrics survey object
-            :type survey: dict
-            :param response_id: The ID of the Qualtrics survey response
-            :type response_id: str
-            :param response: The Qualtrics survey response object
-            :type response: dict
-            :return: The QuestionnaireResponse resource
-            :rtype: dict
-            """
-            from ppmutils.qualtrics import Qualtrics
-
-            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning)
-            return Qualtrics.questionnaire_response(
-                study, ppm_id, questionnaire_id, survey_id, survey, response_id, response
-            )
-
-        def ppm_qualtrics_survey_questionnaire_response_items(survey, response, blocks):
-            """
-            Accepts the survey, response objects as well as the list of blocks add their
-            respective questions and yields a set of QuestionnareResponseItem
-            resources to be set for the QuestionnaireResponse.
-
-            :param survey: The Qualtrics survey object
-            :type survey: object
-            :param response: The Qualtrics survey response item
-            :type response: object
-            :param blocks: The dictionary of blocks comprising the survey
-            :type blocks: dict
-            :param blocks: The ID of the specific block to process
-            :type blocks: str
-            :raises Exception: Raises exception if value is an unhandled type
-            :returns A generator of QuestionnaireResponseItem resources
-            :rtype generator
-            """
-            from ppmutils.qualtrics import Qualtrics
-
-            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning)
-            return Qualtrics.questionnaire_response_item_generator(survey, response, blocks)
-
-        def ppm_qualtrics_survey_questionnaire_response_item(survey, response, key, loop=None):
-            """
-            Returns a FHIR QuestionnaireResponse.Item resource for the passed
-            Qualtrics survey question response key and loop (if applicable).
-
-            :param survey: The Qualtrics survey object
-            :type survey: object
-            :param response: The Qualtrics survey response item
-            :type response: object
-            :type survey: object
-            :param key: The Qualtrics question ID to process
-            :type key: str
-            :param loop: The Qualtrics loop ID to process
-            :type loop: str
-            :raises Exception: Raises exception if value is an unhandled type
-            :return: A FHIR QuestionnaireResponse.Item resource
-            :rtype: dict
-            """
-            from ppmutils.qualtrics import Qualtrics
-
-            warnings.warn(f"This method has moved to ppmutils.qualtrics.Qualtrics", DeprecationWarning)
-            return Qualtrics.questionnaire_response_item(survey, response, key, loop)
 
         def _questionnaire_response_answer(value):
             """
