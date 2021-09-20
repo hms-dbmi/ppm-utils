@@ -779,9 +779,7 @@ class Qualtrics:
                                     },
                                 )
 
-                            else:
-                                logger.debug(f'PPM/Qualtrics: No value(s) for non-required "{question_id}"')
-
+                            # Nothing else to do
                             continue
 
                         # Get items
