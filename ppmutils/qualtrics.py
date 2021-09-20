@@ -5,7 +5,6 @@ import json
 import re
 import sys
 import collections
-import warnings
 from furl import furl
 import requests
 from fhirclient.models.bundle import Bundle, BundleEntry, BundleEntryRequest
@@ -22,6 +21,81 @@ logger = logging.getLogger(__name__)
 class Qualtrics:
     class ConversionError(Exception):
         pass
+
+    @classmethod
+    def is_survey_export(cls, survey):
+        """
+        Inspects a survey export object and confirms that's what it is.
+        Qualtrics surveys can be described by three separate formats:
+        survey object from API, survey definition from API, and survey
+        export from GUI.
+
+        :param survey: The survey object in questions
+        :type survey: dict
+        :returns: Whether the passed survey object is an export or not
+        :rtype: boolean
+        """
+        return survey.get("SurveyElements") is not None
+
+    @classmethod
+    def is_survey_definition(cls, survey):
+        """
+        Inspects a survey definition object and confirms that's what it is.
+        Qualtrics surveys can be described by three separate formats:
+        survey object from API, survey definition from API, and survey
+        export from GUI.
+
+        :param survey: The survey object in questions
+        :type survey: dict
+        :returns: Whether the passed survey object is an definition or not
+        :rtype: boolean
+        """
+        return survey.get("SurveyOptions") is not None and survey.get("Questions") is not None
+
+    @classmethod
+    def is_survey_object(cls, survey):
+        """
+        Inspects a survey object and confirms that's what it is.
+        Qualtrics surveys can be described by three separate formats:
+        survey object from API, survey definition from API, and survey
+        export from GUI.
+
+        :param survey: The survey object in questions
+        :type survey: dict
+        :returns: Whether the passed survey object is an object or not
+        :rtype: boolean
+        """
+        return survey.get("name") is not None and survey.get("questions") is not None
+
+    @classmethod
+    def get_survey_response_metadata(cls, response):
+        """
+        Given a Qualtrics survey response object from the API, this returns
+        a dictionary of metadata for the response relating to the study
+        and the participant who created the response.
+
+        :param response: A Qualtrics API response object
+        :type response: dict
+        :return: A dictionary of metadata
+        :rtype: dict
+        """
+        # Set basic details
+        metadata = {"response_id": response.get("responseId")}
+
+        # Get values dictionary
+        values = response.get("values")
+        if values:
+
+            # Set data
+            metadata.update(
+                {
+                    "study": values.get("ppm_study", ""),
+                    "ppm_id": values.get("ppm_id", values.get("externalDataReference", "")),
+                    "survey_id": values.get("SurveyID", ""),
+                }
+            )
+
+        return metadata
 
     @classmethod
     def questionnaire(cls, survey, survey_id, questionnaire_id=None):
@@ -537,7 +611,7 @@ class Qualtrics:
 
     @classmethod
     def questionnaire_response(
-        cls, study, ppm_id, questionnaire_id, survey_id, response_id, survey=None, response=None
+        cls, study, ppm_id, questionnaire_id, survey_id, response_id, survey_definition=None, survey=None, response=None
     ):
         """
         Returns QuestionnaireResponse resource for a survey taken through
@@ -556,6 +630,8 @@ class Qualtrics:
         :type survey_id: str
         :param response_id: The ID of the Qualtrics survey response
         :type response_id: str
+        :param survey_definition: The Qualtrics survey definition object
+        :type survey_definition: dict, defaults to None
         :param survey: The Qualtrics survey object
         :type survey: dict, defaults to None
         :param response: The Qualtrics survey response object
@@ -563,6 +639,13 @@ class Qualtrics:
         :return: The QuestionnaireResponse resource
         :rtype: dict
         """
+        # Run checks
+        if survey and not Qualtrics.is_survey_object(survey):
+            raise ValueError(f"PPM/Qualtrics: survey is not a valid Qualtrics API survey object")
+
+        if survey_definition and not Qualtrics.is_survey_definition(survey_definition):
+            raise ValueError(f"PPM/Qualtrics: survey_definition is not a valid Qualtrics API survey definition object")
+
         # Prepare resource properties
         data = {
             "resourceType": "QuestionnaireResponse",
@@ -600,7 +683,7 @@ class Qualtrics:
             }
 
             # Build response groups and add it to the questionnair response
-            data["item"] = list(cls.questionnaire_response_item_generator(survey, response, blocks))
+            data["item"] = list(cls.questionnaire_response_item_generator(survey_definition, survey, response, blocks))
 
             # Set dates if specified.
             if response.get("endDate"):
@@ -609,24 +692,25 @@ class Qualtrics:
         return data
 
     @classmethod
-    def questionnaire_response_item_generator(cls, survey, response, blocks):
+    def questionnaire_response_item_generator(cls, survey_definition, survey, response, blocks):
         """
         Accepts the survey, response objects as well as the list of blocks add their
         respective questions and yields a set of QuestionnareResponseItem
         resources to be set for the QuestionnaireResponse.
 
+        :param survey_definition: The Qualtrics survey definition object
+        :type survey_definition: dict, defaults to None
         :param survey: The Qualtrics survey object
         :type survey: object
         :param response: The Qualtrics survey response item
         :type response: object
         :param blocks: The dictionary of blocks comprising the survey
         :type blocks: dict
-        :param blocks: The ID of the specific block to process
-        :type blocks: str
         :raises Exception: Raises exception if value is an unhandled type
         :returns A generator of QuestionnaireResponseItem resources
         :rtype generator
         """
+        question_id = None
         for block_id, question_ids in blocks.items():
             try:
                 # Get the block
@@ -674,33 +758,237 @@ class Qualtrics:
                         }
 
                 else:
-                    # Filter values to those for this block/group
-                    pattern = rf"^({'|'.join(question_ids)})(?![S\d])"
-                    values = {k: v for k, v in response["values"].items() if re.match(pattern, k)}
-                    if not values:
-                        logger.warning(f"PPM/FHIR/Qualtrics: Cannot find values for '{block_id}/{question_ids}'")
-                        continue
+                    # Iterate questions
+                    for question_id in question_ids:
 
-                    # Get items
-                    items = [cls.questionnaire_response_item(survey, response, key) for key in values.keys()]
+                        # Filter values to those for this block/group
+                        pattern = rf"^({question_id})(?![S\d])"
+                        values = {k: v for k, v in response["values"].items() if re.match(pattern, k)}
+                        if not values:
 
-                    # Weed out duplicates
-                    filtered_items = [i for n, i in enumerate(items) if i not in items[n + 1 :] and i is not None]
+                            # Check each question
+                            if Qualtrics.survey_response_is_required(
+                                survey_definition=survey_definition, survey=survey, response=response, key=question_id
+                            ):
+                                logger.error(
+                                    f'PPM/Qualtrics: No value(s) for required "{question_id}"',
+                                    extra={
+                                        **Qualtrics.get_survey_response_metadata(response),
+                                        "block_id": block_id,
+                                        "question_id": question_id,
+                                    },
+                                )
 
-                    # We don't want to group un-repeated items, so just return them
-                    for item in filtered_items:
-                        yield item
+                            else:
+                                logger.debug(f'PPM/Qualtrics: No value(s) for non-required "{question_id}"')
+
+                            continue
+
+                        # Get items
+                        items = [cls.questionnaire_response_item(survey, response, key) for key in values.keys()]
+
+                        # Weed out duplicates
+                        filtered_items = [i for n, i in enumerate(items) if i not in items[n + 1 :] and i is not None]
+
+                        # We don't want to group un-repeated items, so just return them
+                        for item in filtered_items:
+                            yield item
 
             except Exception as e:
                 logger.exception(
-                    f"PPM/FHIR: Error processing block {block_id}: {e}",
+                    f"PPM/Qualtrics: Error processing block/question {block_id}/{question_id}: {e}",
                     exc_info=True,
                     extra={
-                        "survey_id": survey["id"],
+                        **Qualtrics.get_survey_response_metadata(response),
                         "block_id": block_id,
+                        "question_id": question_id,
                     },
                 )
                 raise e
+
+    @classmethod
+    def survey_response_is_required(cls, survey_definition, survey, response, key):
+        """
+        Returns whether a response to the question is required or not according
+        to the Qualtrics survey object. This inspects not only properties of
+        the question but also ensures it's enabled via conditional logic. If
+        not enabled, will not be returned as required.
+
+        :param survey_definition: The Qualtrics survey definition object
+        :type survey_definition: dict, defaults to None
+        :param survey: The Qualtrics survey object
+        :type survey: object
+        :param response: The response object
+        :type response: dict
+        :param key: The Qualtrics question ID to process
+        :type key: str
+        :raises Exception: Raises exception if value is an unhandled type
+        :return: Whether the question is required or not
+        :rtype: boolean
+        """
+        try:
+            # Get ID
+            survey_id = survey["id"]
+
+            # Get questions
+            question = survey["questions"].get(key)
+            if not question:
+                logger.error(
+                    f"PPM/Qualtrics/{key}: Question not found",
+                    extra={
+                        "key": key,
+                    },
+                )
+
+            question_definition = survey_definition["Questions"].get(key)
+            if not question:
+                logger.error(
+                    f"PPM/Qualtrics/{key}: Question definition not found",
+                    extra={
+                        "key": key,
+                    },
+                )
+
+            # Check if required
+            if not question.get("validation", {}).get("doesForceResponse", False):
+                return False
+
+            # It's required, but check if it is conditionally enabled
+            display_logic = question_definition.get("DisplayLogic", False)
+            enabled = False
+            if display_logic:
+                logger.debug(f"PPM/Qualtrics/{survey_id}/{key}: Is required but also conditionally enabled")
+
+                # We are only processing BooleanExpressions
+                if display_logic["Type"] != "BooleanExpression":
+                    logger.error(
+                        f"PPM/Qualtrics/{survey_id}/{key}: Unhandled DisplayLogic type: {display_logic.get('Type')}",
+                        extra={
+                            "survey_id": survey_id,
+                            "qid": key,
+                            "question": question,
+                            "question_definition": question_definition,
+                            "display_logic": display_logic,
+                        },
+                    )
+                    return False
+
+                # Iterate conditions for display of this question
+                # INFO: Currently only selected choice conditions are supported
+                for expression in [v for k, v in display_logic.items() if type(v) is dict]:
+
+                    # Check type
+                    if expression["Type"] == "If":
+
+                        # TODO: Not implemented to handle multiple logical statements
+                        if len([v for k, v in expression.items() if type(v) is dict]) > 1:
+                            logger.error(
+                                f"PPM/Qualtrics/{survey_id}/{key}: Multiple DisplayLogic statements found",
+                                extra={
+                                    "survey_id": survey_id,
+                                    "qid": key,
+                                    "question": question,
+                                    "question_definition": question_definition,
+                                    "display_logic": display_logic,
+                                },
+                            )
+
+                        # Iterate statements
+                        for statement in [v for k, v in expression.items() if type(v) is dict]:
+
+                            # Fetch the value of the answer
+                            components = furl(statement["LeftOperand"]).path.segments
+
+                            # Check type
+                            if components[0] == "SelectableChoice":
+
+                                # Get answer index and value
+                                index = components[1]
+
+                                # Find question
+                                condition_qid = statement["QuestionID"]
+                                conditional_question = survey_definition["Questions"][condition_qid]
+
+                                # Get answer value
+                                conditional_value = next(
+                                    c["Display"] for i, c in conditional_question["Choices"].items() if i == index
+                                )
+                                logger.debug(
+                                    f"PPM/Qualtrics/{survey_id}/{key}: Depends on {condition_qid} = "
+                                    f"{conditional_value}"
+                                )
+
+                                # Get the actual response
+                                responded_answer_items = Qualtrics.get_survey_response_values(
+                                    survey=survey, response=response, qid=condition_qid
+                                )
+                                responded_values = [v for a in responded_answer_items for k, v in a.items()]
+
+                                # Check if matches
+                                if responded_values and conditional_value in responded_values:
+                                    logger.debug(
+                                        f"PPM/Qualtrics/{survey_id}/{key}: Condition {condition_qid} = "
+                                        f"{responded_values} is satisfied"
+                                    )
+
+                                    # Set enabled
+                                    enabled = True
+                                else:
+                                    logger.debug(
+                                        f"PPM/Qualtrics/{survey_id}/{key}: Condition {condition_qid} = "
+                                        f"{responded_values} is NOT satisfied"
+                                    )
+
+                                    # Set disabled
+                                    enabled = False
+
+            logger.debug(f"PPM/Qualtrics/{survey_id}/{key}: Conditional question is {'' if enabled else 'NOT '}enabled")
+            return enabled
+
+        except Exception as e:
+            logger.exception(
+                f"PPM/Qualtrics: Error checking requirement: {e}",
+                exc_info=True,
+                extra={
+                    "survey_id": survey.get("id"),
+                    "response_id": response.get("responseId"),
+                    "question_id": key,
+                },
+            )
+
+        # Assume required
+        return True
+
+    @classmethod
+    def get_survey_response_values(cls, survey, response, qid):
+        """
+        This method parses a survey response and returns the value of the
+        response for the given question, if any at all.
+
+        :param survey: The survey object the response was for
+        :type survey: dict
+        :param response: The response object
+        :type response: dict
+        :param qid: The question ID to get the response value for
+        :type qid: str
+        :return: The response value(s), if any
+        :rtype: list, defaults to None
+        """
+        # Filter values to those for this block/group
+        pattern = rf"^({qid})(?![S\d])"
+        values = {k: v for k, v in response["values"].items() if re.match(pattern, k)}
+        if not values:
+            return None
+
+        # Get items
+        items = [cls.questionnaire_response_item(survey, response, key) for key in values.keys()]
+
+        # Get the first valid item
+        item = next((i for i in items if i and i.get("answer")), None)
+        if not item:
+            return None
+
+        return item.get("answer")
 
     @classmethod
     def questionnaire_response_item(cls, survey, response, key, loop=None):
@@ -922,14 +1210,14 @@ class Qualtrics:
         # Check
         if not link_id:
             logger.debug(
-                f"Qualtrics/QuestionnaireResponse/{key}:Ignoring Qualtrics response answer item due to no link ID"
+                f"PPM/Qualtrics/QuestionnaireResponse/{key}:Ignoring Qualtrics response answer item due to no link ID"
             )
             return None
 
         # Check answer
         if answer is None:
             logger.debug(
-                f"Qualtrics/QuestionnaireResponse/{key}:"
+                f"PPM/Qualtrics/QuestionnaireResponse/{key}:"
                 f"Ignoring Qualtrics response due to no answer: "
                 f"{value} = {answer}"
             )
@@ -964,7 +1252,7 @@ class Qualtrics:
         if questionnaires:
 
             # No need to recreate it
-            logger.debug(f"API/Qualtrics: Questionnaire already exists for survey version {version}")
+            logger.debug(f"PPM/Qualtrics: Questionnaire already exists for survey version {version}")
             return None
 
         # Use the FHIR client lib to validate our resource.
@@ -986,468 +1274,7 @@ class Qualtrics:
 
         # Create the organization
         response = requests.post(PPM.fhir_url(), json=bundle.as_json())
-        logger.debug("Response: {}".format(response.status_code))
+        logger.debug("PPM/Qualtrics: FHIR Response: {}".format(response.status_code))
         response.raise_for_status()
 
         return response.json()
-
-    @classmethod
-    def ppm_qualtrics_survey_questionnaire(cls, study, questionnaire_id, survey_id, survey):
-        """
-        Returns QuestionnaireResponse resource for a survey taken through
-        Qualtrics. This method requires that Qualtrics question names are
-        matched to the FHIR Questionnaire linkIds.
-
-        :param study: The study for which the questionnaire was given
-        :type study: PPM.Study
-        :param questionnaire_id: The ID for the related FHIR Questionnaire
-        :type questionnaire_id: str
-        :param survey_id: The ID of the Qualtrics survey
-        :type survey_id: str
-        :param survey: The survey object from Qualtrics
-        :type survey: dict
-        :return: The QuestionnaireResponse resource
-        :rtype: dict
-        """
-        warnings.warn(f"This method should not be used. Instead use Qualtrics.questionnaire()", DeprecationWarning)
-
-        # Hash the questions of the survey to track version of the survey
-        version = hashlib.md5(json.dumps(survey["questions"], sort_keys=True).encode()).hexdigest()
-
-        # Build a dictionary describing block and question order
-        blocks = {
-            f["id"]: [
-                e["questionId"] for e in survey["blocks"][f["id"]].get("elements", []) if e.get("type") == "Question"
-            ]
-            for f in survey["flow"]
-            if f.get("type") == "Block"
-        }
-
-        # Build list of items
-        items = []
-        for _, question_ids in blocks.items():
-
-            # Create them
-            items.extend(
-                [
-                    cls.ppm_qualtrics_survey_questionnaire_item(survey, qid, survey["questions"][qid])
-                    for qid in question_ids
-                ]
-            )
-
-        # Build the resource
-        data = {
-            "id": questionnaire_id,
-            "resourceType": "Questionnaire",
-            "meta": {"lastUpdated": datetime.now().isoformat()},
-            "identifier": [
-                {
-                    "system": FHIR.qualtrics_survey_identifier_system,
-                    "value": survey_id,
-                },
-                {
-                    "system": FHIR.qualtrics_survey_version_identifier_system,
-                    "value": version,
-                },
-            ],
-            "version": version,
-            "name": survey_id,
-            "title": survey["name"],
-            "status": "active" if survey["isActive"] else "draft",
-            "approvalDate": survey["creationDate"],
-            "date": survey["lastModifiedDate"],
-            "extension": [
-                {
-                    "url": FHIR.qualtrics_survey_extension_url,
-                    "valueString": survey_id,
-                }
-            ],
-            "item": items,
-        }
-
-        # If expiration, add it
-        if survey.get("expiration", {}).get("startDate"):
-
-            data["effectivePeriod"] = {
-                "start": survey["expiration"]["startDate"],
-                "end": survey["expiration"]["endDate"],
-            }
-
-            # If after expiration, set status
-            if survey["expiration"].get("endDate"):
-                if parse(survey["expiration"]["endDate"]) < datetime.now():
-                    data["status"] = "retired"
-
-        return data
-
-    @classmethod
-    def ppm_qualtrics_survey_questionnaire_items(cls, survey, blocks):
-        """
-        Accepts the survey object as well as the list of blocks and their
-        respective questions and yields a set of QuestionnareItem
-        resources to be set for the Questionnaire.
-
-        :param survey: The Qualtrics survey object
-        :type survey: object
-        :param blocks: The dictionary of blocks comprising the survey
-        :type blocks: dict
-        :raises Exception: Raises exception if value is an unhandled type
-        :returns A generator of QuestionnaireItem resources
-        :rtype generator
-        """
-        warnings.warn(
-            f"This method should not be used. Instead use Qualtrics.questionnaire_item_generator()", DeprecationWarning
-        )
-        for block_id, question_ids in blocks.items():
-            try:
-                # Get the block
-                block = survey["blocks"][block_id]
-
-                # Set root link ID
-                link_id = f"group-{block_id.replace('BL_', '')}"
-
-                # Get all questions in this block
-                question_ids = [e["questionId"] for e in block["elements"] if e["type"] == "Question"]
-
-                # Check if repeating
-                if survey.get("loopAndMerge").get(block_id, None):
-
-                    # Create this
-                    pass
-
-                else:
-
-                    # Process each question
-                    for question_id in question_ids:
-
-                        # Set root link ID
-                        link_id = cls._qid_to_linkid(question_id)
-
-                        # Fetch the question
-                        question = survey["questions"][question_id]
-
-                        # Strip text of HTML and other characters
-                        text = (
-                            re.sub("<[^<]+?>", "", question["QuestionText"]).strip().replace("\n", "").replace("\r", "")
-                        )
-                        text = text.replace("&nbsp;", " ")
-
-                        # Determine if required
-                        required = question["validation"].get("doesForceResponse", False)
-
-                        # Get question text
-                        item = {
-                            "linkId": link_id,
-                            "text": text,
-                            "required": required,
-                        }
-
-                        yield item
-
-            except Exception as e:
-                logger.exception(
-                    f"PPM/FHIR: Error processing block {block_id}: {e}",
-                    exc_info=True,
-                    extra={
-                        "survey_id": survey["id"],
-                        "block_id": block_id,
-                    },
-                )
-                raise e
-
-    @classmethod
-    def ppm_qualtrics_survey_questionnaire_item(cls, survey, qid, question):
-        """
-        Returns a FHIR resource for a QuestionnaireItem parsed from
-        the Qualtrics survey's question
-
-        :param survey: The Qualtrics survey object
-        :type survey: dict
-        :param qid: The Qualtrics survey question identifier
-        :type qid: str
-        :param question: The Qualtrics survey question object
-        :type question: dict
-        :raises Exception: Raises exception if question is an unhandled type
-        :return: The FHIR QuestionnaireItem resource
-        :rtype: dict
-        """
-        warnings.warn(
-            f"This method should not be used. Instead use Qualtrics.questionnaire_item()",
-            DeprecationWarning,
-        )
-        # Get common survey info
-        survey_id = survey["id"]
-
-        # Set root link ID
-        link_id = cls._qid_to_linkid(qid)
-
-        # Strip text of HTML and other characters
-        text = re.sub("<[^<]+?>", "", question["questionText"]).strip().replace("\n", "").replace("\r", "")
-
-        # Remove nbsp;'s
-        text.replace("&nbsp;", "")
-
-        # Get question text
-        item = {"linkId": link_id, "text": text, "required": question["validation"].get("doesForceResponse", False)}
-
-        # Check for conditional enabling
-        if question.get("DisplayLogic", False):
-
-            # Intialize enableWhen item
-            enable_whens = []
-
-            # We are only processing BooleanExpressions
-            if question["DisplayLogic"]["Type"] != "BooleanExpression":
-                logger.error(
-                    f"PPM/Questionnaire: Unhandled DisplayLogic type {survey_id}/{qid}: {question['DisplayLogic']}"
-                )
-                raise ValueError(f"Failed to process survey {survey['id']}")
-
-            # Iterate conditions for display of this question
-            # INFO: Currently only selected choice conditions are supported
-            for k, expression in question["DisplayLogic"].items():
-
-                # Check type
-                if expression["Type"] == "If":
-
-                    # Iterate statements
-                    for j, statement in expression.items():
-
-                        # Fetch the value of the answer
-                        components = furl(statement["LeftOperand"]).path.segments
-
-                        # Check type
-                        if components[0] == "SelectableChoice":
-
-                            # Get answer index and value
-                            index = components[1]
-
-                            # Find question
-                            conditional_question = next(
-                                e for e in survey["SurveyElements"] if e["PrimaryAttribute"] == qid
-                            )
-
-                            # Get answer value
-                            conditional_value = next(
-                                c["Display"] for i, c in conditional_question["Payload"]["Choices"] if i == index
-                            )
-
-                            # Add it
-                            enable_whens.append(
-                                {
-                                    "question": cls._qid_to_linkid(qid),
-                                    "answerString": conditional_value,
-                                }
-                            )
-
-                        else:
-                            logger.error(
-                                f"PPM/Questionnaire: Unhandled DisplayLogic expression"
-                                f"type {survey_id}/{qid}: {expression}"
-                            )
-                            raise ValueError(f"Failed to process survey {survey['id']}")
-
-                else:
-                    logger.error(f"PPM/Questionnaire: Unhandled DisplayLogic type {survey_id}/{qid}: {expression}")
-                    raise ValueError(f"Failed to process survey {survey['id']}")
-
-            # Add enableWhen's if we've got them
-            if enable_whens:
-                item["enableWhen"] = enable_whens
-
-        # Check type
-        question_type = question["questionType"]
-
-        try:
-            # Text (single line)
-            if question_type["type"] == "TE" and question_type["selector"] == "SL":
-
-                # Set type
-                item["type"] = "string"
-
-            # Text (multiple line)
-            elif question_type["type"] == "TE" and question_type["selector"] == "ESTB":
-
-                # Set type
-                item["type"] = "text"
-
-            # Text (multiple line)
-            elif question_type["type"] == "TE" and question_type["selector"] == "ML":
-
-                # Set type
-                item["type"] = "text"
-
-            # Multiple choice (single answer)
-            elif question_type["type"] == "MC" and question_type["selector"] == "SAVR":
-
-                # Set type
-                item["type"] = "choice"
-
-                # Set choices
-                item["option"] = [{"valueString": c["choiceText"]} for k, c in question["choices"].items()]
-
-            # Multiple choice (multiple answer)
-            elif question_type["type"] == "MC" and question_type["selector"] == "MAVR":
-
-                # Set type
-                item["type"] = "choice"
-                item["repeats"] = True
-
-                # Set choices
-                item["option"] = [{"valueString": c["choiceText"]} for k, c in question["choices"].items()]
-
-            # Matrix (single answer)
-            elif (
-                question_type["type"] == "Matrix"
-                and question_type["selector"] == "Likert"
-                and question_type["subSelector"] == "SingleAnswer"
-            ):
-
-                # Add this as a grouped set of multiple choice, single answer questions
-                item["type"] = "group"
-
-                # Preselect choices
-                choices = [{"valueString": c["choiceText"]} for k, c in question["choices"].items()]
-
-                # Set subitems
-                item["item"] = [
-                    {
-                        "linkId": f"{link_id}-{k}",
-                        "text": s["choiceText"],
-                        "type": "choice",
-                        "option": choices,
-                        "required": question["validation"].get("doesForceResponse", False),
-                    }
-                    for k, s in question["subQuestions"].items()
-                ]
-
-            # Matrix (multiple answer)
-            elif (
-                question_type["type"] == "Matrix"
-                and question_type["selector"] == "Likert"
-                and question_type["subSelector"] == "MultipleAnswer"
-            ):
-
-                # Add this as a grouped set of multiple choice, single answer questions
-                item["type"] = "group"
-                item["repeats"] = True
-
-                # Preselect choices
-                choices = [{"valueString": c["choiceText"]} for k, c in question["choices"].items()]
-
-                # Set subitems
-                item["item"] = [
-                    {
-                        "linkId": f"{link_id}-{k}",
-                        "text": s["choiceText"],
-                        "type": "choice",
-                        "option": choices,
-                        "required": question["validation"].get("doesForceResponse", False),
-                    }
-                    for k, s in question["subQuestions"].items()
-                ]
-
-            # Multiple Matrix (multiple answer)
-            elif question_type["type"] == "SBS" and question_type["selector"] == "SBSMatrix":
-
-                item["type"] = "group"
-                item["text"] = question["questionText"]
-                item["item"] = []
-
-                # Get choices
-                questions = {k: c["choiceText"] for k, c in question["subQuestions"].items()}
-
-                # Add this as multiple grouped sets of multiple choice, single answer questions
-                for k, additional_question in question["columns"].items():
-
-                    # Add another display for the subquestion
-                    sub_item = {
-                        "linkId": f"{link_id}-{k}",
-                        "type": "group",
-                        "text": additional_question["questionText"],
-                        "item": [],
-                    }
-
-                    # Preselect choices
-                    answers = [{"valueString": c["choiceText"]} for k, c in additional_question["choices"].items()]
-
-                    # Add a question per choice
-                    for sub_k, sub_question in questions.items():
-
-                        # Remove prefixes, if set
-                        sub_question = re.sub(r"^[\d]{1,4}\.\s", "", sub_question)
-
-                        # Set subitems
-                        sub_item["item"].append(
-                            {
-                                "linkId": f"{link_id}-{k}-{sub_k}",
-                                "text": sub_question,
-                                "type": "choice",
-                                "option": answers,
-                                "required": question["validation"].get("doesForceResponse", False),
-                            }
-                        )
-
-                    # Add it
-                    item["item"].append(sub_item)
-
-            # Slider (integer answer)
-            elif question_type["type"] == "Slider" and question_type["selector"] == "HBAR":
-
-                # Set type
-                item["type"] = "integer"
-
-            # Slider (integer answer)
-            elif question_type["type"] == "Slider" and question_type["selector"] == "HSLIDER":
-
-                # Set type
-                item["type"] = "decimal"
-
-            # Hot spot (multiple choice, multiple answer)
-            elif question_type["type"] == "HotSpot" and question_type["selector"] == "OnOff":
-
-                # Set type
-                item["type"] = "choice"
-                item["repeats"] = True
-
-                # Set choices
-                item["option"] = [{"valueString": c["choiceText"]} for k, c in question["subQuestions"].items()]
-
-            # Drill down
-            elif question_type["type"] == "DD" and question_type["selector"] == "DL":
-
-                # Set type
-                item["type"] = "choice"
-                item["repeats"] = False
-
-                # Set choices
-                item["option"] = [{"valueString": c["Display"]} for k, c in question["Answers"].items()]
-
-            # Descriptive text
-            elif question_type["type"] == "DB":
-
-                # Set type
-                item["type"] = "display"
-
-            # Descriptive graphics
-            elif question_type["type"] == "GB":
-
-                # Set type
-                item["type"] = "display"
-
-            else:
-                logger.error("PPM/Questionnaire: Unhandled survey question type {survey_id}/{qid}: {question_type}")
-                raise ValueError(f"Failed to process survey {survey['id']}")
-        except Exception as e:
-            logger.exception(
-                f"PPM/FHIR: Error processing question {survey_id}/{qid}: {e}",
-                exc_info=True,
-                extra={
-                    "survey_id": survey["id"],
-                    "qid": qid,
-                    "question": question,
-                },
-            )
-            raise e
-
-        return item
