@@ -1,3 +1,16 @@
+# [0.14.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.13.1...v0.14.0) (2021-09-20)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-722 - Fixed bug where non-required empty answers were reported as errors ([3d468d6](https://github.com/hms-dbmi/ppm-utils/commit/3d468d682ebe774b90aff52ae12e61f766405ac2))
+* **qualtrics:** PPM-722 - Toned down logging on empty question responses ([4435e7f](https://github.com/hms-dbmi/ppm-utils/commit/4435e7f2fd6e99d05374c66d7ce8166dc32fb6c3))
+
+
+### Features
+
+* **qualtrics/fhir:** PPM-722 - Refactored Qualtrics handling; improved error logging; removed deprecated Qualtrics methods from FHIR and Qualtrics modules ([fa3a419](https://github.com/hms-dbmi/ppm-utils/commit/fa3a419dbd5135f7768030330ded402061c676ad))
+
 ## [0.13.1](https://github.com/hms-dbmi/ppm-utils/compare/v0.13.0...v0.13.1) (2021-09-17)
 
 
