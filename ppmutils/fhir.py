@@ -1950,7 +1950,7 @@ class FHIR:
         return FHIR.query_participants(studies, enrollments, active, testing)
 
     @staticmethod
-    def get_participant(patient, eligibility_questionnaire_id=None, questionnaire_ids=None, flatten_return=False):
+    def get_participant(patient, questionnaires=None, flatten_return=False):
         """
         This method fetches a participant's entire FHIR record and returns it.
         If specified, the record will be flattened into a dictionary. Otherwise,
@@ -1961,10 +1961,8 @@ class FHIR:
 
         :param patient: The participant identifier, PPM ID or email
         :type patient: str
-        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
-        :type eligibility_questionnaire_id: str, defaults to None
-        :param questionnaire_ids: The list of study questionnaires to include
-        :type questionnaire_ids: list, defaults to None
+        :param questionnaires: The list of survey/questionnaires for this study
+        :type questionnaires: list, defaults to None
         :param flatten_return: Whether to flatten the resources or not
         :type flatten_return: bool, defaults to False
         :returns: A dictionary comprising the user's record
@@ -1997,8 +1995,7 @@ class FHIR:
             if flatten_return:
                 return FHIR.flatten_participant(
                     bundle=response.json(),
-                    eligibility_questionnaire_id=eligibility_questionnaire_id,
-                    questionnaire_ids=questionnaire_ids,
+                    questionnaires=questionnaires,
                 )
             else:
                 return [entry["resource"] for entry in bundle.get("entry")]
@@ -2922,7 +2919,7 @@ class FHIR:
         if flatten_return:
             return FHIR.flatten_list(bundle, "Organization")
         else:
-            return next((entry["resource"] for entry in bundle.as_json().get("entry", [])), None)
+            return [entry["resource"] for entry in bundle.as_json().get("entry", [])]
 
     @staticmethod
     def query_ppm_communications(patient=None, identifier=None, flatten_return=False):
@@ -3607,91 +3604,105 @@ class FHIR:
         updated list of points of care (just a list with the name of the Organization).
         Will return the existing list if the point of care is already in the list. Will
         look for an existing Organization before creating.
-        :param patient: The participant's email address
-        :param point_of_care: The name of the point of care
-        :return: [str]
-        """
-        logger.debug("Add point of care: {}".format(point_of_care))
 
-        # Get the flattened list
-        points_of_care = FHIR.get_point_of_care_list(patient, flatten_return=True)
+        :param patient: The participant's email address
+        :type patient: str
+        :param point_of_care: The name of the point of care
+        :type point_of_care: str
+        :returns: A list of the current points of care for the participant
+        :rtype: list
+        """
+        return FHIR.update_points_of_care_list(patient, [point_of_care])
+
+    @staticmethod
+    def update_points_of_care_list(patient, points_of_care):
+        """
+        Adds a point of care to a Participant's existing list and returns the flattened
+        updated list of points of care (just a list with the name of the Organization).
+        Will return the existing list if the point of care is already in the list. Will
+        look for an existing Organization before creating.
+
+        :param patient: The participant's email address
+        :type patient: str
+        :param point_of_care: The name of the point of care
+        :type point_of_care: str
+        :returns: A list of the current points of care for the participant
+        :rtype: list
+        """
+        logger.debug("Add points of care: {}".format(points_of_care))
+
+        # Get the list and related organizations
+        resources = FHIR.get_point_of_care_list(patient, flatten_return=False)
+
+        # Extract resources
+        organizations = [r for r in resources if r["resourceType"] == "Organization"]
+        points_of_care_list = next((r for r in resources if r["resourceType"] == "List"), None)
+
+        # Create if it doesn't exist
+        if not points_of_care_list:
+            # Set the list to persist
+            points_of_care = [points_of_care]
+            logger.debug(f"PPM/FHIR: POC list doesn't exist, will create")
+            FHIR.create_point_of_care_list(patient, points_of_care)
+            return points_of_care
 
         # Check if the name exists in the list already
-        for organization in points_of_care:
-            if organization == point_of_care:
-                logger.debug("Organization is already in List!")
+        for organization in [o["name"] for o in organizations]:
+            if organization in points_of_care:
+                logger.debug(f'PPM/FHIR: Organization "{organization}" is already in List')
 
-                # Just return the list as is
-                return points_of_care
-
-        # Look for it
-        organization_url = furl(PPM.fhir_url())
-        organization_url.path.add("Organization")
-        organization_url.query.params.add("name", point_of_care)
-
-        response = requests.get(organization_url.url)
-        response.raise_for_status()
+                # Pop it
+                points_of_care.remove(organization)
 
         # Start a bundle request
         bundle = Bundle()
         bundle.entry = []
         bundle.type = "transaction"
 
-        results = response.json()
-        if results["total"] >= 1:
-            logger.debug("Found existing organization!")
+        list_request = BundleEntryRequest()
+        list_request.method = "PUT"
+        list_request.url = "List/{}".format(points_of_care_list["id"])
 
-            # Get the ID
-            organization_id = "Organization/{}".format(results["entry"][0]["resource"]["id"])
-            logger.debug("Existing organization: {}".format(organization_id))
-
-        else:
-            logger.debug("No existing organization, creating...")
+        # Add Organization objects to bundle.
+        for point_of_care in points_of_care:
 
             # Create the organization
             organization = Organization()
             organization.name = point_of_care
-
-            # Create placeholder ID
             organization_id = uuid.uuid1().urn
 
-            # Add Organization objects to bundle.
             organization_request = BundleEntryRequest()
             organization_request.method = "POST"
             organization_request.url = "Organization"
 
-            # Create the organization entry
-            organization_entry = BundleEntry({"resource": organization.as_json()})
-            organization_entry.request = organization_request
-            organization_entry.fullUrl = organization_id
+            # Don't recreate Organizations if we can find them by the exact name.
+            # No fuzzy matching.
+            organization_request.ifNoneExist = str(Query({"name:exact": organization.name}))
 
-            # Add it
+            organization_entry = BundleEntry()
+            organization_entry.resource = organization
+            organization_entry.fullUrl = organization_id
+            organization_entry.request = organization_request
+
+            # Add it to the transaction
             bundle.entry.append(organization_entry)
 
-        # Add it to the list
-        point_of_care_list = FHIR.get_point_of_care_list(patient, flatten_return=False)
-        point_of_care_list["entry"].append({"item": {"reference": organization_id}})
+            # Add it
+            points_of_care_list["entry"].append({"item": {"reference": f"Organization/{organization_id}"}})
 
-        # Add List objects to bundle.
-        list_request = BundleEntryRequest()
-        list_request.method = "PUT"
-        list_request.url = "List/{}".format(point_of_care_list["id"])
-
-        # Create the organization entry
-        list_entry = BundleEntry({"resource": point_of_care_list})
+        # Add List object to bundle.
+        list_entry = BundleEntry()
+        list_entry.resource = List(points_of_care_list)
         list_entry.request = list_request
 
-        # Add it
+        # Add the updated List to the transaction
         bundle.entry.append(list_entry)
 
         # Post the transaction
         response = requests.post(PPM.fhir_url(), json=bundle.as_json())
         response.raise_for_status()
 
-        # Return the flattened list with the new organization
-        points_of_care.append(point_of_care)
-
-        return points_of_care
+        return [o["name"] for o in organizations] + points_of_care
 
     @staticmethod
     def update_twitter(patient_id, handle=None, uses_twitter=None):
@@ -4576,7 +4587,7 @@ class FHIR:
         return " ".join(names)
 
     @staticmethod
-    def flatten_participant(bundle, study=None, eligibility_questionnaire_id=None, questionnaire_ids=None):
+    def flatten_participant(bundle, study=None, questionnaires=None):
         """
         Accepts a Bundle containing everything related to a Patient resource
         and flattens the data into something easier to build templates/views with.
@@ -4584,10 +4595,8 @@ class FHIR:
         :type bundle: dict
         :param study: The study for which this participant's record should be constructed
         :type study: str, defaults to None
-        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
-        :type eligibility_questionnaire_id: str, defaults to None
-        :param questionnaire_ids: A list of the study questionnaire IDs to include in the record
-        :type questionnaire_ids: list, defaults to None
+        :param questionnaires: The survey/questionnaires for the study
+        :type questionnaires: str, defaults to None
         :return: A flattened dictionary of the Participant/Patient's entire FHIR data record
         :rtype: dict
         """
@@ -4690,11 +4699,17 @@ class FHIR:
             participant["questionnaires"] = {}
 
             # If not specified, use the value hard-coded in the PPM module
-            if not eligibility_questionnaire_id:
+            if not questionnaires:
                 eligibility_questionnaire_id = PPM.Questionnaire.questionnaire_for_study(study=study)
                 logger.warning(
                     f"PPM/{study}/{ppm_id}: Using deprecated PPM.Questionnaire eligibility questionnaires: "
                     f" {eligibility_questionnaire_id}"
+                )
+            else:
+                # Get needed questionnaire IDs
+                eligibility_questionnaire_id = next(
+                    (q["questionnaire_id"] for q in questionnaires if q.get("eligibility_for") == study),
+                    PPM.Questionnaire.questionnaire_for_study(study=study),
                 )
 
             # Handle eligibility questionnaire
@@ -4703,11 +4718,13 @@ class FHIR:
             participant["questionnaire"] = participant["questionnaires"][eligibility_questionnaire_id] = questionnaire
 
             # If not specified, use hard-coded questionnaire IDs from PPM module
-            if not questionnaire_ids:
+            if not questionnaires:
                 questionnaire_ids = [q.value for q in PPM.Questionnaire.extra_questionnaires_for_study(study=study)]
                 logger.warning(
                     f"PPM/{study}/{ppm_id}: Using deprecated PPM.Questionnaire questionnaires: " f" {questionnaire_ids}"
                 )
+            else:
+                questionnaire_ids = [q["questionnaire_id"] for q in questionnaires if q.get("questionnaire_id")]
 
             # Parse remaining questionnaires
             logger.debug(f"PPM/{study}/{ppm_id}: Study questionnaires: {questionnaire_ids}")
@@ -4752,8 +4769,7 @@ class FHIR:
                 values, study_values = getattr(FHIR, f"_flatten_{study}_participant")(
                     bundle=bundle,
                     ppm_id=ppm_id,
-                    eligibility_questionnaire_id=eligibility_questionnaire_id,
-                    questionnaire_ids=questionnaire_ids,
+                    questionnaires=questionnaires,
                 )
 
                 # Set them
@@ -4770,7 +4786,7 @@ class FHIR:
         return participant
 
     @staticmethod
-    def _flatten_asd_participant(bundle, ppm_id, eligibility_questionnaire_id=None, questionnaire_ids=None):
+    def _flatten_asd_participant(bundle, ppm_id, questionnaires=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -4781,10 +4797,8 @@ class FHIR:
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
-        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
-        :type eligibility_questionnaire_id: str, defaults to None
-        :param questionnaire_ids: A list of the study questionnaires to include
-        :type questionnaire_ids: list, defaults to None
+        :param questionnaires: The survey/questionnaires for the study
+        :type questionnaires: str, defaults to None
         :returns: A tuple of properties for the root participant object, and for
         the study sub-object
         :rtype: dict, dict
@@ -4817,7 +4831,7 @@ class FHIR:
         return values, study_values
 
     @staticmethod
-    def _flatten_neer_participant(bundle, ppm_id, eligibility_questionnaire_id=None, questionnaire_ids=None):
+    def _flatten_neer_participant(bundle, ppm_id, questionnaires=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -4828,10 +4842,8 @@ class FHIR:
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
-        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
-        :type eligibility_questionnaire_id: str, defaults to None
-        :param questionnaire_ids: A list of the study questionnaires to include
-        :type questionnaire_ids: list, defaults to None
+        :param questionnaires: The survey/questionnaires for the study
+        :type questionnaires: str, defaults to None
         :returns: A tuple of properties for the root participant object, and for
         the study sub-object
         :rtype: dict, dict
@@ -4947,7 +4959,7 @@ class FHIR:
         return values, study_values
 
     @staticmethod
-    def _flatten_rant_participant(bundle, ppm_id, eligibility_questionnaire_id=None, questionnaire_ids=None):
+    def _flatten_rant_participant(bundle, ppm_id, questionnaires=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -4958,10 +4970,8 @@ class FHIR:
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
-        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
-        :type eligibility_questionnaire_id: str, defaults to None
-        :param questionnaire_ids: A list of the study questionnaires to include
-        :type questionnaire_ids: list, defaults to None
+        :param questionnaires: The survey/questionnaires for the study
+        :type questionnaires: str, defaults to None
         :returns: A tuple of properties for the root participant object, and for
         the study sub-object
         :rtype: dict, dict
@@ -4972,135 +4982,26 @@ class FHIR:
         values = {}
         study_values = {}
 
-        # Check for points of care questionnaire
-        questionnaire_response = next(
-            (
-                q
-                for q in FHIR._find_resources(bundle, "QuestionnaireResponse")
-                if q["questionnaire"]["reference"]
-                == f"Questionnaire/{PPM.Questionnaire.RANTPointsOfCareQuestionnaire.value}"
-            ),
-            None,
-        )
+        # Check for questionnaires
+        if questionnaires:
 
-        # Check if it exists and actually has data to parse
-        if questionnaire_response and questionnaire_response.get("item"):
-
-            # Set a list
-            values["points_of_care"] = []
-
-            # Parse answers
-            diagnosing_name = next(
-                (
-                    next(a["valueString"] for a in i["answer"])
-                    for i in questionnaire_response["item"]
-                    if i["linkId"] == "question-1"
-                ),
-                None,
-            )
-            diagnosing_address = next(
-                (
-                    next(a["valueString"] for a in i["answer"])
-                    for i in questionnaire_response["item"]
-                    if i["linkId"] == "question-2"
-                ),
-                None,
-            )
-            diagnosing_phone = next(
-                (
-                    next(a["valueString"] for a in i["answer"])
-                    for i in questionnaire_response["item"]
-                    if i["linkId"] == "question-3"
-                ),
+            # Get needed questionnaire IDs
+            points_of_care_questionnaire_id = next(
+                (q["questionnaire_id"] for q in questionnaires if q.get("points_of_care_for") == PPM.Study.RANT.value),
                 None,
             )
 
-            # Add it.
-            values["points_of_care"].append(f"{diagnosing_name}, {diagnosing_phone}, {diagnosing_address}")
-
-            # Check for another
-            if (
-                next(
-                    (
-                        next(a["valueString"] for a in i["answer"])
-                        for i in questionnaire_response["item"]
-                        if i["linkId"] == "question-4"
-                    ),
-                    "",
-                )
-                == "No"
-            ):
-
-                # Parse answers
-                current_name = next(
-                    (
-                        next(a["valueString"] for a in i["answer"])
-                        for i in questionnaire_response["item"]
-                        if i["linkId"] == "question-5"
-                    ),
-                    None,
-                )
-                current_address = next(
-                    (
-                        next(a["valueString"] for a in i["answer"])
-                        for i in questionnaire_response["item"]
-                        if i["linkId"] == "question-6"
-                    ),
-                    None,
-                )
-                current_phone = next(
-                    (
-                        next(a["valueString"] for a in i["answer"])
-                        for i in questionnaire_response["item"]
-                        if i["linkId"] == "question-7"
-                    ),
-                    None,
-                )
-
-                # Add it.
-                values["points_of_care"].append(f"{current_name}, {current_phone}, {current_address}")
-
-            # Get remaining RA places
-            additional_ra_points_of_care = next(
-                (
-                    next(a["valueString"] for a in i["answer"])
-                    for i in questionnaire_response["item"]
-                    if i["linkId"] == "question-8"
-                ),
-                None,
+            # Add them
+            study_values["points_of_care"] = FHIR._flatten_rant_points_of_care(
+                bundle=bundle,
+                ppm_id=ppm_id,
+                questionnaire_id=points_of_care_questionnaire_id,
             )
-            if additional_ra_points_of_care:
-                values["points_of_care"].append(additional_ra_points_of_care)
-
-            # Check for another
-            if (
-                next(
-                    (
-                        next(a["valueString"] for a in i["answer"])
-                        for i in questionnaire_response["item"]
-                        if i["linkId"] == "question-9"
-                    ),
-                    "",
-                )
-                == "Yes"
-            ):
-
-                # Get remaining places
-                additional_points_of_care = next(
-                    (
-                        next(a["valueString"] for a in i["answer"])
-                        for i in questionnaire_response["item"]
-                        if i["linkId"] == "question-10"
-                    ),
-                    None,
-                )
-                if additional_points_of_care:
-                    values["points_of_care"].append(additional_points_of_care)
 
         return values, study_values
 
     @staticmethod
-    def _flatten_example_participant(bundle, ppm_id, eligibility_questionnaire_id=None, questionnaire_ids=None):
+    def _flatten_example_participant(bundle, ppm_id, questionnaires=None):
         """
         Continues flattening a participant by adding any study specific data to
         their record. This will include answers in questionnaires, etc. Returns
@@ -5111,10 +5012,8 @@ class FHIR:
         :type bundle: dict
         :param ppm_id: The PPM ID of the participant
         :type ppm_id: str
-        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
-        :type eligibility_questionnaire_id: str, defaults to None
-        :param questionnaire_ids: A list of the study questionnaires to include
-        :type questionnaire_ids: list, defaults to None
+        :param questionnaires: The survey/questionnaires for the study
+        :type questionnaires: str, defaults to None
         :returns: A tuple of properties for the root participant object, and for
         the study sub-object
         :rtype: dict, dict
@@ -5125,130 +5024,128 @@ class FHIR:
         values = {}
         study_values = {}
 
-        # Check for points of care questionnaire
+        # Check for passed questionnaires
+        if questionnaires:
+
+            # Get needed questionnaire IDs
+            points_of_care_questionnaire_id = next(
+                (
+                    q["questionnaire_id"]
+                    for q in questionnaires
+                    if q.get("points_of_care_for") == PPM.Study.EXAMPLE.value
+                ),
+                None,
+            )
+
+            # Add them
+            study_values["points_of_care"] = FHIR._flatten_rant_points_of_care(
+                bundle=bundle,
+                ppm_id=ppm_id,
+                questionnaire_id=points_of_care_questionnaire_id,
+            )
+
+        return values, study_values
+
+    @staticmethod
+    def _flatten_rant_points_of_care(bundle, ppm_id, questionnaire_id):
+        """
+        Continues flattening a participant by adding any study specific data to
+        their record. This will include answers in questionnaires, etc. Returns
+        a dictionary to merge into the root participant dictionary as well as
+        a dictionary that will be keyed by the study value.
+
+        :param bundle: The participant's entire FHIR record
+        :type bundle: dict
+        :param ppm_id: The PPM ID of the participant
+        :type ppm_id: str
+        :param questionnaire_id: The questionnaire ID containing points of care
+        :type questionnaire_id: str, defaults to None
+        :returns: A list of points of care parsed from questionnaire
+        :rtype: list
+        """
+        # Set a list
+        points_of_care = []
+
+        # Get questionnaire answers
         questionnaire_response = next(
             (
                 q
                 for q in FHIR._find_resources(bundle, "QuestionnaireResponse")
-                if q["questionnaire"]["reference"]
-                == f"Questionnaire/{PPM.Questionnaire.EXAMPLEPointsOfCareQuestionnaire.value}"
+                if q["questionnaire"]["reference"] == f"Questionnaire/{questionnaire_id}"
             ),
             None,
         )
-        if questionnaire_response and questionnaire_response.get("item"):
+        if not questionnaire_response or not questionnaire_response.get("item"):
+            logger.debug(f"PPM/FHIR/{questionnaire_id}/{ppm_id}: No response items")
+            return None
 
-            # Set a list
-            values["points_of_care"] = []
+        # Parse answers
+        diagnosing_name = FHIR.get_questionnaire_response_item_value(
+            questionnaire_response=questionnaire_response,
+            link_id="question-1",
+        )
+        diagnosing_address = FHIR.get_questionnaire_response_item_value(
+            questionnaire_response=questionnaire_response,
+            link_id="question-2",
+        )
+        diagnosing_phone = FHIR.get_questionnaire_response_item_value(
+            questionnaire_response=questionnaire_response,
+            link_id="question-3",
+        )
+
+        # Add it.
+        points_of_care.append(f"{diagnosing_name}, {diagnosing_phone}, {diagnosing_address}")
+
+        # Check for another
+        if (
+            FHIR.get_questionnaire_response_item_value(
+                questionnaire_response=questionnaire_response, link_id="question-4"
+            )
+            == "No"
+        ):
 
             # Parse answers
-            diagnosing_name = next(
-                (
-                    next(a["valueString"] for a in i["answer"])
-                    for i in questionnaire_response["item"]
-                    if i["linkId"] == "question-1"
-                ),
-                None,
+            current_name = FHIR.get_questionnaire_response_item_value(
+                questionnaire_response=questionnaire_response,
+                link_id="question-5",
             )
-            diagnosing_address = next(
-                (
-                    next(a["valueString"] for a in i["answer"])
-                    for i in questionnaire_response["item"]
-                    if i["linkId"] == "question-2"
-                ),
-                None,
+            current_address = FHIR.get_questionnaire_response_item_value(
+                questionnaire_response=questionnaire_response,
+                link_id="question-6",
             )
-            diagnosing_phone = next(
-                (
-                    next(a["valueString"] for a in i["answer"])
-                    for i in questionnaire_response["item"]
-                    if i["linkId"] == "question-3"
-                ),
-                None,
+            current_phone = FHIR.get_questionnaire_response_item_value(
+                questionnaire_response=questionnaire_response,
+                link_id="question-7",
             )
 
             # Add it.
-            values["points_of_care"].append(f"{diagnosing_name}, {diagnosing_phone}, {diagnosing_address}")
+            points_of_care.append(f"{current_name}, {current_phone}, {current_address}")
 
-            # Check for another
-            if (
-                next(
-                    (
-                        next(a["valueString"] for a in i["answer"])
-                        for i in questionnaire_response["item"]
-                        if i["linkId"] == "question-4"
-                    ),
-                    "",
-                )
-                == "No"
-            ):
+        # Get remaining RA places
+        additional_ra_points_of_care = FHIR.get_questionnaire_response_item_value(
+            questionnaire_response=questionnaire_response,
+            link_id="question-8",
+        )
+        if additional_ra_points_of_care:
+            points_of_care.append(additional_ra_points_of_care)
 
-                # Parse answers
-                current_name = next(
-                    (
-                        next(a["valueString"] for a in i["answer"])
-                        for i in questionnaire_response["item"]
-                        if i["linkId"] == "question-5"
-                    ),
-                    None,
-                )
-                current_address = next(
-                    (
-                        next(a["valueString"] for a in i["answer"])
-                        for i in questionnaire_response["item"]
-                        if i["linkId"] == "question-6"
-                    ),
-                    None,
-                )
-                current_phone = next(
-                    (
-                        next(a["valueString"] for a in i["answer"])
-                        for i in questionnaire_response["item"]
-                        if i["linkId"] == "question-7"
-                    ),
-                    None,
-                )
-
-                # Add it.
-                values["points_of_care"].append(f"{current_name}, {current_phone}, {current_address}")
-
-            # Get remaining RA places
-            additional_ra_points_of_care = next(
-                (
-                    next(a["valueString"] for a in i["answer"])
-                    for i in questionnaire_response["item"]
-                    if i["linkId"] == "question-8"
-                ),
-                None,
+        # Check for another
+        if (
+            FHIR.get_questionnaire_response_item_value(
+                questionnaire_response=questionnaire_response, link_id="question-9"
             )
-            if additional_ra_points_of_care:
-                values["points_of_care"].append(additional_ra_points_of_care)
+            == "Yes"
+        ):
 
-            # Check for another
-            if (
-                next(
-                    (
-                        next(a["valueString"] for a in i["answer"])
-                        for i in questionnaire_response["item"]
-                        if i["linkId"] == "question-9"
-                    ),
-                    "",
-                )
-                == "Yes"
-            ):
+            # Get remaining places
+            additional_points_of_care = FHIR.get_questionnaire_response_item_value(
+                questionnaire_response=questionnaire_response,
+                link_id="question-10",
+            )
+            if additional_points_of_care:
+                points_of_care.append(additional_points_of_care)
 
-                # Get remaining places
-                additional_points_of_care = next(
-                    (
-                        next(a["valueString"] for a in i["answer"])
-                        for i in questionnaire_response["item"]
-                        if i["linkId"] == "question-10"
-                    ),
-                    None,
-                )
-                if additional_points_of_care:
-                    values["points_of_care"].append(additional_points_of_care)
-
-        return values, study_values
+        return points_of_care
 
     @staticmethod
     def get_questionnaire_response_item_value(questionnaire_response, link_id):
@@ -5259,70 +5156,113 @@ class FHIR:
         :type questionnaire_response: dict
         :param link_id: The link ID of the item's value to return
         :type link_id: str
-        :return: The value object
-        :rtype: object
+        :param first: Return the first found answer value
+        :type first: boolean
+        :return: The value object, if it exists
+        :rtype: object, defaults to None
         """
-        questionnaire_response_id = answer = None
-        try:
-            # Get ID
+        # Get answer value(s)
+        values = FHIR.get_questionnaire_response_item_values(
+            questionnaire_response=questionnaire_response, link_id=link_id
+        )
+        # Log it if more than one
+        if len(values) > 1:
+            # Get IDs
+            questionnaire_id = questionnaire_response["questionnaire"]["reference"].replace("Questionnaire/", "")
             questionnaire_response_id = questionnaire_response["id"]
+            logger.debug(
+                f"PPM/FHIR/{questionnaire_id}/{questionnaire_response_id}/{link_id}: Ignoring other answer values"
+            )
+        return next(iter(values)) if values else None
+
+    @staticmethod
+    def get_questionnaire_response_item_values(questionnaire_response, link_id):
+        """
+        Returns the value(s) for the given questionnaire response and link ID.
+
+        :param questionnaire_response: The QuestionnaireResponse resource to check
+        :type questionnaire_response: dict
+        :param link_id: The link ID of the item's value to return
+        :type link_id: str
+        :param first: Return the first found answer value
+        :type first: boolean
+        :return: A list of value objects
+        :rtype: list
+        """
+        # Collect values
+        values = []
+        questionnaire_id = questionnaire_response_id = answer = None
+        try:
+            # Get IDs
+            questionnaire_id = questionnaire_response["questionnaire"]["reference"].replace("Questionnaire/", "")
+            questionnaire_response_id = questionnaire_response["id"]
+            logger.debug(f"PPM/FHIR/{questionnaire_id}/{questionnaire_response_id}/{link_id}: Getting answer value(s)")
 
             # Get the item
-            answer = next(
-                (next(a for a in i["answer"]) for i in questionnaire_response["item"] if i["linkId"] == link_id),
+            answers = next(
+                (i.get("answer") for i in questionnaire_response["item"] if i["linkId"] == link_id),
                 None,
             )
 
             # If answer, parse answer
-            if not answer:
-                logger.debug(
-                    f"PPM/FHIR/QuestionnaireResponse/{questionnaire_response_id}: " f"No answer for item {link_id}"
-                )
+            if not answers:
+                logger.debug(f"PPM/FHIR/{questionnaire_id}/{questionnaire_response_id}/{link_id}: No answer for item")
                 return None
 
-            # Check types
-            if answer.get("valueString"):
-                return answer["valueString"]
-            elif answer.get("valueBoolean"):
-                return answer["valueBoolean"]
-            elif answer.get("valueInteger"):
-                return answer["valueInteger"]
-            elif answer.get("valueDecimal"):
-                return answer["valueDecimal"]
-            elif answer.get("valueDate"):
-                try:
-                    return parse(answer["valueDate"])
-                except ValueError as e:
-                    logger.exception(
-                        f"PPM/FHIR: Date error: {e}",
-                        exc_info=True,
-                        extra={
-                            "questionnaire_response": questionnaire_response_id,
-                            "link_id": link_id,
-                            "answer": answer,
-                        },
+            # Iterate values
+            for answer in answers:
+                # Check types
+                if answer.get("valueString"):
+                    values.append(answer["valueString"])
+                elif answer.get("valueBoolean"):
+                    values.append(answer["valueBoolean"])
+                elif answer.get("valueInteger"):
+                    values.append(answer["valueInteger"])
+                elif answer.get("valueDecimal"):
+                    values.append(answer["valueDecimal"])
+                elif answer.get("valueDate"):
+                    try:
+                        values.append(parse(answer["valueDate"]))
+                    except ValueError as e:
+                        logger.exception(
+                            f"PPM/FHIR: Date error: {e}",
+                            exc_info=True,
+                            extra={
+                                "questionnaire_id": questionnaire_id,
+                                "questionnaire_response": questionnaire_response_id,
+                                "link_id": link_id,
+                                "answer": answer,
+                            },
+                        )
+                elif answer.get("valueDateTime"):
+                    try:
+                        values.append(parse(answer["valueDateTime"]))
+                    except ValueError as e:
+                        logger.exception(
+                            f"PPM/FHIR: Date error: {e}",
+                            exc_info=True,
+                            extra={
+                                "questionnaire_id": questionnaire_id,
+                                "questionnaire_response": questionnaire_response_id,
+                                "link_id": link_id,
+                                "answer": answer,
+                            },
+                        )
+                else:
+                    logger.debug(
+                        f"PPM/FHIR/{questionnaire_id}/{questionnaire_response_id}/{link_id}: "
+                        f"Unhandled FHIR answer type: {answer}"
                     )
-            elif answer.get("valueDateTime"):
-                try:
-                    return parse(answer["valueDateTime"])
-                except ValueError as e:
-                    logger.exception(
-                        f"PPM/FHIR: Date error: {e}",
-                        exc_info=True,
-                        extra={
-                            "questionnaire_response": questionnaire_response_id,
-                            "link_id": link_id,
-                            "answer": answer,
-                        },
-                    )
-            else:
-                raise ValueError(f"Unhandled FHIR answer type: {answer}")
+                    raise ValueError(f"Unhandled FHIR answer type: {answer}")
+
+            return values
 
         except Exception as e:
             logger.exception(
                 f"PPM/FHIR: Error getting item value: {e}",
                 exc_info=True,
                 extra={
+                    "questionnaire_id": questionnaire_id,
                     "questionnaire_response": questionnaire_response_id,
                     "link_id": link_id,
                     "answer": answer,

@@ -446,6 +446,26 @@ class P2MD(PPM.Service):
         return cls.delete(request, f"/sources/api/consent/{study}/{ppm_id}", data)
 
     @classmethod
+    def get_study_surveys(cls, request, study):
+        """
+        Make a request to P2MD to get the current study's survey objects.
+        Objects contain details of the survey as well as the FHIR resources
+        used in PPM to track their responses.
+
+        :param request: The current HTTP request
+        :type request: HttpRequest
+        :param study: The study to query on
+        :type study: str
+        :return: The list of survey objects
+        :rtype: list
+        """
+        # Ensure it's a valid study
+        if not study or not PPM.Study.get(study) in PPM.Study:
+            raise ValueError(f"'{study}' is not a valid PPM study identifier")
+
+        return cls.get(request, "/ppm/api/survey/", {"study": PPM.Study.get(study).value})
+
+    @classmethod
     def get_study_questionnaires(cls, request, study):
         """
         Make a request to P2MD to get questionnaires for the current study.
@@ -486,14 +506,38 @@ class P2MD(PPM.Service):
     def get_eligibility_survey(cls, request, study):
         """
         Make a request to P2MD to get the eligibility survey for this study
+
         :param request: The current request
+        :type request: HttpRequest
         :param study: The study for which the surveys should be returned
-        :param disabled: Whether to include disabled surveys in the request
-        :return: list
+        :type study: str
+        :returns: The survey object, if it exists
+        :rtype: dict
         """
         # Set query for request
         data = {
             "eligibility_for": study,
+            "is_enabled": True,
+        }
+
+        # Return response
+        return next(iter(cls.get(request, f"/ppm/api/survey/", data=data)), None)
+
+    @classmethod
+    def get_points_of_care_survey(cls, request, study):
+        """
+        Make a request to P2MD to get the points of care survey for this study
+
+        :param request: The current request
+        :type request: HttpRequest
+        :param study: The study for which the surveys should be returned
+        :type study: str
+        :returns: The survey object, if it exists
+        :rtype: dict
+        """
+        # Set query for request
+        data = {
+            "points_of_care_for": study,
             "is_enabled": True,
         }
 
