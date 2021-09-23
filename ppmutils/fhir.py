@@ -2018,7 +2018,7 @@ class FHIR:
         return None
 
     @staticmethod
-    def query_participant(patient, eligibility_questionnaire_id=None, questionnaire_ids=None, flatten_return=False):
+    def query_participant(patient, questionnaires=None, flatten_return=False):
         """
         This method queries a participant's entire FHIR record and returns it
         if available. If specified, the record will be flattened into a
@@ -2029,10 +2029,8 @@ class FHIR:
 
         :param patient: The participant identifier, PPM ID or email
         :type patient: str
-        :param eligibility_questionnaire_id: The ID of the questionnaire used for the initial/eligibility questionnaire
-        :type eligibility_questionnaire_id: str, defaults to None
-        :param questionnaire_ids: The list of study questionnaires to include
-        :type questionnaire_ids: list, defaults to None
+        :param questionnaires: The list of survey/questionnaires for this study
+        :type questionnaires: list, defaults to None
         :param flatten_return: Whether to flatten the resources or not
         :type flatten_return: bool, defaults to False
         :returns: A dictionary comprising the user's record
@@ -2040,7 +2038,7 @@ class FHIR:
         """
         logger.warning('PPM/FHIR: Method "query_participant" is deprecated')
         warnings.warn(f'PPM/FHIR: "query_participant" is deprecated, use "get_participant" instead', DeprecationWarning)
-        return FHIR.get_participant(patient, eligibility_questionnaire_id, questionnaire_ids, flatten_return)
+        return FHIR.get_participant(patient, questionnaires, flatten_return)
 
     @staticmethod
     def get_patient(patient, flatten_return=False):
