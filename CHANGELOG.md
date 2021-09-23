@@ -1,3 +1,11 @@
+## [0.14.1](https://github.com/hms-dbmi/ppm-utils/compare/v0.14.0...v0.14.1) (2021-09-23)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-705 - Fixed incorrect method call ([623a0ad](https://github.com/hms-dbmi/ppm-utils/commit/623a0ad25a76a936e9144dd0013ca7492ab55bcd))
+* **fhir:** PPM-705 - Refactored to pass all survey objects to parsing methods to allow handling of Points of Care survey/questionnaires, etc. ([78235db](https://github.com/hms-dbmi/ppm-utils/commit/78235db3c354cd64cba1b07cafd8e3145304a9e0))
+
 # [0.14.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.13.1...v0.14.0) (2021-09-20)
 
 
