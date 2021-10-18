@@ -3196,15 +3196,14 @@ class FHIR:
                 (e for e in device.get("extension", []) if e.get("url") == FHIR.device_study_extension_url), None
             )
             if extension:
-                if extension:
-                    extension["valueString"] = study
-                else:
-                    device.setdefault("extension", []).append(
-                        {
-                            "url": FHIR.device_study_extension_url,
-                            "valueString": study,
-                        }
-                    )
+                extension["valueString"] = study
+            else:
+                device.setdefault("extension", []).append(
+                    {
+                        "url": FHIR.device_study_extension_url,
+                        "valueString": study,
+                    }
+                )
 
             # Set the title
             title_identifier = next(
