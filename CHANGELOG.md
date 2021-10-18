@@ -1,3 +1,15 @@
+# [0.15.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.14.1...v0.15.0) (2021-10-18)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-728 - Fixed updating of PPM devices ([8b3d280](https://github.com/hms-dbmi/ppm-utils/commit/8b3d280da0104271ad027e62d795f471675e25cb))
+
+
+### Features
+
+* **ppm/fhir:** PPM-728 - Added PPM query for tracked item types; refactored FHIR Device handling specific to PPM tracked items; minor auth fixes ([a9c319b](https://github.com/hms-dbmi/ppm-utils/commit/a9c319b099d3d523375abbe23667c747fe516760))
+
 ## [0.14.1](https://github.com/hms-dbmi/ppm-utils/compare/v0.14.0...v0.14.1) (2021-09-23)
 
 
