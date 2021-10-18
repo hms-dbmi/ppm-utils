@@ -60,8 +60,10 @@ class FHIR:
     research_subject_identifier_system = "https://peoplepoweredmedicine.org/fhir/subject"
     research_subject_coding_system = "https://peoplepoweredmedicine.org/subject"
 
+    device_title_system = "https://peoplepoweredmedicine.org/fhir/device/title"
     device_identifier_system = "https://peoplepoweredmedicine.org/fhir/device"
     device_coding_system = "https://peoplepoweredmedicine.org/device"
+    device_study_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/study"
 
     # Type system for PPM data documents
     data_document_reference_identifier_system = "https://peoplepoweredmedicine.org/document-type"
@@ -1014,16 +1016,20 @@ class FHIR:
         return response.ok
 
     @staticmethod
-    def create_ppm_device(patient_id, item, identifier=None, shipped=None, returned=None):
+    def create_ppm_device(patient_id, study, code, display, title, identifier, shipped=None, returned=None, note=None):
         """
         Creates a project list if not already created
         """
         device_data = FHIR.Resources.ppm_device(
-            item=item,
             patient_ref="Patient/{}".format(patient_id),
+            study=study,
+            code=code,
+            display=display,
+            title=title,
             identifier=identifier,
             shipped=shipped,
             returned=returned,
+            note=note,
         )
 
         # Use the FHIR client lib to validate our resource.
@@ -2337,6 +2343,28 @@ class FHIR:
         return None
 
     @staticmethod
+    def get_ppm_device(id, flatten_return=False):
+        """
+        Queries FHIR for PPM devices and returns the device, if any, matching
+        the passed ID. Note: This is the numeric FHIR ID of the resource.
+
+        :param id: The item's FHIR ID
+        :type id: str
+        :param flatten_return: Whether to flatten the resource or not
+        :type flatten_return: bool
+        :return: The matching device resource, if any
+        :rtype: dict, defaults to None
+        """
+        # Get the devices
+        device = next(iter(FHIR._query_resources("Device", query={"_id": id})), None)
+
+        # Check if the resource should be flattened
+        if device and flatten_return:
+            return FHIR.flatten_ppm_device(device)
+
+        return device
+
+    @staticmethod
     def query_ppm_devices(patient=None, item=None, identifier=None, flatten_return=False):
         """
         Queries the participants FHIR record for any PPM-related Device
@@ -3108,43 +3136,107 @@ class FHIR:
         return False
 
     @staticmethod
-    def update_ppm_device(patient_id, item, identifier=None, shipped=None, returned=None):
+    def update_ppm_device(
+        id, patient_id, study, code, display, title, identifier, shipped=None, returned=None, note=None
+    ):
+        """
+        Updates the Device for the given ID. Optional fields will be updated
+        if a value is passed or deleted if None is passed.
 
+        :param id: The ID of the Device resource
+        :type id: str
+        :param patient_id: The ID of the participant
+        :type patient_id: str
+        :param study: The study for which the device pertains, defaults to None
+        :type study: str
+        :param code: The code of the device type, defaults to None
+        :type code: str
+        :param display: The name of the device type, defaults to None
+        :type display: str
+        :param title: The admin-assigned title of the device, defaults to None
+        :type title: str
+        :param identifier: The identifier of the device, defaults to None
+        :type identifier: str, optional
+        :param shipped: The date the item was shipped to the participant, defaults to None
+        :type shipped: datetime, optional
+        :param returned: The date the item was returned to PPM, defaults to None
+        :type returned: datetime, optional
+        :param note: Any admin-assigned note for this device, defaults to None
+        :type note: str, optional
+        :return: Whether the operation succeeded or not
+        :rtype: boolean
+        """
         # Make the updates
-        content = None
+        url = response = content = None
         try:
             # Get the device
-            device = next(iter(FHIR.query_ppm_devices(patient=patient_id, item=item)), None)
+            device = FHIR.get_ppm_device(id=id, flatten_return=False)
             if not device:
-                logger.debug(f"No PPM device could be found for {patient_id}/{item}/{identifier}")
+                logger.debug(f"No PPM device could be found for {patient_id}/{id}/{identifier}")
                 return False
 
             # Update the resource identifier
-            if identifier:
+            ppm_identifier = next(
+                (i for i in device.get("identifier", []) if i.get("system") == FHIR.device_identifier_system),
+                None,
+            )
+            if ppm_identifier and ppm_identifier.get("value") != identifier:
+                ppm_identifier["value"] = identifier
 
-                # Get the PPM identifier dictionary
-                identifiers = device.get("identifier", [])
-                ppm_identifier = next(
-                    (_id for _id in identifiers if _id.get("system") == FHIR.device_identifier_system),
-                    None,
+            elif not ppm_identifier:
+                device.setdefault("identifier", []).append(
+                    {
+                        "system": FHIR.device_identifier_system,
+                        "value": identifier,
+                    }
                 )
-                if ppm_identifier:
 
-                    # Update it
-                    ppm_identifier["value"] = identifier.lower()
+            # Set the study
+            extension = next(
+                (e for e in device.get("extension", []) if e.get("url") == FHIR.device_study_extension_url), None
+            )
+            if extension:
+                extension["valueString"] = study
+            else:
+                device.setdefault("extension", []).append(
+                    {
+                        "url": FHIR.device_study_extension_url,
+                        "valueString": study,
+                    }
+                )
 
-                else:
+            # Set the title
+            title_identifier = next(
+                (i for i in device.get("identifier", []) if i.get("system") == FHIR.device_title_system), None
+            )
+            if title_identifier and title_identifier.get("value") != title:
+                title_identifier["value"] = title
+            elif not title_identifier:
+                device.setdefault("identifier", []).append(
+                    {
+                        "system": FHIR.device_title_system,
+                        "value": title,
+                    }
+                )
 
-                    # Add a new one
-                    identifiers.append(
-                        {
-                            "system": FHIR.device_identifier_system,
-                            "value": identifier.lower(),
-                        }
-                    )
-
-                # Set it
-                device["identifier"] = identifiers
+            # Update type
+            type_code = next(
+                (c for c in device.get("type", {}).get("coding", []) if c.get("system") == FHIR.device_coding_system),
+                None,
+            )
+            if type_code and type_code.get("code") != code or type_code.get("display") != display:
+                type_code["code"] = code
+                type_code["display"] = display
+                device["type"]["text"] = display
+            elif not type_code:
+                device.setdefault("type", {}).setdefault("coding", []).append(
+                    {
+                        "system": FHIR.device_coding_system,
+                        "code": code,
+                        "display": display,
+                    }
+                )
+                device["type"]["text"] = display
 
             # Check dates
             if shipped:
@@ -3156,6 +3248,20 @@ class FHIR:
                 device["expirationDate"] = returned.isoformat()
             elif device.get("expirationDate"):
                 del device["expirationDate"]
+
+            # Get the first note
+            annotation = next((n for n in device.get("note", [])), None)
+            if annotation and not note:
+                del device["note"]
+            elif annotation and annotation.get("text") != note:
+                annotation["text"] = note
+            elif not annotation and note:
+                device["note"] = [
+                    {
+                        "time": datetime.now().isoformat(),
+                        "text": note,
+                    }
+                ]
 
             # Build the URL
             url = furl(PPM.fhir_url())
@@ -3170,14 +3276,25 @@ class FHIR:
             return response.ok
 
         except requests.HTTPError as e:
+            logger.debug(f"PPM/FHIR: Device request error: {content}")
             logger.error(
-                "FHIR Request Error: {}".format(e),
-                exc_info=True,
-                extra={"ppm_id": patient_id, "response": content},
+                "PPM/FHIR: Device request Error: {}".format(e),
+                extra={"ppm_id": patient_id, "id": id, "url": url, "response": response},
             )
 
         except Exception as e:
-            logger.error("FHIR Error: {}".format(e), exc_info=True, extra={"ppm_id": patient_id})
+            logger.error(
+                f"PPM/FHIR: Device update error: {e}",
+                exc_info=True,
+                extra={
+                    "ppm_id": patient_id,
+                    "id": id,
+                    "study": study,
+                    "code": code,
+                    "url": url,
+                    "response": response,
+                },
+            )
 
         return False
 
@@ -6243,6 +6360,14 @@ class FHIR:
 
     @staticmethod
     def flatten_ppm_device(resource):
+        """
+        Parses and flattens a Device resource into a more manageable object.
+
+        :param resource: The Device FHIR resource as JSON
+        :type resource: dict
+        :return: A condensed dictionary describing the device
+        :rtype: dict
+        """
 
         # Get the actual resource in case we were handed a BundleEntry
         resource = FHIR._get_or(resource, ["resource"], resource)
@@ -6251,33 +6376,50 @@ class FHIR:
         record = dict()
 
         # Try and get the values
+        record["id"] = resource["id"]
         record["status"] = FHIR._get_or(resource, ["status"])
-        record["shipped"] = FHIR._get_or(resource, ["manufactureDate"])
-        record["returned"] = FHIR._get_or(resource, ["expirationDate"])
+
+        # Try to get dates
+        if resource.get("manufactureDate"):
+            record["shipped"] = parse(resource["manufactureDate"])
+        if resource.get("expirationDate"):
+            record["returned"] = parse(resource["expirationDate"])
+
+        # Get the study
+        record["study"] = ""
+        for e in resource.get("extension", []):
+            if e.get("url") == FHIR.device_study_extension_url:
+                record["study"] = e["valueString"]
 
         # Get the proper identifier
+        record["identifier"] = ""
+        record["title"] = ""
         for identifier in resource.get("identifier", []):
             if identifier.get("system") == FHIR.device_identifier_system:
 
                 # Set properties
                 record["identifier"] = identifier["value"]
-                break
 
-        else:
-            record["identifier"] = ""
+            if identifier.get("system") == FHIR.device_title_system:
+
+                # Set properties
+                record["title"] = identifier["value"]
+
+        # Get notes
+        record["note"] = ""
+        for note in resource.get("note", []):
+            if note.get("text"):
+                record["note"] = note["text"]
 
         # Get the proper coding
+        record["type"] = ""
+        record["name"] = ""
         for coding in FHIR._get_or(resource, ["type", "coding"], []):
             if coding.get("system") == FHIR.device_coding_system:
 
                 # Set properties
                 record["type"] = coding["code"]
                 record["name"] = coding["display"]
-                break
-
-        else:
-            record["type"] = ""
-            record["name"] = ""
 
         # Link back to participant
         record["ppm_id"] = FHIR._get_referenced_id(resource, "Patient", key="patient")
@@ -6850,43 +6992,49 @@ class FHIR:
 
         @staticmethod
         def ppm_device(
-            item,
             patient_ref,
-            identifier=None,
+            study,
+            code,
+            display,
+            title,
+            identifier,
             shipped=None,
             returned=None,
             status="active",
+            note=None,
         ):
 
             data = {
                 "resourceType": "Device",
+                "identifier": [
+                    {
+                        "system": FHIR.device_identifier_system,
+                        "value": identifier,
+                    },
+                    {
+                        "system": FHIR.device_title_system,
+                        "value": title,
+                    },
+                ],
                 "type": {
                     "coding": [
                         {
                             "system": FHIR.device_coding_system,
-                            "code": item,
-                            "display": dict(PPM.TrackedItem.choices())[item],
+                            "code": code,
+                            "display": display,
                         }
                     ],
-                    "text": dict(PPM.TrackedItem.choices())[item],
+                    "text": display,
                 },
                 "status": status,
                 "patient": {"reference": patient_ref},
+                "extension": [
+                    {
+                        "url": FHIR.device_study_extension_url,
+                        "valueString": study,
+                    }
+                ],
             }
-
-            # Prefill some details based on the item type
-            if item is PPM.TrackedItem.BloodSampleKit:
-                pass
-            elif item is PPM.TrackedItem.SalivaSampleKit:
-                pass
-            elif item is PPM.TrackedItem.uBiomeFecalSampleKit:
-                pass
-            elif item is PPM.TrackedItem.Fitbit:
-                pass
-
-            # Add identifier
-            if identifier:
-                data["identifier"] = [{"system": FHIR.device_identifier_system, "value": identifier}]
 
             # Check dates
             if shipped:
@@ -6894,6 +7042,14 @@ class FHIR:
 
             if returned:
                 data["expirationDate"] = returned.isoformat()
+
+            if note:
+                data["note"] = [
+                    {
+                        "time": datetime.now().isoformat(),
+                        "text": note,
+                    }
+                ]
 
             return data
 

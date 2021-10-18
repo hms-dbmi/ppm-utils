@@ -158,6 +158,28 @@ class P2MD(PPM.Service):
         return cls.get(request, "/ppm/api/administrator/", params)
 
     @classmethod
+    def get_tracked_items(cls, request, study):
+        """
+        Make a request to P2MD to get the current list of tracked items. List
+        contains description and metadata for all items to be tracked for a
+        participant in the given study.
+
+        :param request: The current HTTP request
+        :type request: HttpRequest
+        :param study: The study to query on
+        :type study: str
+        :return: The study object
+        :rtype: dict
+        """
+        # Set query parameters
+        params = {}
+        if study:
+            params.update({"studies": PPM.Study.get(study).value})
+
+        # Ensure it's a valid study
+        return cls.get(request, "/ppm/api/trackeditem/", params)
+
+    @classmethod
     def get_authorizations(cls, request, ppm_ids):
         """
         Make a request to P2MD to determine what providers all participants
