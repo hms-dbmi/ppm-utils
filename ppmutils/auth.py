@@ -165,6 +165,11 @@ class Auth(object):
             # Get participant details
             patient, studies = FHIR.query_ppm_participant_details(participant)
 
+            # Ensure patient exists
+            if not studies:
+                logger.error(f'PPM/Auths: Invalid check on non-existent participant "{participant}"')
+                return False
+
         # Check for study permissions on at least one
         for study in studies:
 
@@ -245,6 +250,11 @@ class Auth(object):
         # Get participant details
         if not patient:
             patient, studies = FHIR.query_ppm_participant_details(participant)
+
+            # Ensure patient exists
+            if not patient:
+                logger.error(f'PPM/Auths: Invalid check on non-existent participant "{participant}"')
+                return False
 
         # Compare details
         if email.lower() == patient.get("email").lower() and participant == patient.get("ppm_id"):
