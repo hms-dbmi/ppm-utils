@@ -1,3 +1,10 @@
+## [0.15.1](https://github.com/hms-dbmi/ppm-utils/compare/v0.15.0...v0.15.1) (2021-10-20)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-HOTFIX-102021 - Fixed a bug on QuestionnaireResponse handling ([195d53a](https://github.com/hms-dbmi/ppm-utils/commit/195d53a34145ebca7eb26c2953cc64583d4de770))
+
 # [0.15.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.14.1...v0.15.0) (2021-10-18)
 
 
