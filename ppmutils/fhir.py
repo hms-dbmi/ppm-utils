@@ -5280,8 +5280,7 @@ class FHIR:
         values = FHIR.get_questionnaire_response_item_values(
             questionnaire_response=questionnaire_response, link_id=link_id
         )
-        # Log it if more than one
-        if len(values) > 1:
+        if values and len(values) > 1:
             # Get IDs
             questionnaire_id = questionnaire_response["questionnaire"]["reference"].replace("Questionnaire/", "")
             questionnaire_response_id = questionnaire_response["id"]
