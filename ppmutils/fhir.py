@@ -92,6 +92,7 @@ class FHIR:
     smart_on_fhir_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-smart-on-fhir"
     referral_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/how-did-you-hear-about-us"
     admin_notified_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/admin-notified"
+    procure_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/uses-procure"
 
     # Qualtrics IDs
     qualtrics_survey_identifier_system = "https://peoplepoweredmedicine.org/fhir/qualtrics/survey"
@@ -6260,6 +6261,16 @@ class FHIR:
                 extension["valueBoolean"]
                 for extension in resource.get("extension", [])
                 if "uses-smart-on-fhir" in extension.get("url")
+            ),
+            True,
+        )
+
+        # Get if they are not using Fitbit
+        patient["uses_procure"] = next(
+            (
+                extension["valueBoolean"]
+                for extension in resource.get("extension", [])
+                if FHIR.procure_extension_url in extension.get("url")
             ),
             True,
         )
