@@ -1,3 +1,10 @@
+## [0.15.2](https://github.com/hms-dbmi/ppm-utils/compare/v0.15.1...v0.15.2) (2021-10-29)
+
+
+### Bug Fixes
+
+* **fhir:** PPM-733 - Added Patient extension for opting out of Procure ([22d79e6](https://github.com/hms-dbmi/ppm-utils/commit/22d79e69c8e5210066fccfa0c28692f4a0769358))
+
 ## [0.15.1](https://github.com/hms-dbmi/ppm-utils/compare/v0.15.0...v0.15.1) (2021-10-20)
 
 
