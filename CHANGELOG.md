@@ -1,3 +1,10 @@
+## [0.15.3](https://github.com/hms-dbmi/ppm-utils/compare/v0.15.2...v0.15.3) (2022-06-17)
+
+
+### Bug Fixes
+
+* **ppm:** PPM-747 - Re-added stool samples to NEER consent ([c392ac3](https://github.com/hms-dbmi/ppm-utils/commit/c392ac3d1b765adc05c1c6a1d4df569b1864810a))
+
 ## [0.15.2](https://github.com/hms-dbmi/ppm-utils/compare/v0.15.1...v0.15.2) (2021-10-29)
 
 
