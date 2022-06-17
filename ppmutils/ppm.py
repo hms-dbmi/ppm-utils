@@ -819,7 +819,7 @@ class PPM:
 
         # Consents (Current)
         EXAMPLEConsent = "example-signature"
-        NEERConsent = "neer-signature-v2"
+        NEERConsent = "neer-signature-v3"
         ASDGuardianConsentQuestionnaire = "ppm-asd-consent-guardian-quiz"
         ASDIndividualConsentQuestionnaire = "ppm-asd-consent-individual-quiz"
         ASDConsentIndividualSignatureQuestionnaire = "individual-signature-part-1"
@@ -1134,9 +1134,10 @@ class PPM:
             if questionnaire_id == PPM.Questionnaire.NEERConsent.value:
                 return {
                     "question-1": "82078001",
-                    "question-2": "258435002",
-                    "question-3": "284036006",
-                    "question-4": "702475000",
+                    "question-2": "165334004",
+                    "question-3": "258435002",
+                    "question-4": "284036006",
+                    "question-5": "702475000",
                 }
 
             elif questionnaire_id == PPM.Questionnaire.EXAMPLEConsent.value:
@@ -1356,7 +1357,7 @@ class PPM:
             if environment and cls.default_url_for_env(environment):
                 return cls.default_url_for_env(environment)
 
-            raise ValueError("Service URL not defined in settings".format(cls.service.upper()))
+            raise ValueError("Service URL not defined in settings")
 
         @classmethod
         def default_url_for_env(cls, environment):
@@ -1517,6 +1518,8 @@ class PPM:
             if not data:
                 data = {}
 
+            # Set placeholders for debugging
+            content = status_code = None
             try:
                 # Prepare the request.
                 response = requests.post(
@@ -1524,6 +1527,8 @@ class PPM:
                     headers=cls.headers(request),
                     data=json.dumps(data),
                 )
+                content = response.content
+                status_code = response.status_code
 
                 # Check response type
                 if raw:
@@ -1531,13 +1536,28 @@ class PPM:
                 else:
                     return response.json()
 
+            except requests.HTTPError as e:
+                logger.debug(f"{cls.service} request error: {data}/{path} -> [{status_code}] {content}")
+                logger.exception(
+                    "{} request error: {}".format(cls.service, e),
+                    extra={
+                        "data": data,
+                        "path": path,
+                        "content": content,
+                        "status_code": status_code,
+                    },
+                )
+
             except Exception as e:
+                logger.debug(f"{cls.service} error: {data}/{path} -> [{status_code}] {content}")
                 logger.exception(
                     "{} error: {}".format(cls.service, e),
                     exc_info=True,
                     extra={
                         "data": data,
                         "path": path,
+                        "content": content,
+                        "status_code": status_code,
                     },
                 )
 
