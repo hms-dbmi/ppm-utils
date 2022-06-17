@@ -666,7 +666,7 @@ class FHIR:
         # Check status
         if not response.ok:
             logger.error(
-                f"FHIR Error: Cannot get resource details from a failed response: "
+                "FHIR Error: Cannot get resource details from a failed response: "
                 f"{response.status_code} : {response.content.decode()}"
             )
             return None, None
@@ -846,7 +846,7 @@ class FHIR:
                 # Check multiple
                 if existing_resources and len(existing_resources) > 1:
                     logger.error(
-                        f"PPM/{patient}/{study}/FHIR: Multiple resources " f"found, cannot replace",
+                        f"PPM/{patient}/{study}/FHIR: Multiple resources found, cannot replace",
                         extra={
                             "study": study,
                             "patient": patient,
@@ -860,7 +860,7 @@ class FHIR:
                 elif existing_resources:
                     resource_id = next(iter(existing_resources))["id"]
                     logger.debug(
-                        f"PPM/{patient}/{study}/FHIR: Will replace " f"{resource_type}/{resource_id}",
+                        f"PPM/{patient}/{study}/FHIR: Will replace {resource_type}/{resource_id}",
                     )
 
             # Set the URL
@@ -2044,7 +2044,7 @@ class FHIR:
         :rtype: dict
         """
         logger.warning('PPM/FHIR: Method "query_participant" is deprecated')
-        warnings.warn(f'PPM/FHIR: "query_participant" is deprecated, use "get_participant" instead', DeprecationWarning)
+        warnings.warn('PPM/FHIR: "query_participant" is deprecated, use "get_participant" instead', DeprecationWarning)
         return FHIR.get_participant(patient, questionnaires, flatten_return)
 
     @staticmethod
@@ -2125,7 +2125,7 @@ class FHIR:
         :rtype: dict
         """
         logger.warning('PPM/FHIR: Method "query_patient" is deprecated')
-        warnings.warn(f'PPM/FHIR: "query_patient" is deprecated, use "get_patient" instead', DeprecationWarning)
+        warnings.warn('PPM/FHIR: "query_patient" is deprecated, use "get_patient" instead', DeprecationWarning)
         return FHIR.get_patient(patient, flatten_return)
 
     # TODO: This method is deprecated
@@ -2141,7 +2141,7 @@ class FHIR:
         """
         logger.warning('PPM/FHIR: Method "get_composition" is deprecated')
         warnings.warn(
-            f'PPM/FHIR: "get_composition" is deprecated, use "query_consent_compositions" instead', DeprecationWarning
+            'PPM/FHIR: "get_composition" is deprecated, use "query_consent_compositions" instead', DeprecationWarning
         )
 
         # Just return the first from querying
@@ -3758,7 +3758,7 @@ class FHIR:
         if not points_of_care_list:
             # Set the list to persist
             points_of_care = [points_of_care]
-            logger.debug(f"PPM/FHIR: POC list doesn't exist, will create")
+            logger.debug("PPM/FHIR: POC list doesn't exist, will create")
             FHIR.create_point_of_care_list(patient, points_of_care)
             return points_of_care
 
@@ -4124,7 +4124,7 @@ class FHIR:
                     logger.error(
                         f"PPM/{patient}/FHIR: Cannot update Questionnaire"
                         f"Response for Questionnaire/{questionnaire_id} as "
-                        f"it does not exist"
+                        "it does not exist"
                     )
                     return False
 
@@ -4483,7 +4483,7 @@ class FHIR:
         elif PPM.Study.get(project) is PPM.Study.NEER:
 
             # Delete questionnaire responses
-            questionnaire_ids = ["neer-signature", "neer-signature-v2"]
+            questionnaire_ids = ["neer-signature", "neer-signature-v2", "neer-signature-v3"]
             for questionnaire_id in questionnaire_ids:
                 transaction["entry"].append(
                     {
@@ -4756,7 +4756,7 @@ class FHIR:
                     f"PPM/{ppm_id}: Multiple PPM studies: {studies}",
                     extra={"study": study, "ppm_id": ppm_id, "studies": studies},
                 )
-                raise ValueError(f"Participant has multiple studies but requested study has not been defined")
+                raise ValueError("Participant has multiple studies but requested study has not been defined")
 
             # If study wasn't passed, get it from the single entry list
             elif not study:
@@ -5707,7 +5707,7 @@ class FHIR:
             if len(parts) == 3:
 
                 # Ensure we have siblings
-                if len([l for l in questions.keys() if linkId.rsplit(parts[2], 1)[0] in l]) == 1:
+                if len([link_id for link_id in questions.keys() if linkId.rsplit(parts[2], 1)[0] in link_id]) == 1:
                     continue
 
                 i_count = int(parts[2])
@@ -7258,7 +7258,7 @@ class FHIR:
                 else:
                     logger.error("----- FHIR/Ops: Failed '{}' ----".format(op.__name__))
                     logger.error("----- FHIR/Ops: '{}' Message: ----\n{}\n".format(op.__name__, message))
-                    logger.info("----- FHIR/Ops: Operation failed, halting operations ----".format(op.__name__))
+                    logger.info("----- FHIR/Ops: Operation failed, halting operations ----")
                     break
 
         def _op_fix_asd_researchstudy_20201031(*args, **kwargs):
@@ -7331,7 +7331,7 @@ class FHIR:
                 bundle.entry.append(research_study_delete_entry)
 
             else:
-                logger.debug(f"PPM/FHIR/Ops/fix_asd_research_study: No ResearchStudy for 'ppm-autism' found")
+                logger.debug("PPM/FHIR/Ops/fix_asd_research_study: No ResearchStudy for 'ppm-autism' found")
 
             # Else, get all referencing ResearchSubjects
             research_subjects = FHIR.query_ppm_research_subjects()
@@ -7339,9 +7339,9 @@ class FHIR:
                 r for r in research_subjects if r["study"]["reference"].replace("ResearchStudy/", "") == "ppm-autism"
             ]
             logger.debug(
-                f"PPM/FHIR/Ops/fix_asd_research_study: Found "
+                "PPM/FHIR/Ops/fix_asd_research_study: Found "
                 f"{len(research_subjects)} ResearchSubject resources"
-                f"for 'ppm-autism'"
+                "for 'ppm-autism'"
             )
 
             # Filter for those referencing 'ppm-autism'
@@ -7390,9 +7390,9 @@ class FHIR:
                 in [r["ref"]["reference"].replace("ResearchStudy/", "") for r in d["context"]["related"]]
             ]
             logger.debug(
-                f"PPM/FHIR/Ops/fix_asd_research_study: Found "
+                "PPM/FHIR/Ops/fix_asd_research_study: Found "
                 f"{len(document_references)} DocumentReference resources "
-                f"for 'ppm-autism'"
+                "for 'ppm-autism'"
             )
 
             # Filter for those referencing 'ppm-autism'
@@ -7429,14 +7429,14 @@ class FHIR:
             query = {"type": f"{FHIR.ppm_consent_type_system}|{FHIR.ppm_consent_type_value}"}
 
             # Check for ppm-autism study
-            query["entry"] = f"ResearchStudy/ppm-autism"
+            query["entry"] = "ResearchStudy/ppm-autism"
 
             # Get resources
             compositions = FHIR._query_resources("Composition", query=query)
             logger.debug(
-                f"PPM/FHIR/Ops/fix_asd_research_study: Found "
+                "PPM/FHIR/Ops/fix_asd_research_study: Found "
                 f"{len(compositions)} Composition resources with ref "
-                f"to 'ppm-autism'"
+                "to 'ppm-autism'"
             )
 
             # Filter for those referencing 'ppm-autism'
