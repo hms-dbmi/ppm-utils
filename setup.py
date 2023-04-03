@@ -1,10 +1,8 @@
 import os
 import re
-import sys
 from io import open
 
 from setuptools import find_packages, setup
-from setuptools.command.test import test as TestCommand
 
 
 def read(f):
@@ -16,23 +14,12 @@ def get_version(package):
     Return package version as listed in `__version__` in `init.py`.
     """
     init_py = open(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), os.path.join(package, "__init__.py"),)
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            os.path.join(package, "__init__.py"),
+        )
     ).read()
     return re.search("__version__ = ['\"]([^'\"]+)['\"]", init_py).group(1)
-
-
-# Inspired by the example at https://pytest.org/latest/goodpractises.html
-class NoseTestCommand(TestCommand):
-    def finalize_options(self):
-        TestCommand.finalize_options(self)
-        self.test_args = []
-        self.test_suite = True
-
-    def run_tests(self):
-        # Run nose ensuring that argv simulates running nosetests directly
-        import nose
-
-        nose.run_exit(argv=["nosetests"])
 
 
 version = get_version("ppmutils")
@@ -47,6 +34,7 @@ setup(
     license="Creative Commons Attribution-Noncommercial-Share Alike license",
     install_requires=read("requirements.txt").splitlines(),
     tests_require=read("requirements-test.txt").splitlines(),
+    test_suite="ppmutils.tests.runtests.main",
     extras_require={
         "test": read("requirements-test.txt").splitlines(),
         "dev": read("requirements-dev.txt").splitlines(),
@@ -70,12 +58,4 @@ setup(
         "Topic :: Internet :: WWW/HTTP",
         "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
     ],
-    cmdclass={"test": NoseTestCommand},
 )
-
-try:
-    from semantic_release import setup_hook
-
-    setup_hook(sys.argv)
-except ImportError:
-    pass
