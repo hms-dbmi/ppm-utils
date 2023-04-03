@@ -41,7 +41,7 @@ jobs:
     - name: Install Python packages
       run: |
         python -m pip install --upgrade pip wheel twine
-    - uses: cycjimmy/semantic-release-action@v2
+    - uses: cycjimmy/semantic-release-action@v3
       id: semantic
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
