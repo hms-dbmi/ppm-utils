@@ -1,3 +1,13 @@
+# [1.0.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.15.3...v1.0.0) (2023-04-03)
+
+
+* fix(p2md)!: Added required hash parameter for P2MD file uploads ([557345a](https://github.com/hms-dbmi/ppm-utils/commit/557345a1f55ae931f7891dfdc5346c54e8b10efc))
+
+
+### BREAKING CHANGES
+
+* 'hash' parameter now required for P2MD file uploads
+
 ## [0.15.3](https://github.com/hms-dbmi/ppm-utils/compare/v0.15.2...v0.15.3) (2022-06-17)
 
 
