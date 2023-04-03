@@ -212,7 +212,7 @@ class Qualtrics:
                 for f in flows
             }
         else:
-            logger.error(f"PPM/Qualtrics: Invalid Qualtrics block spec")
+            logger.error("PPM/Qualtrics: Invalid Qualtrics block spec")
 
         questions = {f: [e["QuestionID"] for e in blocks[f]["BlockElements"] if e["Type"] == "Question"] for f in flows}
 
@@ -333,7 +333,7 @@ class Qualtrics:
         link_id = cls._qid_to_linkid(question_id)
 
         # Strip text of HTML and other characters
-        text = re.sub("<[^<]+?>", "", question["QuestionText"]).strip().replace("\n", "").replace("\r", "")
+        text = re.sub("<[^<]+?>", "", question["QuestionText"]).strip().replace("\n", " ").replace("\r", "")
 
         # Determine if required
         required = question["Validation"].get("Settings", {}).get("ForceResponse", False) == "ON"
@@ -641,10 +641,10 @@ class Qualtrics:
         """
         # Run checks
         if survey and not Qualtrics.is_survey_object(survey):
-            raise ValueError(f"PPM/Qualtrics: survey is not a valid Qualtrics API survey object")
+            raise ValueError("PPM/Qualtrics: survey is not a valid Qualtrics API survey object")
 
         if survey_definition and not Qualtrics.is_survey_definition(survey_definition):
-            raise ValueError(f"PPM/Qualtrics: survey_definition is not a valid Qualtrics API survey definition object")
+            raise ValueError("PPM/Qualtrics: survey_definition is not a valid Qualtrics API survey definition object")
 
         # Prepare resource properties
         data = {
