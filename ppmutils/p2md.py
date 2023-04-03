@@ -543,7 +543,7 @@ class P2MD(PPM.Service):
         }
 
         # Return response
-        return next(iter(cls.get(request, f"/ppm/api/survey/", data=data)), None)
+        return next(iter(cls.get(request, "/ppm/api/survey/", data=data)), None)
 
     @classmethod
     def get_points_of_care_survey(cls, request, study):
@@ -564,7 +564,7 @@ class P2MD(PPM.Service):
         }
 
         # Return response
-        return next(iter(cls.get(request, f"/ppm/api/survey/", data=data)), None)
+        return next(iter(cls.get(request, "/ppm/api/survey/", data=data)), None)
 
     @classmethod
     def check_qualtrics_survey(cls, request, study, ppm_id, survey_id):
@@ -721,6 +721,7 @@ class P2MD(PPM.Service):
         document_type,
         uuid,
         location,
+        hash,
         content_type="application/octect-stream",
     ):
         """
@@ -732,6 +733,7 @@ class P2MD(PPM.Service):
             "uuid": uuid,
             "location": location,
             "type": document_type,
+            "hash": hash,
             "content_type": content_type,
         }
 
@@ -787,7 +789,7 @@ class P2MD(PPM.Service):
         :param request: The current HttpRequest
         :return: list
         """
-        return cls.get(request, f"/sources/api/provider")
+        return cls.get(request, "/sources/api/provider")
 
     @classmethod
     def get_file_types(cls, request=None):
@@ -796,7 +798,7 @@ class P2MD(PPM.Service):
         :param request: The current HttpRequest
         :return: list
         """
-        return cls.get(request, f"/sources/api/file/type")
+        return cls.get(request, "/sources/api/file/type")
 
     @classmethod
     def get_participant_data_url(cls, ppm_id, filename=None, providers=None):
