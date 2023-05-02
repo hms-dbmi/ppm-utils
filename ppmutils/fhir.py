@@ -4082,54 +4082,29 @@ class FHIR:
         return False
 
     @staticmethod
-    def update_questionnaire_response(patient, study, questionnaire_id, questionnaire_response, create=True):
+    def update_questionnaire_response(patient, questionnaire_id, questionnaire_response_id, questionnaire_response):
         """
-        Updates a participant's questionnaire response. If enabled to do so,
-        the QuestionnaireResponse will be created if an existing one does not
-        exist.
+        Updates a participant's questionnaire response.
 
         :param patient: The patient's identifier
-        :type create: str
-        :param study: The study for which this consent was signed
-        :type create: str
+        :type patient: str
         :param questionnaire_id: The ID of the Questionnaire the response was for
-        :type create: str
+        :type questionnaire_id: str
+        :param questionnaire_response_id: The ID of the QuestionnaireResponse to update
+        :type questionnaire_response_id: str
         :param questionnaire_response: The update QuestionnaireResponse object to persist
-        :type create: dict
-        :param create: If the QuestionnaireResponse doesn't exist, should this one be created anyways?
-        :type create: bool
-        :return:
+        :type questionnaire_response: dict
+        :return: True if the resource was updated, False if failed
+        :rtype: boolean
         """
-        logger.debug(f"PPM/{study}/{patient}: Updating response for Questionnaire/{questionnaire_id}")
+        logger.debug(
+            f"PPM/{patient}/Questionnaire/{questionnaire_id}: "
+            f"Updating QuestionnaireResponse/{questionnaire_response_id}"
+        )
 
-        content = None
-        questionnaire_response_id = None
         try:
-            # Get the existing questionnaire response
-            questionnaire_response = FHIR.get_questionnaire_response(
-                patient=patient,
-                questionnaire_id=questionnaire_id,
-                flatten_return=False,
-            )
-
-            # Check if it exists
-            if not questionnaire_response:
-                if create:
-                    return FHIR.save_questionnaire_response(
-                        patient_id=patient,
-                        questionnaire_id=questionnaire_id,
-                        questionnaire_response=questionnaire_response,
-                    )
-                else:
-                    logger.error(
-                        f"PPM/{patient}/FHIR: Cannot update Questionnaire"
-                        f"Response for Questionnaire/{questionnaire_id} as "
-                        "it does not exist"
-                    )
-                    return False
-
-            # Get the ID
-            questionnaire_response_id = questionnaire_response["id"]
+            # Ensure the ID is set on the resource
+            questionnaire_response["id"] = questionnaire_response_id
 
             # Build the URL
             url = furl(PPM.fhir_url())
@@ -4138,18 +4113,17 @@ class FHIR:
 
             # Put it
             response = requests.put(url.url, json=questionnaire_response)
-            content = response.content
             response.raise_for_status()
 
             return response.ok
 
         except requests.HTTPError as e:
-            logger.debug(f"PPM/{study}/{patient}: FHIR Error content: {content}")
+            logger.debug(f"PPM/{patient}: FHIR response: {e.response}")
             logger.error(
-                f"PPM/{study}/{patient}: FHIR Request Error: {e}",
+                f"PPM/{patient}: FHIR Request Error: {e}",
                 extra={
                     "patient": patient,
-                    "response": content,
+                    "response": e.response.content,
                     "questionnaire_id": questionnaire_id,
                     "questionnaire_response_id": questionnaire_response_id,
                 },
@@ -4157,7 +4131,72 @@ class FHIR:
 
         except Exception as e:
             logger.error(
-                f"PPM/{study}/{patient}: FHIR Error: {e}",
+                f"PPM/{patient}: FHIR Error: {e}",
+                exc_info=True,
+                extra={
+                    "patient": patient,
+                    "questionnaire_id": questionnaire_id,
+                    "questionnaire_response_id": questionnaire_response_id,
+                },
+            )
+
+        return False
+
+    @staticmethod
+    def update_or_create_questionnaire_response(patient, questionnaire_id, questionnaire_response):
+        """
+        Updates or creates (if none exist for the given Questionnaire)
+        a participant's questionnaire response.
+
+        :param patient: The patient's identifier
+        :type patient: str
+        :param questionnaire_id: The ID of the Questionnaire the response was for
+        :type questionnaire_id: str
+        :param questionnaire_response: The update QuestionnaireResponse object to persist
+        :type questionnaire_response: dict
+        :return: True if the resource was created/updated, False if failed
+        :rtype: boolean
+        """
+        logger.debug(f"PPM/{patient}: Update/create response for Questionnaire/{questionnaire_id}")
+
+        questionnaire_response_id = None
+        try:
+            # Get the existing questionnaire response
+            questionnaire_responses = FHIR.query_questionnaire_responses(
+                patient=patient,
+                questionnaire_id=questionnaire_id,
+            )
+
+            # Ensure only one, else raise exception
+            if len(questionnaire_responses) > 1:
+                raise RuntimeError(
+                    "Found multiple QuestionnaireResponse resources for " f"{patient}/Questionnaire/{questionnaire_id}"
+                )
+
+            # Check if it exists and create if necessary
+            if not questionnaire_responses:
+                logger.debug(f"PPM/{patient}: Create QuestionnaireResponse")
+                return FHIR.save_questionnaire_response(
+                    patient_id=patient,
+                    questionnaire_id=questionnaire_id,
+                    questionnaire_response=questionnaire_response,
+                )
+
+            # Get the ID
+            questionnaire_response_id = next(entry.resource.id for entry in questionnaire_responses.entry)
+
+            # Do the update
+            logger.debug(f"PPM/{patient}: Update QuestionnaireResponse/{questionnaire_response_id}")
+            return FHIR.update_questionnaire_response(
+                patient=patient,
+                questionnaire_id=questionnaire_id,
+                questionnaire_response_id=questionnaire_response_id,
+                questionnaire_response=questionnaire_response,
+            )
+
+        except Exception as e:
+            logger.error(
+                f"PPM/{patient}: FHIR Error: {e}",
                 exc_info=True,
                 extra={
                     "patient": patient,
