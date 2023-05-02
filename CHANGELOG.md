@@ -1,3 +1,11 @@
+## [1.0.1](https://github.com/hms-dbmi/ppm-utils/compare/v1.0.0...v1.0.1) (2023-05-02)
+
+
+### Bug Fixes
+
+* **fhir:** Added check to ensure ID is set on QuestionnaireResponse PUT ([bcc696b](https://github.com/hms-dbmi/ppm-utils/commit/bcc696b7a65c712cada15e82af7bdd8920d91464))
+* **fhir:** Fixed method naming for QuestionnaireResponse operations ([716abf1](https://github.com/hms-dbmi/ppm-utils/commit/716abf13d09c544007927582bc64177427caab5f))
+
 # [1.0.0](https://github.com/hms-dbmi/ppm-utils/compare/v0.15.3...v1.0.0) (2023-04-03)
 
 
