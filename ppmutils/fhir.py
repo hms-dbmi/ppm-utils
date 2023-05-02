@@ -4103,6 +4103,9 @@ class FHIR:
         )
 
         try:
+            # Ensure the ID is set on the resource
+            questionnaire_response["id"] = questionnaire_response_id
+
             # Build the URL
             url = furl(PPM.fhir_url())
             url.path.segments.append("QuestionnaireResponse")
