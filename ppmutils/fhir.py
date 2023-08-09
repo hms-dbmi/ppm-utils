@@ -61,6 +61,7 @@ class FHIR:
     research_subject_coding_system = "https://peoplepoweredmedicine.org/subject"
 
     device_title_system = "https://peoplepoweredmedicine.org/fhir/device/title"
+    device_tracking_system = "https://peoplepoweredmedicine.org/fhir/device/tracking"
     device_identifier_system = "https://peoplepoweredmedicine.org/fhir/device"
     device_coding_system = "https://peoplepoweredmedicine.org/device"
     device_study_extension_url = "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/study"
@@ -1017,7 +1018,9 @@ class FHIR:
         return response.ok
 
     @staticmethod
-    def create_ppm_device(patient_id, study, code, display, title, identifier, shipped=None, returned=None, note=None):
+    def create_ppm_device(
+        patient_id, study, code, display, title, identifier, shipped=None, returned=None, note=None, tracking=None
+    ):
         """
         Creates a project list if not already created
         """
@@ -1031,6 +1034,7 @@ class FHIR:
             shipped=shipped,
             returned=returned,
             note=note,
+            tracking=tracking,
         )
 
         # Use the FHIR client lib to validate our resource.
@@ -3138,7 +3142,7 @@ class FHIR:
 
     @staticmethod
     def update_ppm_device(
-        id, patient_id, study, code, display, title, identifier, shipped=None, returned=None, note=None
+        id, patient_id, study, code, display, title, identifier, shipped=None, returned=None, note=None, tracking=None
     ):
         """
         Updates the Device for the given ID. Optional fields will be updated
@@ -3164,6 +3168,8 @@ class FHIR:
         :type returned: datetime, optional
         :param note: Any admin-assigned note for this device, defaults to None
         :type note: str, optional
+        :param tracking: A tracking number for the item, defaults to None
+        :type tracking: str, optional
         :return: Whether the operation succeeded or not
         :rtype: boolean
         """
@@ -3217,6 +3223,22 @@ class FHIR:
                     {
                         "system": FHIR.device_title_system,
                         "value": title,
+                    }
+                )
+
+            # Set the tracking
+            tracking_identifier = next(
+                (i for i in device.get("identifier", []) if i.get("system") == FHIR.device_tracking_system), None
+            )
+            if not tracking and tracking_identifier:
+                device["identifier"].remove(tracking_identifier)
+            elif tracking_identifier and tracking_identifier.get("value") != tracking:
+                tracking_identifier["value"] = tracking
+            elif tracking and not tracking_identifier:
+                device.setdefault("identifier", []).append(
+                    {
+                        "system": FHIR.device_tracking_system,
+                        "value": tracking,
                     }
                 )
 
@@ -6443,6 +6465,7 @@ class FHIR:
         # Get the proper identifier
         record["identifier"] = ""
         record["title"] = ""
+        record["tracking"] = ""
         for identifier in resource.get("identifier", []):
             if identifier.get("system") == FHIR.device_identifier_system:
 
@@ -6453,6 +6476,11 @@ class FHIR:
 
                 # Set properties
                 record["title"] = identifier["value"]
+
+            if identifier.get("system") == FHIR.device_tracking_system:
+
+                # Set properties
+                record["tracking"] = identifier["value"]
 
         # Get notes
         record["note"] = ""
@@ -7051,6 +7079,7 @@ class FHIR:
             returned=None,
             status="active",
             note=None,
+            tracking=None,
         ):
 
             data = {
@@ -7099,6 +7128,14 @@ class FHIR:
                         "text": note,
                     }
                 ]
+
+            if tracking:
+                data["identifier"].append(
+                    {
+                        "system": FHIR.device_tracking_system,
+                        "value": tracking,
+                    }
+                )
 
             return data
 
