@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/hms-dbmi/ppm-utils/compare/v1.0.1...v1.1.0) (2023-08-10)
+
+
+### Features
+
+* **fhir:** Added tracking field to TrackedItem/Device ([d186762](https://github.com/hms-dbmi/ppm-utils/commit/d186762b7e0dd7de7b31e47563fa227f17178762))
+
 ## [1.0.1](https://github.com/hms-dbmi/ppm-utils/compare/v1.0.0...v1.0.1) (2023-05-02)
 
 
