@@ -867,7 +867,7 @@ class P2MD(PPM.Service):
         """
         # Gather data-related DocumentReferences
         document_references = FHIR.query_data_document_references(patient=ppm_id, provider=provider)
-        logger.debug(f"{ppm_id}: Found {len(document_references)} DocumentReferences " f"for: {provider}")
+        logger.debug(f"{ppm_id}: Found {len(document_references)} DocumentReferences for: {provider}")
 
         # Flatten resources and pick out relevant identifiers
         flats = []

@@ -447,7 +447,7 @@ class Qualtrics:
                 item["type"] = "choice"
 
                 # Set choices
-                item["option"] = [{"valueString": c["Display"]} for k, c in question["Choices"].items()]
+                item["answerOption"] = [{"valueString": c["Display"]} for k, c in question["Choices"].items()]
 
             # Multiple choice (multiple answer)
             elif question_type == "MC" and selector == "MAVR":
@@ -457,7 +457,7 @@ class Qualtrics:
                 item["repeats"] = True
 
                 # Set choices
-                item["option"] = [{"valueString": c["Display"]} for k, c in question["Choices"].items()]
+                item["answerOption"] = [{"valueString": c["Display"]} for k, c in question["Choices"].items()]
 
             # Matrix (single answer)
             elif question_type == "Matrix" and selector == "Likert" and sub_selector == "SingleAnswer":
@@ -474,7 +474,7 @@ class Qualtrics:
                         "linkId": f"{link_id}-{k}",
                         "text": s["Display"],
                         "type": "choice",
-                        "option": choices,
+                        "answerOption": choices,
                         "required": required,
                     }
                     for k, s in question["Choices"].items()
@@ -496,7 +496,7 @@ class Qualtrics:
                         "linkId": f"{link_id}-{k}",
                         "text": s["Display"],
                         "type": "choice",
-                        "option": choices,
+                        "answerOption": choices,
                         "required": required,
                     }
                     for k, s in question["Choices"].items()
@@ -522,7 +522,7 @@ class Qualtrics:
                 item["repeats"] = True
 
                 # Set choices
-                item["option"] = [{"valueString": c["Display"]} for k, c in question["Choices"].items()]
+                item["answerOption"] = [{"valueString": c["Display"]} for k, c in question["Choices"].items()]
 
             # Drill down
             elif question_type == "DD" and selector == "DL":
@@ -532,7 +532,7 @@ class Qualtrics:
                 item["repeats"] = False
 
                 # Set choices
-                item["option"] = [{"valueString": c["Display"]} for k, c in question["Answers"].items()]
+                item["answerOption"] = [{"valueString": c["Display"]} for k, c in question["Answers"].items()]
 
             # Descriptive text
             elif question_type == "DB":
@@ -583,7 +583,7 @@ class Qualtrics:
                                 "linkId": f"{link_id}-{k}-{sub_k}",
                                 "text": sub_question,
                                 "type": "choice",
-                                "option": answers,
+                                "answerOption": answers,
                                 "required": required,
                             }
                         )
@@ -1222,7 +1222,7 @@ class Qualtrics:
             return None
 
         # Return response after formatting answer
-        return {"linkId": link_id, "answer": FHIR.Resources._questionnaire_response_answer(answer)}
+        return {"linkId": link_id, "answer": FHIR.Resources.questionnaire_response_answer(answer)}
 
     @classmethod
     def questionnaire_transaction(cls, questionnaire, questionnaire_id=None):
