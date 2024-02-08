@@ -391,6 +391,7 @@ class Qualtrics:
                         {
                             "question": cls._qid_to_linkid(conditional_qid),
                             "answerString": conditional_value,
+                            "operator": "=",
                         }
                     )
 
