@@ -20,3 +20,15 @@ repos:
     - id: check-byte-order-marker
     - id: check-merge-conflict
     - id: detect-aws-credentials
+  - repo: local
+    hooks:
+    - id: prevent-fixmes
+      name: Prevent FIXME Comment Tags
+      entry: '# *FIXME\b'
+      language: pygrep
+      files: "[text]"
+    - id: prevent-hacks
+      name: Prevent HACK Comment Tags
+      entry: '# *HACK\b'
+      language: pygrep
+      files: "[text]"
