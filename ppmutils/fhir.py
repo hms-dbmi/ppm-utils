@@ -2088,7 +2088,7 @@ class FHIR:
     @staticmethod
     def query_patient_research_subjects(
         patient: Union[Patient, dict, str], ppm_study: str
-    ) -> (Optional[dict], Optional[dict]):
+    ) -> tuple[Optional[dict], Optional[dict]]:
         """
         Find and return a Patient and ResearchStudy set for the given
         parameters.
@@ -2317,7 +2317,7 @@ class FHIR:
         return response
 
     @staticmethod
-    def create_research_studies(patient_id: str, research_study_titles: [str]) -> bool:
+    def create_research_studies(patient_id: str, research_study_titles: list[str]) -> bool:
         """
         Creates a set of ResearchStudy objects given the list of names to use
         for them and relates them to the Patient via ResearchSubject resources.
@@ -2959,7 +2959,7 @@ class FHIR:
     def get_participant(
         patient: Union[Patient, dict, str],
         study: str = None,
-        questionnaires: [dict] = None,
+        questionnaires: list[dict] = None,
         flatten_return: bool = False,
     ) -> dict:
         """
@@ -3878,15 +3878,16 @@ class FHIR:
         return participants
 
     @staticmethod
-    def query_ppm_participant_details(patient_id: Any) -> (dict, list):
+    def query_ppm_participant_details(patient_id: Any) -> tuple[Optional[dict], Optional[list[str]]]:
         """
         Fetches and returns basic details on the Patient and any PPM studies
         they're participating in.
 
         :param patient_id: Patient identifier
         :type patient_id: str
-        :return: A tuple of Patient object and a list of study codes
-        :rtype: dict, list
+        :return: A tuple of Patient object and a list of study codes, defaults
+        to (None, None)
+        :rtype: tuple[Optional[dict], Optional[list[str]]]
         """
         # Call the group method and return the only entry
         participants = FHIR.query_ppm_participants_details([patient_id])
