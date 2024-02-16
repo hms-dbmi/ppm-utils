@@ -1,26 +1,32 @@
 import collections
-from requests import Response
 import json as libjson
 import warnings
 import uuid
-from furl import furl, Query
 import re
 import base64
 import string
-import requests
 import os
 import traceback
-from google.oauth2 import service_account
-from typing import Optional, Union, Any, Literal, Callable
+from abc import ABC, abstractmethod
+from typing import Optional, Union, Any, Literal, Callable, TypeAlias
+from typing_extensions import Self
+from datetime import datetime, date, timezone
+
+import boto3
+import requests
+from furl import furl, Query
 from dateutil.parser import parse
 from dateutil.tz import tz
-from datetime import datetime, date, timezone
+from google.oauth2 import service_account
+from google.auth.transport import requests as google_requests
+from requests_auth_aws_sigv4 import AWSSigV4
+from django.utils.safestring import mark_safe
+from django.conf import settings
 from fhirclient.models.domainresource import DomainResource
 from fhirclient.models.fhirdate import FHIRDate
 from fhirclient.models.period import Period
 from fhirclient.models.patient import Patient
 from fhirclient.models.flag import Flag
-from django.utils.safestring import mark_safe
 from fhirclient.models.bundle import Bundle, BundleEntry, BundleEntryRequest
 from fhirclient.models.list import List as FHIRList, ListEntry
 from fhirclient.models.organization import Organization
@@ -53,6 +59,188 @@ from ppmutils.ppm import PPM
 import logging
 
 logger = logging.getLogger(__name__)
+
+HttpMethod: TypeAlias = Literal["get", "post", "put", "patch", "delete", "head"]
+
+
+class Backend(ABC):
+    @classmethod
+    def instance(cls, url: str) -> Self:
+        """
+        This method inspects the current setting for FHIR URL and returns
+        an instance of the Backend class that is being used for FHIR.
+
+        :param url: The URL of the FHIR backend instance
+        :type url: str
+        :return: An instance of the concrete Backend class
+        :rtype: Backend
+        """
+        # Check for AWS
+        if "amazonaws.com" in url:
+            return AWSHealthlake()
+        elif "healthcare.googleapis.com" in url:
+            return GCPHealthcareAPI()
+        elif "azurehealthcareapis.com" in url:
+            return AzureHealthcareAPI()
+        else:
+            return HAPIFHIR()
+
+    @abstractmethod
+    def request(self, method: HttpMethod, url: str, **kwargs) -> requests.Response:
+        """
+        A generic method implementation for an HTTP request to a FHIR instance.
+
+        :param method: The HTTP request type to make
+        :type method: HttpMethod
+        :param url: The URL to make the request to
+        :type url: str
+        :return: The response object from the request
+        :rtype: requests.Response
+        """
+        pass
+
+
+class AWSHealthlake(Backend):
+    def request(self, method: HttpMethod, url: str, **kwargs) -> requests.Response:
+        """
+        A generic method implementation for an HTTP GET to a Healthlake
+        FHIR instance.
+
+        :param method: The HTTP request type to make
+        :type method: HttpMethod
+        :param url: The URL to make the request to
+        :type url: str
+        :return: The response object from the request
+        :rtype: requests.Response
+        """
+        # Get region
+        region = os.environ.get("AWS_REGION", "us-east-1")
+        session = boto3.session.Session(region_name=region)
+        auth = AWSSigV4("healthlake", session=session)
+
+        # Make the request
+        return requests.request(method=method, url=url, auth=auth, **kwargs)
+
+
+class GCPHealthcareAPI(Backend):
+
+    _SETTINGS_CACHE_KEY = "_GOOGLE_OAUTH2_CACHED_TOKEN"
+    _SETTINGS_CACHE_TOKEN_KEY = "token"
+    _SETTINGS_CACHE_EXPIRY_KEY = "expiry"
+
+    @property
+    def session(self) -> requests.Session:
+
+        # Check cache for token
+        cache = getattr(settings, self._SETTINGS_CACHE_KEY, {})
+        token = cache.get(self._SETTINGS_CACHE_TOKEN_KEY)
+        expiry = cache.get(self._SETTINGS_CACHE_EXPIRY_KEY)
+        if expiry:
+            expiry = parse(expiry)
+            logger.debug(f"PPM/FHIR/GCP: Token expires in: {int((expiry - datetime.utcnow()).total_seconds())}")
+
+        if token is None or expiry is None or datetime.utcnow() >= expiry:
+
+            # Check whether credentials are string or file
+            if os.environ["GOOGLE_APPLICATION_CREDENTIALS"].startswith("/"):
+                logger.debug("PPM/FHIR: GCS credentials via file")
+                credentials = service_account.Credentials.from_service_account_file(
+                    os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+                )
+            else:
+                # Gets credentials from the environment.
+                logger.debug("PPM/FHIR: GCS credentials via environment variable")
+                credentials = service_account.Credentials.from_service_account_info(
+                    libjson.loads(base64.b64decode(os.environ["GOOGLE_APPLICATION_CREDENTIALS"].encode()).decode())
+                )
+
+            # Set scopes
+            scoped_credentials = credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
+
+            # Get token
+            logger.debug("PPM/FHIR/GCP: Refreshing credentials")
+            scoped_credentials.refresh(google_requests.Request())
+
+            # Set local variables
+            token = scoped_credentials.token
+            expiry = scoped_credentials.expiry.isoformat()
+
+            # Save token and expiry in settings
+            setattr(
+                settings,
+                self._SETTINGS_CACHE_KEY,
+                {
+                    self._SETTINGS_CACHE_TOKEN_KEY: token,
+                    self._SETTINGS_CACHE_EXPIRY_KEY: expiry,
+                },
+            )
+            logger.debug(f"PPM/FHIR/GCP: New token expiry: {expiry}")
+
+        # Create a session
+        session = requests.Session()
+        session.headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/fhir+json",
+        }
+
+        return session
+
+    def request(self, method: HttpMethod, url: str, **kwargs) -> requests.Response:
+        """
+        A generic method implementation for an HTTP GET to a GCP Healthcare API
+        FHIR instance.
+
+        :param method: The HTTP request type to make
+        :type method: HttpMethod
+        :param url: The URL to make the request to
+        :type url: str
+        :return: The response object from the request
+        :rtype: requests.Response
+        """
+        # Make the request
+        response = self.session.request(method=method, url=url, **kwargs)
+
+        # Check for a session reset
+        if response and response.status_code in [401, 403]:
+
+            # Reset and try again
+            self._session = None
+
+            response = self.session.request(method=method, url=url, **kwargs)
+
+        return response
+
+
+class AzureHealthcareAPI(Backend):
+    def request(self, method: HttpMethod, url: str, **kwargs) -> requests.Response:
+        """
+        A generic method implementation for an HTTP GET to a Azure Healthcare
+        APIs FHIR instance.
+
+        :param method: The HTTP request type to make
+        :type method: HttpMethod
+        :param url: The URL to make the request to
+        :type url: str
+        :return: The response object from the request
+        :rtype: requests.Response
+        """
+        raise NotImplementedError("Azure Healthcare APIs not yet supported")
+
+
+class HAPIFHIR(Backend):
+    def request(self, method: HttpMethod, url: str, **kwargs) -> requests.Response:
+        """
+        A generic method implementation for an HTTP GET to a HAPI-FHIR instance.
+
+        :param method: The HTTP request type to make
+        :type method: HttpMethod
+        :param url: The URL to make the request to
+        :type url: str
+        :return: The response object from the request
+        :rtype: requests.Response
+        """
+        # Make the request
+        return requests.request(method=method, url=url, **kwargs)
 
 
 class FHIR:
@@ -135,6 +323,7 @@ class FHIR:
 
     # This list specifies the set of resources that reference a Patient and
     # by what property that reference is set.
+    PARTICIPANT_PATIENT_INCLUDES = ["*"]
     PARTICIPANT_PATIENT_REVINCLUDES = [
         "ResearchSubject:individual",
         "Flag:subject",
@@ -148,79 +337,36 @@ class FHIR:
         "Communication:recipient",
         "RelatedPerson:patient",
     ]
+    PARTICIPANT_PATIENT_REVINCLUDE_ITERATES = []
+    PARTICIPANT_PATIENT_INCLUDE_ITERATES = [
+        # BUG: GCP does not yet honor this reference: "QuestionnaireResponse:questionnaire",
+        "QuestionnaireResponse:subject",  # TODO: For the time being, also reference Questionnaire via 'subject'
+        "ResearchSubject:study",
+        "List:item",
+    ]
 
     #
     # META
     #
 
-    _session = None
+    _backend = None
 
     @classmethod
-    def authorized_session(cls):
+    def backend(cls):
 
-        if cls._session is None:
+        if cls._backend is None:
 
-            # GCP FHIR
+            # Get the backend class instance
+            cls._backend = Backend.instance(url=PPM.fhir_url())
 
-            # Check whether credentials are string or file
-            if os.environ["GOOGLE_APPLICATION_CREDENTIALS"].startswith("/"):
-                logger.debug("PPM/FHIR: GCS credentials via file")
-                credentials = service_account.Credentials.from_service_account_file(
-                    os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
-                )
-            else:
-                # Gets credentials from the environment.
-                logger.debug("PPM/FHIR: GCS credentials via environment variable")
-                credentials = service_account.Credentials.from_service_account_info(
-                    libjson.loads(base64.b64decode(os.environ["GOOGLE_APPLICATION_CREDENTIALS"].encode()).decode())
-                )
-
-            # Set scopes
-            scoped_credentials = credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
-            # Creates a requests Session object with the credentials.
-            from google.auth.transport import requests
-
-            session = requests.AuthorizedSession(scoped_credentials)
-            session.headers = {
-                "Content-Type": "application/fhir+json",
-            }
-
-            # AWS Healthlake FHIR
-
-            # import boto3
-            # from requests_auth_aws_sigv4 import AWSSigV4
-            # aws_session = boto3.session.Session(region_name="us-east-1")
-            # session = requests.Session()
-            # session.auth = AWSSigV4("healthlake", session=aws_session)
-
-            # Assign it
-            cls._session = session
-
-        return cls._session
-
-    @classmethod
-    def reset_session(cls, status_code: int):
-        """
-        This method checks the response for a 401/403 and resets the current
-        session if detected.
-
-        :param status_code: The status code from the most recent request response
-        :type status_code: int
-        :returns: True if the session was reset, False otherwise
-        :rtype: bool
-        """
-        if status_code in [401, 403]:
-            logger.debug("PPM/FHIR: Resetting session token")
-            cls._session = None
-
-        return True
+        return cls._backend
 
     #
     # FHIR HTTP
     #
 
     @staticmethod
-    def get(url: str, params: dict = None, headers: dict = None, fail: bool = False) -> Optional[Response]:
+    def get(url: str, params: dict = None, headers: dict = None, fail: bool = False) -> Optional[requests.Response]:
         """
         A generic method implementation for an HTTP GET to a Healthlake
         FHIR instance.
@@ -234,35 +380,20 @@ class FHIR:
         :param fail: Whether to return None when an error is encountered
         :type fail: bool, defaults to False
         :return: The response object from the request
-        :rtype: Response, defaults to None
+        :rtype: requests.Response, defaults to None
         """
         logger.debug(f"PPM/FHIR: GET '{url}'")
         content = response = None
         try:
             # Make the request
-            response = FHIR.authorized_session().get(
+            response = FHIR.backend().request(
+                "get",
                 url=url,
                 params=params,
                 headers=headers,
             )
             content = response.content
             logger.debug(f"PPM/FHIR: HTTP GET Response {response.status_code}")
-
-            # Check for a failed request
-            if response and not response.ok:
-
-                # Reset it
-                if FHIR.reset_session(response.status_code):
-                    logger.debug("PPM/FHIR: Retrying request with fresh session")
-
-                    # Make the request
-                    response = FHIR.authorized_session().get(
-                        url=url,
-                        params=params,
-                        headers=headers,
-                    )
-                    content = response.content
-                    logger.debug(f"PPM/FHIR: Retry HTTP GET Response {response.status_code}")
 
             # Check the response
             response.raise_for_status()
@@ -306,7 +437,7 @@ class FHIR:
     @staticmethod
     def post(
         url: str, data: dict = None, json: dict = None, params: dict = None, headers: dict = None, fail: bool = False
-    ) -> Optional[Response]:
+    ) -> Optional[requests.Response]:
         """
         A generic method implementation for an HTTP POST to a Healthlake
         FHIR instance.
@@ -324,13 +455,14 @@ class FHIR:
         :param fail: Whether to return None when an error is encountered
         :type fail: bool, defaults to False
         :return: The response object from the request
-        :rtype: Response, defaults to None
+        :rtype: requests.Response, defaults to None
         """
         logger.debug(f"PPM/FHIR: POST {url}")
         content = response = None
         try:
             # Make the request
-            response = FHIR.authorized_session().post(
+            response = FHIR.backend().request(
+                "post",
                 url=url,
                 json=json,
                 data=data,
@@ -339,24 +471,6 @@ class FHIR:
             )
             content = response.content
             logger.debug(f"PPM/FHIR: HTTP POST Response {response.status_code}")
-
-            # Check for a failed request
-            if response and not response.ok:
-
-                # Reset it
-                if FHIR.reset_session(response.status_code):
-                    logger.debug("PPM/FHIR: Retrying request with fresh session")
-
-                    # Make the request
-                    response = FHIR.authorized_session().post(
-                        url=url,
-                        json=json,
-                        data=data,
-                        params=params,
-                        headers=headers,
-                    )
-                    content = response.content
-                    logger.debug(f"PPM/FHIR: Retry HTTP POST Response {response.status_code}")
 
             # Check the response
             response.raise_for_status()
@@ -400,7 +514,7 @@ class FHIR:
     @staticmethod
     def patch(
         url: str, data: dict = None, json: dict = None, params: dict = None, headers: dict = None, fail: bool = False
-    ) -> Optional[Response]:
+    ) -> Optional[requests.Response]:
         """
         A generic method implementation for an HTTP PATCH to a Healthlake
         FHIR instance.
@@ -418,13 +532,14 @@ class FHIR:
         :param fail: Whether to return None when an error is encountered
         :type fail: bool, defaults to False
         :return: The response object from the request
-        :rtype: Response, defaults to None
+        :rtype: requests.Response, defaults to None
         """
         logger.debug(f"PPM/FHIR: PATCH {url}")
         content = response = None
         try:
             # Make the request
-            response = FHIR.authorized_session().patch(
+            response = FHIR.backend().request(
+                "patch",
                 url=url,
                 data=data,
                 json=json,
@@ -433,24 +548,6 @@ class FHIR:
             )
             content = response.content
             logger.debug(f"PPM/FHIR: HTTP PATCH Response {response.status_code}")
-
-            # Check for a failed request
-            if response and not response.ok:
-
-                # Reset it
-                if FHIR.reset_session(response.status_code):
-                    logger.debug("PPM/FHIR: Retrying request with fresh session")
-
-                    # Make the request
-                    response = FHIR.authorized_session().patch(
-                        url=url,
-                        data=data,
-                        json=json,
-                        params=params,
-                        headers=headers,
-                    )
-                    content = response.content
-                    logger.debug(f"PPM/FHIR: Retry HTTP PATCH Response {response.status_code}")
 
             # Check the response
             response.raise_for_status()
@@ -494,7 +591,7 @@ class FHIR:
     @staticmethod
     def put(
         url: str, data: dict = None, json: dict = None, params: dict = None, headers: dict = None, fail: bool = False
-    ) -> Optional[Response]:
+    ) -> Optional[requests.Response]:
         """
         A generic method implementation for an HTTP PUT to a Healthlake
         FHIR instance.
@@ -512,13 +609,14 @@ class FHIR:
         :param fail: Whether to return None when an error is encountered
         :type fail: bool, defaults to False
         :return: The response object from the request
-        :rtype: Response, defaults to None
+        :rtype: requests.Response, defaults to None
         """
         logger.debug(f"PPM/FHIR: PUT {url}")
         content = response = None
         try:
             # Make the request
-            response = FHIR.authorized_session().put(
+            response = FHIR.backend().request(
+                "put",
                 url=url,
                 data=data,
                 json=json,
@@ -527,24 +625,6 @@ class FHIR:
             )
             content = response.content
             logger.debug(f"PPM/FHIR: HTTP PUT Response {response.status_code}")
-
-            # Check for a failed request
-            if response and not response.ok:
-
-                # Reset it
-                if FHIR.reset_session(response.status_code):
-                    logger.debug("PPM/FHIR: Retrying request with fresh session")
-
-                    # Make the request
-                    response = FHIR.authorized_session().put(
-                        url=url,
-                        data=data,
-                        json=json,
-                        params=params,
-                        headers=headers,
-                    )
-                    content = response.content
-                    logger.debug(f"PPM/FHIR: Retry HTTP PUT Response {response.status_code}")
 
             # Check the response
             response.raise_for_status()
@@ -588,7 +668,7 @@ class FHIR:
         return response
 
     @staticmethod
-    def delete(url: str, params: dict = None, headers: dict = None, fail: bool = False) -> Optional[Response]:
+    def delete(url: str, params: dict = None, headers: dict = None, fail: bool = False) -> Optional[requests.Response]:
         """
         A generic method implementation for an HTTP DELETE to a Healthlake
         FHIR instance.
@@ -602,35 +682,20 @@ class FHIR:
         :param fail: Whether to return None when an error is encountered
         :type fail: bool, defaults to False
         :return: The response object from the request
-        :rtype: Response, defaults to None
+        :rtype: requests.Response, defaults to None
         """
         logger.debug(f"PPM/FHIR: DELETE '{url}'")
         content = response = None
         try:
             # Make the request
-            response = FHIR.authorized_session().delete(
+            response = FHIR.backend().request(
+                "delete",
                 url=url,
                 params=params,
                 headers=headers,
             )
             content = response.content
             logger.debug(f"PPM/FHIR: HTTP DELETE Response {response.status_code}")
-
-            # Check for a failed request
-            if response and not response.ok:
-
-                # Reset it
-                if FHIR.reset_session(response.status_code):
-                    logger.debug("PPM/FHIR: Retrying request with fresh session")
-
-                    # Make the request
-                    response = FHIR.authorized_session().delete(
-                        url=url,
-                        params=params,
-                        headers=headers,
-                    )
-                    content = response.content
-                    logger.debug(f"PPM/FHIR: Retry HTTP DELETE Response {response.status_code}")
 
             # Check the response
             response.raise_for_status()
@@ -676,7 +741,7 @@ class FHIR:
     #
 
     @staticmethod
-    def fhir_get(path: list[str], query: dict = None) -> Optional[dict]:
+    def fhir_get(path: list[str], query: dict = None, content: bool = True) -> Union[requests.Response, Optional[dict]]:
         """
         A generic method implementation for an HTTP GET to a Healthlake
         FHIR instance.
@@ -685,8 +750,11 @@ class FHIR:
         :type path: list[str]
         :param query: The query to include in the URL of the request
         :type query: dict, defaults to None
+        :param content: Determines whether to return parsed
+        response data or the response itself, defaults to True
+        :typ content: bool, optional
         :return: The response content or None if request failed
-        :rtype: Optional[dict]
+        :rtype: Union[requests.Response, Optional[dict]]
         """
         logger.debug(f"PPM/FHIR: GET '{path}'")
 
@@ -696,10 +764,12 @@ class FHIR:
 
         # Make the request
         response = FHIR.get(url.url, params=query, fail=True)
-        return response.json() if response else None
+        return response if not content else response.json() if response else None
 
     @staticmethod
-    def fhir_post(resource: dict, path: list[str] = None) -> Optional[dict]:
+    def fhir_post(
+        resource: dict, path: list[str] = None, content: bool = True
+    ) -> Union[requests.Response, Optional[dict]]:
         """
         A generic method implementation for an HTTP POST to a Healthlake
         FHIR instance.
@@ -708,8 +778,11 @@ class FHIR:
         :type resource: dict
         :param path: The additional path components to POST to
         :type path: list[str], defaults to None
+        :param content: Determines whether to return parsed
+        response data or the response itself, defaults to True
+        :typ content: bool, optional
         :return: The response content or None if request failed
-        :rtype: Optional[dict]
+        :rtype: Union[requests.Response, Optional[dict]]
         """
         logger.debug(f"PPM/FHIR: POST {resource['resourceType']}")
 
@@ -734,10 +807,12 @@ class FHIR:
 
         # Make the request
         response = FHIR.post(url.url, json=resource, fail=True)
-        return response.json() if response else None
+        return response if not content else response.json() if response else None
 
     @staticmethod
-    def fhir_put(resource: dict, path: list[str] = None) -> Optional[dict]:
+    def fhir_put(
+        resource: dict, path: list[str] = None, content: bool = True
+    ) -> Union[requests.Response, Optional[dict]]:
         """
         A generic method implementation for an HTTP PUT to a Healthlake
         FHIR instance.
@@ -746,8 +821,11 @@ class FHIR:
         :type resource: dict
         :param path: The additional path components to PUT to
         :type path: list[str], defaults to None
+        :param content: Determines whether to return parsed
+        response data or the response itself, defaults to True
+        :typ content: bool, optional
         :return: The response content or None if request failed
-        :rtype: Optional[dict]
+        :rtype: Union[requests.Response, Optional[dict]]
         """
         logger.debug(f"PPM/FHIR: PUT {resource['resourceType']}")
 
@@ -772,10 +850,10 @@ class FHIR:
 
         # Make the request
         response = FHIR.put(url=url.url, json=resource, fail=True)
-        return response.json() if response else None
+        return response if not content else response.json() if response else None
 
     @staticmethod
-    def fhir_patch(path: list[str], patch: dict) -> Optional[dict]:
+    def fhir_patch(path: list[str], patch: dict, content: bool = True) -> Union[requests.Response, Optional[dict]]:
         """
         A generic method implementation for an HTTP PATCH to a FHIR
         instance.
@@ -784,8 +862,11 @@ class FHIR:
         :type path: list[str]
         :param patch: The JSON patch object to pass along with the request
         :type patch: dict
+        :param content: Determines whether to return parsed
+        response data or the response itself, defaults to True
+        :typ content: bool, optional
         :return: The response content or None if request failed
-        :rtype: Optional[dict]
+        :rtype: Union[requests.Response, Optional[dict]]
         """
         logger.debug(f"PPM/FHIR: PATCH '{path}'")
 
@@ -798,18 +879,21 @@ class FHIR:
 
         # Make the request
         response = FHIR.patch(url.url, json=patch, headers=headers, fail=True)
-        return response.json() if response else None
+        return response if not content else response.json() if response else None
 
     @staticmethod
-    def fhir_delete(path: list[str]) -> Optional[dict]:
+    def fhir_delete(path: list[str], content: bool = True) -> Union[requests.Response, Optional[dict]]:
         """
         A generic method implementation for an HTTP DELETE to a Healthlake
         FHIR instance.
 
         :param path: The additional path components to DELETE to
         :type path: list[str]
+        :param content: Determines whether to return parsed
+        response data or the response itself, defaults to True
+        :typ content: bool, optional
         :return: The response content or None if request failed
-        :rtype: Optional[dict]
+        :rtype: Union[requests.Response, Optional[dict]]
         """
         logger.debug(f"PPM/FHIR: DELETE '{path}'")
 
@@ -819,7 +903,7 @@ class FHIR:
 
         # Make the request
         response = FHIR.delete(url.url, fail=True)
-        return response.json() if response else None
+        return response if not content else response.json() if response else None
 
     #
     # FHIR CRUD
@@ -853,6 +937,68 @@ class FHIR:
 
         # Call the appropriate HTTP method
         return action(resource, path)
+
+    @staticmethod
+    def fhir_create_and_get_id(resource: Union[dict, DomainResource]) -> Optional[str]:
+        """
+        A generic method implementation for creating a FHIR resource. This
+        will return the ID of the newly created resource if the operation
+        succeeded, otherwise it will return `None`.
+
+        :param resource: The FHIR resource to persist
+        :type resource: Union[dict, DomainResource]
+        :return: The resource ID or None if request failed
+        :rtype: Optional[str]
+        """
+        # Check type
+        if type(resource) is not dict:
+            resource = resource.as_json()
+        logger.debug(f"PPM/FHIR: Create resource: {resource['resourceType']}")
+
+        # Create the resource
+        response = FHIR.fhir_post(resource=resource, path=[resource["resourceType"]], content=False)
+        if not response.ok:
+            return None
+
+        # Fetch and return ID of the created resource
+        return FHIR.get_created_resource_id(response=response, resource_type=resource["resourceType"])
+
+    @staticmethod
+    def fhir_create_and_get_ids(
+        resources: list[Union[dict, DomainResource]], transaction: bool = False
+    ) -> Optional[dict[str, list[str]]]:
+        """
+        A generic method implementation for creating a set of FHIR resources.
+        Caller may dictate the type of bundle transaction to use. Please note
+        that the "batch" transaction type may not be used with temporary IDs
+        for resources. This will return the IDs of the newly created resources
+        if the operation succeeded, otherwise it will return `None`.
+
+        :param resources: The FHIR resources to persist
+        :type resources: list[Union[dict, DomainResource]]
+        :param transaction: Whether to process as a FHIR bundle transaction,
+        defaults to False
+        :type transaction: bool, optional
+        :raises ValueError: If bundle type "batch" is passed with temporary
+        resource IDs
+        :return: The dict mapping resource types to a list of created
+        resource IDs, defaults to None
+        :rtype: Optional[dict[str, list[str]]]
+        """
+        # Check types
+        resources = [FHIRElementFactory.instantiate(r["resourceType"], r) for r in resources if type(r) is dict]
+        logger.debug(f"PPM/FHIR: Create resources: {', '.join([r.resource_type for r in resources])}")
+
+        # Create the bundle
+        bundle = FHIR.Resources.bundle(resources=resources, bundle_type="transaction" if transaction else "batch")
+
+        # Create the resource
+        response = FHIR.fhir_post(resource=bundle.as_json(), content=False)
+        if not response.ok:
+            return None
+
+        # Fetch and return IDs of the created resource
+        return FHIR.get_created_resource_ids(response=response)
 
     @staticmethod
     def fhir_read(resource_type: str, resource_id: str) -> Optional[dict]:
@@ -1618,16 +1764,16 @@ class FHIR:
             raise ValueError("Unhandled instance of a Patient identifier: {}".format(patient))
 
     @staticmethod
-    def get_created_resource_id(response: Response, resource_type: str) -> (Optional[str], Optional[str]):
+    def get_created_resource_id(response: requests.Response, resource_type: str) -> Optional[str]:
         """
         Accepts a response from a FHIR operation to create a resource and returns
         the ID and URL of the newly created resource in FHIR
         :param response: The raw HTTP response object from FHIR
-        :type response: Response
+        :type response: requests.Response
         :param resource_type: The resource type of the created resource
         :type resource_type: str
-        :returns: A tuple of the created resource ID and its full URL
-        :rtype: (str, str), defaults to (None, None)
+        :returns: The ID of the created resource, defaults to None
+        :rtype: str, optional
         """
         # Check status
         if not response.ok:
@@ -1635,7 +1781,7 @@ class FHIR:
                 "FHIR Error: Cannot get resource details from a failed response: "
                 f"{response.status_code} : {response.content.decode()}"
             )
-            return None, None
+            return None
 
         url = None
         try:
@@ -1644,16 +1790,15 @@ class FHIR:
             logger.debug(f"PPM/FHIR: Extracting created resource ID from: {url}")
 
             # Get ID of resource (UUID in FHIR R4)
-            pattern = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-            resource_id = re.search(pattern, url.url)[0]
-
-            # Trim off history part
-            if "_history" in url.path.segments:
-                url.path.segments = url.path.segments[:-2]
+            pattern = (
+                r"^(?:.*\/)?([A-Za-z]+)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+                r"(?:\/_history\/[a-zA-Z0-9]+)?$"
+            )
+            resource_id = re.search(pattern, url.url)[2]
 
             # Return
-            logger.debug(f"PPM/FHIR: Created resource '{resource_id}' / '{url.url}'")
-            return resource_id, url.url
+            logger.debug(f"PPM/FHIR: Created resource '{resource_type}/{resource_id}'")
+            return resource_id
 
         except Exception as e:
             logger.exception(
@@ -1667,20 +1812,67 @@ class FHIR:
                 },
             )
 
-        # Try based off the body of the response
-        pattern = rf"{resource_type}\/[0-9a-f]{{8}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{12}}\/"
-        matches = re.findall(pattern, response.content.decode())
-        if matches:
-            logger.error(f"FHIR ERROR: Could not determine resource ID from response: {response.content.decode()}")
+        # Iterate results
+        resource_ids = {}
+        for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+            logging.debug(f"FHIR result: {result}")
 
-            # Build URL
-            url = furl(PPM.fhir_url())
-            url.path.segments.extend([resource_type, matches[0]])
+            # Get the location
+            location = result.get("location")
+            if not location:
+                logger.warning(f"PPM/FHIR: Could not parse result: {result}")
+                continue
 
-            return matches[0], url.url
+            # Get the resource type and ID
+            pattern = (
+                r"^(?:.*\/)?([A-Za-z]+)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+                r"(?:\/_history\/[a-zA-Z0-9]+)?$"
+            )
+            resource_details = re.search(pattern, location, re.IGNORECASE)
+
+            # Add it to the dict
+            resource_ids.setdefault(resource_details.group(1), []).append(resource_details.group(2))
+
+        # Return the first group
+        if resource_ids:
+            return next(iter(resource_ids[resource_type]))
 
         # Could not figure it out
-        return None, None
+        logger.error(f"FHIR ERROR: Could not determine resource ID from response: {response.content.decode()}")
+        return None
+
+    def get_created_resource_ids(response: requests.Response) -> Optional[dict[str, list[str]]]:
+
+        # Check status
+        if not response.ok:
+            logger.error(
+                "FHIR Error: Cannot get resource details from a failed response: "
+                f"{response.status_code} : {response.content.decode()}"
+            )
+            return None
+
+        # Iterate results
+        resource_ids = {}
+        for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
+            logging.debug(f"FHIR result: {result}")
+
+            # Get the location
+            location = result.get("location")
+            if not location:
+                logger.warning(f"PPM/FHIR: Could not parse result: {result}")
+                continue
+
+            # Get the resource type and ID
+            pattern = (
+                r"^(?:.*\/)?([A-Za-z]+)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+                r"(?:\/_history\/[a-zA-Z0-9]+)?$"
+            )
+            resource_details = re.search(pattern, location, re.IGNORECASE)
+
+            # Add it to the dict
+            resource_ids.setdefault(resource_details.group(1), []).append(resource_details.group(2))
+
+        return resource_ids
 
     #
     # SAVE
@@ -1976,12 +2168,14 @@ class FHIR:
         defaults to None
         :type how_heard_about_ppm: str, optional
         :raises FHIRValidationError: If the resource fails FHIR validation
+        :raises Exception: if resource creation request fails.
         :return: A tuple of the created resource IDs
         :rtype: Optional[tuple[str, str, str]], defaults to None
-
-        :raises: Exception: if resource creation request fails.
         """
         try:
+            # Set logging prefix
+            prefix = f"PPM/FHIR/{ppm_study}"
+
             # Get the study's FHIR ID
             ppm_study_id = PPM.Study.fhir_id(ppm_study)
 
@@ -1991,8 +2185,8 @@ class FHIR:
 
             # Return if ResearchSubject already exists
             if research_subject:
-                logger.warning(f"PPM/{ppm_study}/{email}: ResearchSubject already exists")
-                return
+                logger.warning(f"{prefix}: ResearchSubject already exists for '{email}'")
+                return None
 
             # Flag if Patient exists or not
             patient_exists = patient is not None
@@ -2001,6 +2195,9 @@ class FHIR:
             bundle = Bundle()
             bundle.entry = []
             bundle.type = "transaction"
+
+            # Create a list to track resources to create
+            resources = []
 
             # Get or set the Patient identifier
             patient_id = patient.get("id") if patient else uuid.uuid1().urn
@@ -2022,185 +2219,66 @@ class FHIR:
                     how_heard_about_ppm=how_heard_about_ppm,
                 )
 
-                # Use the FHIR client lib to validate our resource.
-                # "If-None-Exist" can be used for conditional create operations in FHIR.
-                # If there is already a Patient resource identified by the provided email
-                # address, no duplicate records will be created.
-                Patient(patient_data)
-
                 # Add the UUID identifier
                 patient_data.get("identifier", []).append(
                     {"system": FHIR.patient_identifier_system, "value": patient_id.replace("urn:uuid:", "")}
                 )
 
-                patient_request = BundleEntryRequest(
-                    {
-                        "url": "Patient",
-                        "method": "POST",
-                        "ifNoneExist": str(Query({**FHIR._patient_query(email)})),
-                    }
-                )
-                patient_entry = BundleEntry({"resource": patient_data, "fullUrl": patient_id})
-                patient_entry.request = patient_request
+                # Set the temporary ID
+                patient_data["id"] = patient_id
 
                 # Add it to the bundle
-                bundle.entry.append(patient_entry)
+                resources.append(patient_data)
+                logger.info(f"{prefix}: Will create Patient for '{email}'")
 
             else:
-                logger.warning(f"PPM/{email}: Patient already exists")
+                # Get or set the Patient identifier
+                patient_id = patient.get("id")
+                logger.info(f"{prefix}/{patient_id}: Patient for '{email}' already exists")
+
+                # Set logging prefix for existing patient
+                prefix = f"PPM/FHIR/{ppm_study}/{patient_id}"
 
             # Build enrollment flag.
-            flag = Flag(
-                FHIR.Resources.enrollment_flag(
-                    patient_ref=patient_id,
-                    study=ppm_study_id,
-                    status=PPM.Enrollment.Registered.value,
-                )
+            flag = FHIR.Resources.enrollment_flag(
+                patient_ref=patient_id,
+                study=ppm_study_id,
+                status=PPM.Enrollment.Registered.value,
             )
-
-            flag_request = BundleEntryRequest(
-                {
-                    "url": "Flag",
-                    "method": "POST",
-                }
-            )
-            flag_entry = BundleEntry({"resource": flag.as_json()})
-            flag_entry.request = flag_request
 
             # Add it to the bundle
-            bundle.entry.append(flag_entry)
+            resources.append(flag)
 
             # Build research subject
-            research_subject_data = FHIR.Resources.research_subject(
+            research_subject = FHIR.Resources.research_subject(
                 patient_ref=patient_id,
                 research_study_ref=f"ResearchStudy/{PPM.Study.fhir_id(ppm_study_id)}",
                 status="candidate",
             )
-            research_subject_request = BundleEntryRequest(
-                {
-                    "url": "ResearchSubject",
-                    "method": "POST",
-                }
-            )
-            research_subject_entry = BundleEntry({"resource": research_subject_data})
-            research_subject_entry.request = research_subject_request
 
             # Add it to the bundle
-            bundle.entry.append(research_subject_entry)
+            resources.append(research_subject)
 
             # Create the resources on the FHIR server.
-            logger.debug("Creating Patient/ResearchSubject/Flag via Transaction")
-            response = FHIR.post(PPM.fhir_url(), json=bundle.as_json())
+            logger.debug(f"{prefix}: Creating {', '.join([r['resourceType'] for r in resources])}")
+            resource_ids = FHIR.fhir_create_and_get_ids(resources, transaction=True)
 
-            # Parse out created identifiers
-            flag_id = None
-            research_subject_id = None
-
-            # Iterate results
-            for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
-                logging.debug(f"FHIR result: {result}")
-
-                # Get the location
-                location = result.get("location")
-                if not location:
-                    continue
-
-                # Get the ID
-                resource_id = re.search(
-                    r"^.*\/([a-zA-Z0-9-]+)\/_history\/[a-zA-Z0-9]+$", location, re.IGNORECASE
-                ).group(1)
-
-                # Get resource ID
-                if location.startswith("Patient/"):
-                    patient_id = resource_id
-                elif location.startswith("Flag/"):
-                    flag_id = resource_id
-                elif location.startswith("ResearchSubject/"):
-                    research_subject_id = resource_id
+            # Get specific resource IDs
+            research_subject_id = [next(iter(ids)) for ids in resource_ids.get("ResearchSubject", [])]
+            flag_id = [next(iter(ids)) for ids in resource_ids.get("Flag", [])]
 
             # Check if Patient created
-            if patient_exists:
-                logger.debug(
-                    f"PPM/{ppm_study}/{patient_id}: Created " f"ResearchSubject/{research_subject_id} Flag/{flag_id}"
-                )
-            else:
-                logger.debug(
-                    f"PPM/{ppm_study}: Created Patient/{patient_id} "
-                    f"ResearchSubject/{research_subject_id} Flag/{flag_id}"
-                )
+            if not patient_exists:
+                patient_id = [next(iter(ids)) for ids in resource_ids.get("Patient", [])]
+
+            # Log create resources
+            logger.debug(f"{prefix}: Created {resource_ids}")
 
             return patient_id, flag_id, research_subject_id
 
         except Exception as e:
             logger.exception(e)
             raise
-
-    @staticmethod
-    def create_patient_enrollment(patient_id, status="registered"):
-        """
-        Create a Flag resource in the FHIR server to indicate a user's enrollment.
-
-        This should be removed as we should not be creating enrollment Flags
-        outside of the initial Patient/Flag/ResearchSubject creation method
-        # DEPRECATED: Remove method
-
-        :param patient_id: The patient identifier
-        :type patient_id: str or object
-        :param status: The enrollment status to set for the flag
-        :type status: str
-        :return: Whether the request was successful or not
-        :rtype: bool
-        """
-        warnings.warn(
-            "PPM/FHIR: The method `create_patient_enrollment` is deprecated", DeprecationWarning, stacklevel=2
-        )
-        logger.debug("Patient: {}".format(patient_id))
-
-        # Use the FHIR client lib to validate our resource.
-        flag = Flag(FHIR.Resources.enrollment_flag("Patient/{}".format(patient_id), status))
-
-        # Set a date if enrolled.
-        if status == "accepted":
-            now = FHIRDate(datetime.now(timezone.utc).isoformat())
-            period = Period()
-            period.start = now
-            flag.period = period
-
-        # Build enrollment flag.
-        flag_request = BundleEntryRequest(
-            {
-                "url": "Flag",
-                "method": "POST",
-                "ifNoneExist": str(
-                    Query(
-                        {
-                            # TODO: Include the study in this conditional once PPM needs
-                            # to support participants with multiple studies
-                            # "encounter": f"ResearchStudy/{PPM.Study.fhir_id(study)}"
-                            **FHIR._patient_resource_query(patient_id, key="patient"),
-                        }
-                    ),
-                ),
-            }
-        )
-        flag_entry = BundleEntry({"resource": flag.as_json()})
-        flag_entry.request = flag_request
-
-        # Validate it.
-        bundle = Bundle()
-        bundle.entry = [flag_entry]
-        bundle.type = "transaction"
-
-        logger.debug("Creating Flag via Transaction")
-
-        # Create the Flag resource
-        response = FHIR.post(PPM.fhir_url(), json=bundle.as_json())
-
-        # Parse out created identifiers
-        for result in [entry["response"] for entry in response.json().get("entry", []) if "response" in entry]:
-            logging.debug(f"FHIR result: {result}")
-
-        return response.ok
 
     @staticmethod
     def create_communication(patient_id, content, identifier):
@@ -2906,8 +2984,10 @@ class FHIR:
         # Build the FHIR Consent URL.
         url = furl(PPM.fhir_url())
         url.path.segments.append("Patient")
-        url.query.params.add("_include", "*")
+        url.query.params.add("_include", FHIR.PARTICIPANT_PATIENT_INCLUDES)
+        url.query.params.add("_include:iterate", FHIR.PARTICIPANT_PATIENT_INCLUDE_ITERATES)
         url.query.params.add("_revinclude", FHIR.PARTICIPANT_PATIENT_REVINCLUDES)
+        url.query.params.add("_revinclude:iterate", FHIR.PARTICIPANT_PATIENT_REVINCLUDE_ITERATES)
 
         # Add patient query
         for key, value in FHIR._patient_query(patient).items():
@@ -2927,64 +3007,16 @@ class FHIR:
                 logger.debug(f"PPM/FHIR: Empty and/or no Patient for {patient}")
                 return {}
 
-            # Prepare a bundle to get all other resources that aren't directly
-            # linked to Patient (e.g. Questionnaire, ResearchStudy)
-            secondary_resources = {
-                "Questionnaire": {
-                    "resource": "QuestionnaireResponse",
-                    "get_ids": lambda r: [r["questionnaire"].rsplit("/", 1)[-1]],
-                },
-                "ResearchStudy": {
-                    "resource": "ResearchSubject",
-                    "get_ids": lambda r: [r["study"]["reference"].rsplit("/", 1)[-1]],
-                },
-                "Organization": {
-                    "resource": "List",
-                    "get_ids": lambda r: [e["item"]["reference"].rsplit("/", 1)[-1] for e in r["entry"]],
-                },
-            }
-
-            # Build a batch bundle
-            secondary_bundle = {
-                "resourceType": "Bundle",
-                "type": "batch",
-                "entry": [],
-            }
-
-            # Iterate secondary resources
-            for resource_type, link in secondary_resources.items():
-
-                # Get referenced IDs from resources in current bundle
-                resources = [
-                    e["resource"]
-                    for e in bundle["entry"]
-                    if e.get("resource", {}).get("resourceType") == link["resource"]
-                ]
-                for resource in resources:
-
-                    # Get ID(s)
-                    secondary_resource_ids = link["get_ids"](resource)
-
-                    # Make entry for bundle
-                    for secondary_resource_id in secondary_resource_ids:
-                        secondary_bundle["entry"].append(
-                            {
-                                "request": {
-                                    "method": "GET",
-                                    "url": f"{resource_type}/{secondary_resource_id}",
-                                }
-                            }
-                        )
-
             # Make the request
-            secondary_bundle = FHIR.fhir_transaction(secondary_bundle)
-            logger.debug(f"PPM/FHIR: Fetched {len(secondary_bundle['entry'])} secondary resources")
+            secondary_bundle = FHIR._get_participant_missing_resources(bundle)
+            if secondary_bundle and secondary_bundle.get("entry"):
+                logger.debug(f"PPM/FHIR: Fetched {len(secondary_bundle['entry'])} missing resources")
 
-            # Add secondary resources to primary bundle
-            bundle["entry"].extend(secondary_bundle["entry"])
+                # Add secondary resources to primary bundle
+                bundle["entry"].extend(secondary_bundle["entry"])
 
-            # Update bundle count
-            bundle["total"] = len(bundle["entry"])
+                # Update bundle count
+                bundle["total"] = len(bundle["entry"])
 
             if flatten_return:
                 return FHIR.flatten_participant(
@@ -3008,6 +3040,96 @@ class FHIR:
                     "content": content,
                 },
             )
+
+        return None
+
+    @staticmethod
+    def _get_participant_missing_resources(bundle: dict) -> Optional[dict]:
+        """
+        Checks the current bundle of all participant resources and checks
+        for any missing linked resources that are needed for parsing
+        the participants' record. This usually includes secondary references
+        like Questionnaire or ResearchStudy resources that are not directly
+        linked to a Patient. While current queries are designed to include
+        this resources initially, spotty support by FHIR instance backends
+        will sometimes require this second query to complete the bundle.
+        An example being GCP's Healthcare API FHIR does not support
+        `_revinclude:iterate` for including a Questionnaire linked by a
+        QuestionnaireResponse. Presumably due to the weird canonical URL
+        reference type enforeced in FHIR R4 between those two resources.
+        If no resources are missing, `None` is returned.
+
+        :param bundle: The current bundle of fetched resources for the
+        participant.
+        :type bundle: dict
+        :return: A second bundle containing missing resources, defaults to None
+        :rtype: Optional[dict]
+        """
+        # Prepare a bundle to get all other resources that aren't directly
+        # linked to Patient (e.g. Questionnaire, ResearchStudy)
+        secondary_resources = {
+            "Questionnaire": {
+                "resource": "QuestionnaireResponse",
+                "get_ids": lambda r: [r["questionnaire"].rsplit("/", 1)[-1]],
+            },
+            "ResearchStudy": {
+                "resource": "ResearchSubject",
+                "get_ids": lambda r: [r["study"]["reference"].rsplit("/", 1)[-1]],
+            },
+            "Organization": {
+                "resource": "List",
+                "get_ids": lambda r: [e["item"]["reference"].rsplit("/", 1)[-1] for e in r["entry"]],
+            },
+        }
+
+        # Build a batch bundle
+        secondary_bundle = {
+            "resourceType": "Bundle",
+            "type": "batch",
+            "entry": [],
+        }
+
+        # Iterate secondary resources
+        for resource_type, link in secondary_resources.items():
+
+            # Get referenced IDs from resources in current bundle
+            references = [
+                f"{resource_type}/{resource_id}"
+                for e in bundle["entry"]
+                if e.get("resource", {}).get("resourceType") == link["resource"]
+                for resource_id in link["get_ids"](e["resource"])
+            ]
+
+            # Iterate references to missing resources
+            for reference in references:
+
+                # Split the reference
+                resource_type, resource_id = tuple(reference.split("/", 1))
+
+                # Check current bundle
+                if not FHIR.find_resource(bundle, resource_type=resource_type, filter=lambda r: r["id"] == resource_id):
+
+                    # Make entry for bundle
+                    secondary_bundle["entry"].append(
+                        {
+                            "request": {
+                                "method": "GET",
+                                "url": reference,
+                            }
+                        }
+                    )
+
+        # Make the request if we have entries
+        if secondary_bundle["entry"]:
+            secondary_bundle = FHIR.fhir_transaction(secondary_bundle)
+
+            # Ensure we have a return value
+            if not secondary_bundle.get("entry"):
+                logger.warning(f"PPM/FHIR: Could not find missing resources: {references}")
+            else:
+                return secondary_bundle
+        else:
+            logger.debug("PPM/FHIR: No missing resources")
 
         return None
 
@@ -3220,7 +3342,7 @@ class FHIR:
         if bundle:
 
             # Check for multiple Compositions matching the query
-            # FIXME: This is likely not required any longer
+            # TODO: This is likely not required any longer
             compositions = FHIR._find_resources(bundle, "Composition")
             if len(compositions) > 1:
                 logger.error(
@@ -3280,7 +3402,7 @@ class FHIR:
                     },
                 )
 
-                # FIXME: Multiple Resource Handling
+                # TODO: Multiple Resource Handling
                 # In instances where we catch too many resources, we should
                 # at least come up with a determinate manner in which we select
                 # the one to use (e.g. creation date)
@@ -4622,7 +4744,8 @@ class FHIR:
 
             # Iterate resources
             for research_subject in research_subjects:
-                logger.debug(f"{patient}: Updating ResearchSubject/{research_subject['id']}")
+                research_subject_id = research_subject["id"]
+                logger.debug(f"{patient}: Updating ResearchSubject/{research_subject_id}")
 
                 # Only clear 'end' if it exists
                 if not research_subject.get("period", {}).get("end") and end is False:
@@ -6760,7 +6883,7 @@ class FHIR:
             else:
                 logger.error(f"PPM/FHIR: Unhandled answer type: {answer.as_json()}")
 
-        return answers if len(answers) > 1 else next(iter(answers), None)
+        return answers
 
     @staticmethod
     def get_question_path(
@@ -8694,6 +8817,7 @@ class FHIR:
             response.status = "completed"
             response.authored = FHIRDate(date.isoformat())
             response.author = FHIR.Resources.reference_to(author if author else patient)
+            response.subject = FHIR.Resources.reference_to(questionnaire)
 
             # Collect response items flattened
             response.item = FHIR.Resources.questionnaire_response_items(questionnaire, answers)
@@ -9266,7 +9390,9 @@ class FHIR:
             return base64.b64encode(str(value).encode("utf-8")).decode("utf-8")
 
         @staticmethod
-        def bundle(resources: list[DomainResource]) -> Bundle:
+        def bundle(
+            resources: list[DomainResource], bundle_type: Literal["batch", "transaction"] = "transaction"
+        ) -> Bundle:
             """
             Creates and returns a FHIR Bundle with the given resources
             as entries with method set to POST. This is for creating a set
@@ -9275,14 +9401,16 @@ class FHIR:
             :param resources: The list of resources to include in the bundle
             :type resources: list[DomainResource]
             :param bundle_type: The type of the bundle, defaults to "transaction"
-            :type bundle_type: str, optional
+            :type bundle_type: Literal["batch", "transaction"], optional
+            :raises ValueError: If bundle type "batch" is passed with temporary
+            resource IDs
             :return: The FHIR resource
             :rtype: Bundle
             """
 
             # Build the bundle
             bundle = Bundle()
-            bundle.type = "transaction"
+            bundle.type = bundle_type
             bundle.entry = []
 
             for resource in resources:
@@ -9295,6 +9423,8 @@ class FHIR:
                 # Drop the ID if it's a temporary ID
                 resource_id = resource.id
                 if resource_id and resource_id.startswith("urn:"):
+                    if bundle_type != "transaction":
+                        raise ValueError(f"Cannot use temporary IDs with bundle type '{bundle_type}'")
                     resource.id = None
 
                 # Add it to the entry
