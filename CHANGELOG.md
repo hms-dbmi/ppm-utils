@@ -1,3 +1,25 @@
+# [2.0.0](https://github.com/hms-dbmi/ppm-utils/compare/v1.1.0...v2.0.0) (2024-02-28)
+
+
+### Bug Fixes
+
+* **fhir:** Fixed FHIR resource ID extraction from responses; allows specifying the FHIR ID for a Patient at creation ([00e53b8](https://github.com/hms-dbmi/ppm-utils/commit/00e53b8fbd91f6b20dcc64b319b4e070fc992fbe))
+* **fhir:** Fixed some issues found in tests; fixed tests ([7be74ee](https://github.com/hms-dbmi/ppm-utils/commit/7be74eee703e8faef43498e4d015dcf53e326be2))
+* **fhir:** Resolved issue when updating ResearchSubject resources ([f1d834a](https://github.com/hms-dbmi/ppm-utils/commit/f1d834a738c7fec91d1129bffdf6945fd9cb65f0))
+* **fhir:** Resolved typing issues ([a12fbef](https://github.com/hms-dbmi/ppm-utils/commit/a12fbef45699e950383c0d2fd12602c8df845d51))
+* **qualtrics:** Fixed date handling ([7e129bc](https://github.com/hms-dbmi/ppm-utils/commit/7e129bc120f900e0d4469e1f68fe370ec7b2a0e5))
+* **qualtrics:** Set required property 'operator' on Questionnaire items with conditional presentation ([fb702ff](https://github.com/hms-dbmi/ppm-utils/commit/fb702ff5a71292a6794f3c27717e4b47b688b8eb))
+
+
+### Features
+
+* **fhir/qualtrics:** Updated for FHIR R4 ([a733b7c](https://github.com/hms-dbmi/ppm-utils/commit/a733b7c8ffaa85555c405df2b59088cc4fc725bb))
+
+
+### BREAKING CHANGES
+
+* **fhir/qualtrics:** FHIR module is incompatible with DSTU3 FHIR backends
+
 # [1.1.0](https://github.com/hms-dbmi/ppm-utils/compare/v1.0.1...v1.1.0) (2023-08-10)
 
 
