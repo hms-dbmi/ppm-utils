@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from dateutil.parser import parse
 import hashlib
 import json
@@ -6,12 +6,10 @@ import re
 import sys
 import collections
 from furl import furl
-import requests
-from fhirclient.models.bundle import Bundle, BundleEntry, BundleEntryRequest
 from fhirclient.models.questionnaire import Questionnaire
+from fhirclient.models.patient import Patient
 
 from ppmutils.fhir import FHIR
-from ppmutils.ppm import PPM
 
 import logging
 
@@ -119,10 +117,13 @@ class Qualtrics:
             # Hash the questions and flow of the survey to track version of the survey
             version = hashlib.md5(json.dumps(items).encode()).hexdigest()
 
+            # Ensure all dates are timezone-aware, UTC by default
+            survey_creation_date = parse(survey["SurveyEntry"]["SurveyCreationDate"]).replace(tzinfo=timezone.utc)
+            survey_modified_date = parse(survey["SurveyEntry"]["LastModified"]).replace(tzinfo=timezone.utc)
+
             # Build the resource
             data = {
                 "resourceType": "Questionnaire",
-                "meta": {"lastUpdated": datetime.now().isoformat()},
                 "identifier": [
                     {
                         "system": FHIR.qualtrics_survey_identifier_system,
@@ -141,8 +142,8 @@ class Qualtrics:
                 "name": survey_id,
                 "title": survey["SurveyEntry"]["SurveyName"],
                 "status": "active" if survey["SurveyEntry"]["SurveyStatus"] == "Active" else "draft",
-                "approvalDate": parse(survey["SurveyEntry"]["SurveyCreationDate"]).isoformat(),
-                "date": parse(survey["SurveyEntry"]["LastModified"]).isoformat(),
+                "approvalDate": survey_creation_date.isoformat(),
+                "date": survey_modified_date.isoformat(),
                 "extension": [
                     {
                         "url": "https://p2m2.dbmi.hms.harvard.edu/fhir/StructureDefinition/qualtrics-survey",
@@ -157,16 +158,18 @@ class Qualtrics:
                 survey["SurveyEntry"].get("SurveyStartDate")
                 and survey["SurveyEntry"]["SurveyStartDate"] != "0000-00-00 00:00:00"
             ):
-
-                data["effectivePeriod"] = {"start": parse(survey["SurveyEntry"]["SurveyStartDate"]).isoformat()}
+                survey_start_date = parse(survey["SurveyEntry"]["SurveyStartDate"]).replace(tzinfo=timezone.utc)
+                data["effectivePeriod"] = {"start": survey_start_date.isoformat()}
 
             # If expiration, add it
             if (
                 survey["SurveyEntry"].get("SurveyExpirationDate")
                 and survey["SurveyEntry"]["SurveyStartDate"] != "0000-00-00 00:00:00"
             ):
-
-                data["effectivePeriod"]["end"] = parse(survey["SurveyEntry"]["SurveyExpirationDate"]).isoformat()
+                survey_expiration_date = parse(survey["SurveyEntry"]["SurveyExpirationDate"]).replace(
+                    tzinfo=timezone.utc
+                )
+                data["effectivePeriod"]["end"] = survey_expiration_date.isoformat()
 
                 # If after expiration, set status
                 if parse(survey["SurveyEntry"]["SurveyExpirationDate"]) < datetime.now():
@@ -391,6 +394,7 @@ class Qualtrics:
                         {
                             "question": cls._qid_to_linkid(conditional_qid),
                             "answerString": conditional_value,
+                            "operator": "=",
                         }
                     )
 
@@ -447,7 +451,7 @@ class Qualtrics:
                 item["type"] = "choice"
 
                 # Set choices
-                item["option"] = [{"valueString": c["Display"]} for k, c in question["Choices"].items()]
+                item["answerOption"] = [{"valueString": c["Display"]} for k, c in question["Choices"].items()]
 
             # Multiple choice (multiple answer)
             elif question_type == "MC" and selector == "MAVR":
@@ -457,7 +461,7 @@ class Qualtrics:
                 item["repeats"] = True
 
                 # Set choices
-                item["option"] = [{"valueString": c["Display"]} for k, c in question["Choices"].items()]
+                item["answerOption"] = [{"valueString": c["Display"]} for k, c in question["Choices"].items()]
 
             # Matrix (single answer)
             elif question_type == "Matrix" and selector == "Likert" and sub_selector == "SingleAnswer":
@@ -474,7 +478,7 @@ class Qualtrics:
                         "linkId": f"{link_id}-{k}",
                         "text": s["Display"],
                         "type": "choice",
-                        "option": choices,
+                        "answerOption": choices,
                         "required": required,
                     }
                     for k, s in question["Choices"].items()
@@ -496,7 +500,7 @@ class Qualtrics:
                         "linkId": f"{link_id}-{k}",
                         "text": s["Display"],
                         "type": "choice",
-                        "option": choices,
+                        "answerOption": choices,
                         "required": required,
                     }
                     for k, s in question["Choices"].items()
@@ -522,7 +526,7 @@ class Qualtrics:
                 item["repeats"] = True
 
                 # Set choices
-                item["option"] = [{"valueString": c["Display"]} for k, c in question["Choices"].items()]
+                item["answerOption"] = [{"valueString": c["Display"]} for k, c in question["Choices"].items()]
 
             # Drill down
             elif question_type == "DD" and selector == "DL":
@@ -532,7 +536,7 @@ class Qualtrics:
                 item["repeats"] = False
 
                 # Set choices
-                item["option"] = [{"valueString": c["Display"]} for k, c in question["Answers"].items()]
+                item["answerOption"] = [{"valueString": c["Display"]} for k, c in question["Answers"].items()]
 
             # Descriptive text
             elif question_type == "DB":
@@ -583,7 +587,7 @@ class Qualtrics:
                                 "linkId": f"{link_id}-{k}-{sub_k}",
                                 "text": sub_question,
                                 "type": "choice",
-                                "option": answers,
+                                "answerOption": answers,
                                 "required": required,
                             }
                         )
@@ -646,27 +650,32 @@ class Qualtrics:
         if survey_definition and not Qualtrics.is_survey_definition(survey_definition):
             raise ValueError("PPM/Qualtrics: survey_definition is not a valid Qualtrics API survey definition object")
 
-        # Prepare resource properties
-        data = {
-            "resourceType": "QuestionnaireResponse",
-            "meta": {"lastUpdated": datetime.now().isoformat()},
-            "identifier": {
-                "system": FHIR.qualtrics_response_identifier_system,
-                "value": response_id,
-            },
-            "questionnaire": {"reference": "Questionnaire/{}".format(questionnaire_id)},
-            "subject": {"reference": "ResearchStudy/{}".format(PPM.Study.fhir_id(study))},
-            "status": "completed",
-            "author": {"reference": f"Patient/{ppm_id}"},
-            "source": {"reference": f"Patient/{ppm_id}"},
-            "authored": datetime.now().isoformat(),
-            "extension": [
-                {
-                    "url": FHIR.qualtrics_survey_extension_url,
-                    "valueString": survey_id,
-                }
-            ],
+        # Create shallow objects for Questionnaire and Patient for the sake of references
+        questionnaire = Questionnaire({"id": questionnaire_id})
+        patient = Patient({"id": ppm_id})
+
+        # Create the resource
+        data = FHIR.Resources.questionnaire_response(questionnaire=questionnaire, patient=patient, author=patient)
+
+        # Set identifiers
+        data["identifier"] = {
+            "system": FHIR.qualtrics_response_identifier_system,
+            "value": response_id,
         }
+
+        # Set extensions
+        data.setdefault("extension", []).append(
+            {
+                "url": FHIR.qualtrics_survey_extension_url,
+                "value": survey_id,
+            }
+        )
+
+        # Set the subject to the Questionnaire
+        data["subject"] = FHIR.Resources.reference_to(questionnaire).as_json()
+
+        # Set the status
+        data["status"] = "completed"
 
         # If response, parse answers
         if response and survey:
@@ -1222,7 +1231,7 @@ class Qualtrics:
             return None
 
         # Return response after formatting answer
-        return {"linkId": link_id, "answer": FHIR.Resources._questionnaire_response_answer(answer)}
+        return {"linkId": link_id, "answer": FHIR.Resources.questionnaire_response_answer(answer)}
 
     @classmethod
     def questionnaire_transaction(cls, questionnaire, questionnaire_id=None):
@@ -1255,24 +1264,9 @@ class Qualtrics:
 
         # Use the FHIR client lib to validate our resource.
         questionnaire = Questionnaire(questionnaire)
-        questionnaire_request = BundleEntryRequest(
-            {
-                "url": f"Questionnaire/{questionnaire_id}" if questionnaire_id else "Questionnaire",
-                "method": "PUT" if questionnaire_id else "POST",
-            }
+
+        return FHIR.fhir_create(
+            resource_type="Questionnaire",
+            resource=questionnaire,
+            resource_id=questionnaire_id,
         )
-        questionnaire_entry = BundleEntry()
-        questionnaire_entry.resource = questionnaire
-        questionnaire_entry.request = questionnaire_request
-
-        # Validate it.
-        bundle = Bundle()
-        bundle.entry = [questionnaire_entry]
-        bundle.type = "transaction"
-
-        # Create the organization
-        response = requests.post(PPM.fhir_url(), json=bundle.as_json())
-        logger.debug("PPM/Qualtrics: FHIR Response: {}".format(response.status_code))
-        response.raise_for_status()
-
-        return response.json()
