@@ -1645,7 +1645,7 @@ class FHIR:
         """
         # Check types
         if type(patient) is str and re.match(
-            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[\d]{3,5}$", patient
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[\d]{4,}$", patient
         ):
             return patient
 
@@ -1790,10 +1790,7 @@ class FHIR:
             logger.debug(f"PPM/FHIR: Extracting created resource ID from: {url}")
 
             # Get ID of resource (UUID in FHIR R4)
-            pattern = (
-                r"^(?:.*\/)?([A-Za-z]+)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
-                r"(?:\/_history\/[a-zA-Z0-9]+)?$"
-            )
+            pattern = r"^(?:.*\/)?([A-Za-z]+)\/([^/]+)(?:\/_history\/[a-zA-Z0-9]+)?$"
             resource_id = re.search(pattern, url.url)[2]
 
             # Return
@@ -1824,10 +1821,7 @@ class FHIR:
                 continue
 
             # Get the resource type and ID
-            pattern = (
-                r"^(?:.*\/)?([A-Za-z]+)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
-                r"(?:\/_history\/[a-zA-Z0-9]+)?$"
-            )
+            pattern = r"^(?:.*\/)?([A-Za-z]+)\/([^/]+)(?:\/_history\/[a-zA-Z0-9]+)?$"
             resource_details = re.search(pattern, location, re.IGNORECASE)
 
             # Add it to the dict
@@ -1863,10 +1857,7 @@ class FHIR:
                 continue
 
             # Get the resource type and ID
-            pattern = (
-                r"^(?:.*\/)?([A-Za-z]+)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
-                r"(?:\/_history\/[a-zA-Z0-9]+)?$"
-            )
+            pattern = r"^(?:.*\/)?([A-Za-z]+)\/([^/]+)(?:\/_history\/[a-zA-Z0-9]+)?$"
             resource_details = re.search(pattern, location, re.IGNORECASE)
 
             # Add it to the dict
@@ -2135,6 +2126,7 @@ class FHIR:
         phone: str = None,
         contact_email: str = None,
         how_heard_about_ppm: str = None,
+        ppm_id: str = None,
     ) -> Optional[tuple[str, str, str]]:
         """
         Creates the core resources necessary for a participant in PPM. Resources
@@ -2166,6 +2158,9 @@ class FHIR:
         :type contact_email: str, optional
         :param how_heard_about_ppm: How the participant heard about PPM,
         defaults to None
+        :param ppm_id: Used to specify a specific ID to use for the Patient
+        resource
+        :type ppm_id: str
         :type how_heard_about_ppm: str, optional
         :raises FHIRValidationError: If the resource fails FHIR validation
         :raises Exception: if resource creation request fails.
@@ -2200,7 +2195,7 @@ class FHIR:
             resources = []
 
             # Get or set the Patient identifier
-            patient_id = patient.get("id") if patient else uuid.uuid1().urn
+            patient_id = patient.get("id") if patient else ppm_id if ppm_id else uuid.uuid1().urn
 
             # Check for a patient
             if not patient:
@@ -9427,6 +9422,11 @@ class FHIR:
                     if bundle_type != "transaction":
                         raise ValueError(f"Cannot use temporary IDs with bundle type '{bundle_type}'")
                     resource.id = None
+
+                else:
+                    # Make it a PUT since we are specifying the ID at creation
+                    bundle_entry_request.method = "PUT"
+                    bundle_entry_request.url = f"{resource.resource_type}/{resource_id}"
 
                 # Add it to the entry
                 bundle_entry = BundleEntry()
