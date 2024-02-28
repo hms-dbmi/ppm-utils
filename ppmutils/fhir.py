@@ -3119,7 +3119,7 @@ class FHIR:
             secondary_bundle = FHIR.fhir_transaction(secondary_bundle)
 
             # Ensure we have a return value
-            if not secondary_bundle.get("entry"):
+            if not secondary_bundle or not secondary_bundle.get("entry"):
                 logger.warning(f"PPM/FHIR: Could not find missing resources: {references}")
             else:
                 return secondary_bundle
@@ -4642,12 +4642,12 @@ class FHIR:
             patch = []
 
             # Set 'start' if date is passed
-            if start is datetime or start is str:
+            if type(start) is datetime or type(start) is str:
                 patch.append(
                     {
                         "op": "update",
                         "path": "/period/start",
-                        "value": start.isoformat() if start is datetime else start,
+                        "value": start.isoformat() if type(start) is datetime else start,
                     }
                 )
 
@@ -4658,8 +4658,10 @@ class FHIR:
                 )
 
             # Set 'end' if date is passed
-            if end is datetime or end is str:
-                patch.append({"op": "add", "path": "/period/end", "value": end.isoformat() if end is datetime else end})
+            if type(end) is datetime or type(end) is str:
+                patch.append(
+                    {"op": "add", "path": "/period/end", "value": end.isoformat() if type(end) is datetime else end}
+                )
 
             elif end:
                 logger.error(
@@ -5336,7 +5338,7 @@ class FHIR:
 
             # Only delete resources related to Patient
             resource_types = [r.split(":", 1)[0] for r in FHIR.PARTICIPANT_PATIENT_REVINCLUDES]
-            resources = [r for r in participant if r["resourceType"] in resource_types]
+            resources = [r["resource"] for r in participant["entry"] if r["resource"]["resourceType"] in resource_types]
 
             # Build the initial delete transaction bundle.
             transaction = {"resourceType": "Bundle", "type": "transaction", "entry": []}
