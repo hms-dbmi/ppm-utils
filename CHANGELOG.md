@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.0...v2.0.1) (2024-06-28)
+
+
+### Bug Fixes
+
+* **fhir:** Fixed how GCP backend is selected and credentialed ([c14e673](https://github.com/hms-dbmi/ppm-utils/commit/c14e673b1322346203a443a69f3863fcb0f594fc))
+
 # [2.0.0](https://github.com/hms-dbmi/ppm-utils/compare/v1.1.0...v2.0.0) (2024-02-28)
 
 
