@@ -62,6 +62,9 @@ logger = logging.getLogger(__name__)
 
 HttpMethod: TypeAlias = Literal["get", "post", "put", "patch", "delete", "head"]
 
+# Constants
+PPM_GCP_CREDENTIALS_KEY = "PPM_GCP_HEALTHCARE_CREDENTIALS"
+
 
 class Backend(ABC):
     @classmethod
@@ -78,7 +81,7 @@ class Backend(ABC):
         # Check for AWS
         if "amazonaws.com" in url:
             return AWSHealthlake()
-        elif "healthcare.googleapis.com" in url:
+        elif "googleapis.com" in url:
             return GCPHealthcareAPI()
         elif "azurehealthcareapis.com" in url:
             return AzureHealthcareAPI()
@@ -142,16 +145,14 @@ class GCPHealthcareAPI(Backend):
         if token is None or expiry is None or datetime.utcnow() >= expiry:
 
             # Check whether credentials are string or file
-            if os.environ["GOOGLE_APPLICATION_CREDENTIALS"].startswith("/"):
+            if os.environ[PPM_GCP_CREDENTIALS_KEY].startswith("/"):
                 logger.debug("PPM/FHIR: GCS credentials via file")
-                credentials = service_account.Credentials.from_service_account_file(
-                    os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
-                )
+                credentials = service_account.Credentials.from_service_account_file(os.environ[PPM_GCP_CREDENTIALS_KEY])
             else:
                 # Gets credentials from the environment.
                 logger.debug("PPM/FHIR: GCS credentials via environment variable")
                 credentials = service_account.Credentials.from_service_account_info(
-                    libjson.loads(base64.b64decode(os.environ["GOOGLE_APPLICATION_CREDENTIALS"].encode()).decode())
+                    libjson.loads(base64.b64decode(os.environ[PPM_GCP_CREDENTIALS_KEY].encode()).decode())
                 )
 
             # Set scopes
