@@ -257,14 +257,16 @@ class FHIR:
     patient_twitter_telecom_system = "other"
 
     # Set the coding types
+    study_participant_identifier_system_base = "https://peoplepoweredmedicine.org/study/participant"
     patient_identifier_system = "https://peoplepoweredmedicine.org/fhir/patient"
     enrollment_flag_coding_system = "https://peoplepoweredmedicine.org/enrollment-status"
     enrollment_flag_study_identifier_system = "https://peoplepoweredmedicine.org/fhir/flag/study"
+    enrollment_flag_patient_identifier_system = "https://peoplepoweredmedicine.org/fhir/flag/patient"
 
     research_study_identifier_system = "https://peoplepoweredmedicine.org/fhir/study"
     research_study_coding_system = "https://peoplepoweredmedicine.org/study"
 
-    research_subject_identifier_system = "https://peoplepoweredmedicine.org/fhir/subject/study"
+    research_subject_study_identifier_system = "https://peoplepoweredmedicine.org/fhir/subject/study"
     research_subject_patient_identifier_system = "https://peoplepoweredmedicine.org/fhir/subject/patient"
     research_subject_coding_system = "https://peoplepoweredmedicine.org/subject"
 
@@ -1112,6 +1114,12 @@ class FHIR:
             # Check for a page.
             url = next((link["url"] for link in bundle.get("link", []) if link["relation"] == "next"), None)
 
+            # Swap domain if necessary
+            if furl(url).host != furl(PPM.fhir_url()).host:
+
+                # Set it
+                url = furl(url).set(host=furl(PPM.fhir_url().host)).url
+
         # Update count
         total_bundle["total"] = len(total_bundle.get("entry", []))
 
@@ -1530,13 +1538,13 @@ class FHIR:
             (
                 i
                 for i in research_subject.get("identifier", [])
-                if i["system"] == FHIR.research_subject_identifier_system
+                if i["system"] == FHIR.research_subject_study_identifier_system
             ),
             False,
         ) and next((i for i in research_subject.get("identifier", []) if i["value"] in PPM.Study.identifiers()), False)
 
     @staticmethod
-    def get_study_from_research_subject(research_subject: dict) -> Optional[str]:
+    def get_study_from_research_subject(research_subject: dict | ResearchSubject) -> Optional[str]:
         """
         Accepts a FHIR resource representation (ResearchSubject, dict or bundle entry)
         and parses out the identifier which contains the code of the study this
@@ -1561,7 +1569,7 @@ class FHIR:
             (
                 i["value"]
                 for i in research_subject.get("identifier", [])
-                if i["system"] == FHIR.research_subject_identifier_system
+                if i["system"] == FHIR.research_subject_study_identifier_system
             ),
             None,
         )
@@ -2115,6 +2123,33 @@ class FHIR:
         return patient, research_subject
 
     @staticmethod
+    def study_participant_identifier_system(ppm_study: str) -> str:
+        """
+        Returns the system to use for participant identifiers for the passed
+        study.
+
+        :param ppm_study: The identifier of the study
+        :type ppm_study: str
+        :return: The study participant identifier
+        :rtype: str
+        """
+        system = furl(FHIR.study_participant_identifier_system_base)
+
+        # Get path components
+        path = list(system.path.segments)
+
+        # We don't want the "ppm-" prefix
+        study = PPM.Study.get(ppm_study).value
+
+        # Insert study identifier after "study"
+        path.insert(path.index("study") + 1, study)
+
+        # Set new path and return
+        system.set(path=path)
+
+        return system.url
+
+    @staticmethod
     def create_patient(
         ppm_study: str,
         email: str,
@@ -2198,6 +2233,10 @@ class FHIR:
             # Get or set the Patient identifier
             patient_id = patient.get("id") if patient else ppm_id if ppm_id else uuid.uuid1().urn
 
+            # Participant identifier should be unique between studies
+            # TODO: Implement a counter to allow for shorter identifiers to be used for study participants
+            participant_id = str(uuid.uuid1())
+
             # Check for a patient
             if not patient:
 
@@ -2216,8 +2255,13 @@ class FHIR:
                 )
 
                 # Add the UUID identifier
-                patient_data.get("identifier", []).append(
+                patient_data.setdefault("identifier", []).append(
                     {"system": FHIR.patient_identifier_system, "value": patient_id.replace("urn:uuid:", "")}
+                )
+
+                # Add the participant identifier
+                patient_data.setdefault("identifier", []).append(
+                    {"system": FHIR.study_participant_identifier_system(ppm_study), "value": participant_id}
                 )
 
                 # Set the temporary ID
@@ -2242,6 +2286,11 @@ class FHIR:
                 status=PPM.Enrollment.Registered.value,
             )
 
+            # Add the participant identifier
+            flag.setdefault("identifier", []).append(
+                {"system": FHIR.study_participant_identifier_system_base, "value": participant_id}
+            )
+
             # Add it to the bundle
             resources.append(flag)
 
@@ -2250,6 +2299,11 @@ class FHIR:
                 patient_ref=patient_id,
                 research_study_ref=f"ResearchStudy/{PPM.Study.fhir_id(ppm_study_id)}",
                 status="candidate",
+            )
+
+            # Add the participant identifier
+            research_subject.setdefault("identifier", []).append(
+                {"system": FHIR.study_participant_identifier_system_base, "value": participant_id}
             )
 
             # Add it to the bundle
@@ -3503,7 +3557,7 @@ class FHIR:
         """
         # Get flags for current user
         query = {
-            "identifier": "{}|".format(FHIR.research_subject_identifier_system),
+            "identifier": "{}|".format(FHIR.research_subject_study_identifier_system),
         }
 
         # Update for the patient query
@@ -3840,7 +3894,7 @@ class FHIR:
         """
         # Get flags for current user
         query = {
-            "identifier": "{}|".format(FHIR.research_subject_identifier_system),
+            "identifier": "{}|".format(FHIR.research_subject_study_identifier_system),
             "_include": "ResearchSubject:individual",
             "individual": ppm_ids,
         }
@@ -3936,7 +3990,7 @@ class FHIR:
 
         # Exclude PPM ResearchSubjects
         query["identifier:not"] = [
-            f"{FHIR.research_subject_identifier_system}" f"|{PPM.Study.fhir_id(study)}" for study in PPM.Study
+            f"{FHIR.research_subject_study_identifier_system}" f"|{PPM.Study.fhir_id(study)}" for study in PPM.Study
         ]
 
         # Perform the search
@@ -4731,7 +4785,7 @@ class FHIR:
         logger.debug(f"{prefix}: Update PPM ResearchSubject: {locals()}")
 
         # Build study identifier
-        query["identifier"] = f"{FHIR.research_subject_identifier_system}|"
+        query["identifier"] = f"{FHIR.research_subject_study_identifier_system}|"
         if study:
             query["identifier"] += PPM.Study.fhir_id(study)
 
@@ -8274,7 +8328,11 @@ class FHIR:
                     {
                         "system": FHIR.enrollment_flag_study_identifier_system,
                         "value": study,
-                    }
+                    },
+                    {
+                        "system": FHIR.enrollment_flag_patient_identifier_system,
+                        "value": patient_ref,
+                    },
                 ],
             }
 
@@ -8395,11 +8453,17 @@ class FHIR:
                 study = PPM.Study.get(study_id)
 
                 # Set identifier
-                data.setdefault("identifier", []).append(
-                    {
-                        "system": FHIR.research_subject_identifier_system,
-                        "value": PPM.Study.fhir_id(study),
-                    }
+                data.setdefault("identifier", []).extend(
+                    [
+                        {
+                            "system": FHIR.research_subject_study_identifier_system,
+                            "value": PPM.Study.fhir_id(study),
+                        },
+                        {
+                            "system": FHIR.research_subject_patient_identifier_system,
+                            "value": patient_ref,
+                        },
+                    ]
                 )
 
                 # Set status
