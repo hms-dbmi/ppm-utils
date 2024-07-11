@@ -1,3 +1,10 @@
+## [2.0.4](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.3...v2.0.4) (2024-07-11)
+
+
+### Bug Fixes
+
+* **fhir:** Fixed setting private hosts on GCP paged URLs ([b338276](https://github.com/hms-dbmi/ppm-utils/commit/b3382761c550de7ff66d61262c58c71939cf8cfa))
+
 ## [2.0.3](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.2...v2.0.3) (2024-07-11)
 
 
