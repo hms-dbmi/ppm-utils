@@ -2779,6 +2779,12 @@ class FHIR:
                 if link["relation"] == "next":
                     url = link["url"]
 
+                    # Swap domain if necessary
+                    if furl(url).host != furl(PPM.fhir_url()).host:
+
+                        # Set it
+                        url = furl(url).set(host=furl(PPM.fhir_url().host)).url
+
         return Bundle(total_bundle)
 
     @staticmethod
