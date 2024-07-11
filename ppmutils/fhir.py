@@ -1118,7 +1118,7 @@ class FHIR:
             if furl(url).host != furl(PPM.fhir_url()).host:
 
                 # Set it
-                url = furl(url).set(host=furl(PPM.fhir_url().host)).url
+                url = furl(url).set(host=furl(PPM.fhir_url()).host).url
 
         # Update count
         total_bundle["total"] = len(total_bundle.get("entry", []))
@@ -2783,7 +2783,7 @@ class FHIR:
                     if furl(url).host != furl(PPM.fhir_url()).host:
 
                         # Set it
-                        url = furl(url).set(host=furl(PPM.fhir_url().host)).url
+                        url = furl(url).set(host=furl(PPM.fhir_url()).host).url
 
         return Bundle(total_bundle)
 
