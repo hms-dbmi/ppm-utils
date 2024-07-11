@@ -1,3 +1,10 @@
+## [2.0.3](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.2...v2.0.3) (2024-07-11)
+
+
+### Bug Fixes
+
+* **fhir:** Resolved issue with GCP not using private URLs when returning paging URLs ([6a02233](https://github.com/hms-dbmi/ppm-utils/commit/6a02233742a867aa9074f00207bcb73404123708))
+
 ## [2.0.2](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.1...v2.0.2) (2024-07-11)
 
 
