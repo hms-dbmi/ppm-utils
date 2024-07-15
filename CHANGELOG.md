@@ -1,3 +1,10 @@
+## [2.0.5](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.4...v2.0.5) (2024-07-15)
+
+
+### Bug Fixes
+
+* **fhir:** Fixed retrieval of consent exceptions; added study param to Composition creation ([f940355](https://github.com/hms-dbmi/ppm-utils/commit/f9403556f6ee3c56ef6d065f54c98d474fd8980b))
+
 ## [2.0.4](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.3...v2.0.4) (2024-07-11)
 
 
