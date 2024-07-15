@@ -1,3 +1,53 @@
+## [2.0.4](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.3...v2.0.4) (2024-07-11)
+
+
+### Bug Fixes
+
+* **fhir:** Fixed setting private hosts on GCP paged URLs ([b338276](https://github.com/hms-dbmi/ppm-utils/commit/b3382761c550de7ff66d61262c58c71939cf8cfa))
+
+## [2.0.3](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.2...v2.0.3) (2024-07-11)
+
+
+### Bug Fixes
+
+* **fhir:** Resolved issue with GCP not using private URLs when returning paging URLs ([6a02233](https://github.com/hms-dbmi/ppm-utils/commit/6a02233742a867aa9074f00207bcb73404123708))
+
+## [2.0.2](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.1...v2.0.2) (2024-07-11)
+
+
+### Bug Fixes
+
+* **fhir:** Fixed identifier systems ([6028ad3](https://github.com/hms-dbmi/ppm-utils/commit/6028ad38811334d7009bf518465b93b3430eef9d))
+
+## [2.0.1](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.0...v2.0.1) (2024-06-28)
+
+
+### Bug Fixes
+
+* **fhir:** Fixed how GCP backend is selected and credentialed ([c14e673](https://github.com/hms-dbmi/ppm-utils/commit/c14e673b1322346203a443a69f3863fcb0f594fc))
+
+# [2.0.0](https://github.com/hms-dbmi/ppm-utils/compare/v1.1.0...v2.0.0) (2024-02-28)
+
+
+### Bug Fixes
+
+* **fhir:** Fixed FHIR resource ID extraction from responses; allows specifying the FHIR ID for a Patient at creation ([00e53b8](https://github.com/hms-dbmi/ppm-utils/commit/00e53b8fbd91f6b20dcc64b319b4e070fc992fbe))
+* **fhir:** Fixed some issues found in tests; fixed tests ([7be74ee](https://github.com/hms-dbmi/ppm-utils/commit/7be74eee703e8faef43498e4d015dcf53e326be2))
+* **fhir:** Resolved issue when updating ResearchSubject resources ([f1d834a](https://github.com/hms-dbmi/ppm-utils/commit/f1d834a738c7fec91d1129bffdf6945fd9cb65f0))
+* **fhir:** Resolved typing issues ([a12fbef](https://github.com/hms-dbmi/ppm-utils/commit/a12fbef45699e950383c0d2fd12602c8df845d51))
+* **qualtrics:** Fixed date handling ([7e129bc](https://github.com/hms-dbmi/ppm-utils/commit/7e129bc120f900e0d4469e1f68fe370ec7b2a0e5))
+* **qualtrics:** Set required property 'operator' on Questionnaire items with conditional presentation ([fb702ff](https://github.com/hms-dbmi/ppm-utils/commit/fb702ff5a71292a6794f3c27717e4b47b688b8eb))
+
+
+### Features
+
+* **fhir/qualtrics:** Updated for FHIR R4 ([a733b7c](https://github.com/hms-dbmi/ppm-utils/commit/a733b7c8ffaa85555c405df2b59088cc4fc725bb))
+
+
+### BREAKING CHANGES
+
+* **fhir/qualtrics:** FHIR module is incompatible with DSTU3 FHIR backends
+
 # [1.1.0](https://github.com/hms-dbmi/ppm-utils/compare/v1.0.1...v1.1.0) (2023-08-10)
 
 
