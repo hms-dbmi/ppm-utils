@@ -7812,7 +7812,7 @@ class FHIR:
 
                     # Exceptions are for when they refuse part of the consent.
                     consent_exception_extension = next(
-                        e for e in signed_consent.extension if e.url == FHIR.consent_exception_extension_url
+                        (e for e in signed_consent.extension if e.url == FHIR.consent_exception_extension_url), None
                     )
                     if consent_exception_extension:
 
@@ -9330,7 +9330,7 @@ class FHIR:
 
         @staticmethod
         def composition(
-            patient: Patient, date: datetime, text: str, resources: list[DomainResource] = []
+            patient: Patient, date: datetime, text: str, study: PPM.Study | str, resources: list[DomainResource] = []
         ) -> Composition:
             """
             Creates and returns a FHIR resource of the given type for
@@ -9345,6 +9345,8 @@ class FHIR:
             :type date: datetime
             :param text: The text to set for the Composition
             :type text: str
+            :param study: The study for which this resource applies
+            :type study: PPM.Study | str
             :param resources: A list of resources related to the composition,
             defaults to []
             :type resources: list[DomainResource], optional
@@ -9392,6 +9394,11 @@ class FHIR:
                 consent_section = CompositionSection()
                 consent_section.entry = [FHIR.Resources.reference_to(resource)]
                 composition.section.append(consent_section)
+
+            # Add study reference
+            study_section = CompositionSection()
+            study_section.entry = [FHIRReference({"reference": f"ResearchStudy/{PPM.Study.fhir_id(study)}"})]
+            composition.section.append(study_section)
 
             return composition
 
