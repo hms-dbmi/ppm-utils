@@ -5,6 +5,7 @@ import json
 import re
 import sys
 import collections
+from collections.abc import Iterator
 from furl import furl
 from fhirclient.models.questionnaire import Questionnaire
 from fhirclient.models.patient import Patient
@@ -185,7 +186,7 @@ class Qualtrics:
             raise Qualtrics.ConversionError
 
     @classmethod
-    def questionnaire_item_generator(cls, survey_id: str, survey: dict) -> collections.Iterator[dict]:
+    def questionnaire_item_generator(cls, survey_id: str, survey: dict) -> Iterator[dict]:
         """
         Returns a generator of QuestionnaireItem resources
         to be added to the Questionnaire. This will determine
@@ -714,7 +715,7 @@ class Qualtrics:
     @classmethod
     def questionnaire_response_item_generator(
         cls, survey_definition: dict, survey: dict, response: dict, blocks: dict
-    ) -> collections.Iterator[dict]:
+    ) -> Iterator[dict]:
         """
         Accepts the survey, response objects as well as the list of blocks add their
         respective questions and yields a set of QuestionnareResponseItem
