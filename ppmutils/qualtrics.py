@@ -10,6 +10,7 @@ from fhirclient.models.questionnaire import Questionnaire
 from fhirclient.models.patient import Patient
 
 from ppmutils.fhir import FHIR
+from ppmutils.ppm import PPM
 
 import logging
 
@@ -21,7 +22,7 @@ class Qualtrics:
         pass
 
     @classmethod
-    def is_survey_export(cls, survey):
+    def is_survey_export(cls, survey: dict) -> bool:
         """
         Inspects a survey export object and confirms that's what it is.
         Qualtrics surveys can be described by three separate formats:
@@ -36,7 +37,7 @@ class Qualtrics:
         return survey.get("SurveyElements") is not None
 
     @classmethod
-    def is_survey_definition(cls, survey):
+    def is_survey_definition(cls, survey: dict) -> bool:
         """
         Inspects a survey definition object and confirms that's what it is.
         Qualtrics surveys can be described by three separate formats:
@@ -51,7 +52,7 @@ class Qualtrics:
         return survey.get("SurveyOptions") is not None and survey.get("Questions") is not None
 
     @classmethod
-    def is_survey_object(cls, survey):
+    def is_survey_object(cls, survey: dict) -> bool:
         """
         Inspects a survey object and confirms that's what it is.
         Qualtrics surveys can be described by three separate formats:
@@ -66,7 +67,7 @@ class Qualtrics:
         return survey.get("name") is not None and survey.get("questions") is not None
 
     @classmethod
-    def get_survey_response_metadata(cls, response):
+    def get_survey_response_metadata(cls, response: dict) -> dict:
         """
         Given a Qualtrics survey response object from the API, this returns
         a dictionary of metadata for the response relating to the study
@@ -96,7 +97,7 @@ class Qualtrics:
         return metadata
 
     @classmethod
-    def questionnaire(cls, survey, survey_id, questionnaire_id=None):
+    def questionnaire(cls, survey: dict, survey_id: str, questionnaire_id: str = None) -> dict:
         """
         Accepts a Qualtrics survey definition (QSF) and creates a FHIR
         Questionnaire resource from it. Does not support all of Qualtrics
@@ -109,6 +110,8 @@ class Qualtrics:
         :type survey_id: str
         :param questionnaire_id: The ID to assign to the Questionnaire, defaults to None
         :type questionnaire_id: str, optional
+        :returns: The Questionnaire resource as a dict
+        :rtype: dict
         """
         try:
             # Extract the items
@@ -182,7 +185,7 @@ class Qualtrics:
             raise Qualtrics.ConversionError
 
     @classmethod
-    def questionnaire_item_generator(cls, survey_id, survey):
+    def questionnaire_item_generator(cls, survey_id: str, survey: dict) -> collections.Iterator[dict]:
         """
         Returns a generator of QuestionnaireItem resources
         to be added to the Questionnaire. This will determine
@@ -195,7 +198,7 @@ class Qualtrics:
         :type survey: dict
         :raises Exception: Raises exception if block is an unhandled type
         :return: The FHIR QuestionnaireItem generator
-        :rtype: generator
+        :rtype: Iterator[dict]
         """
         # Flow sets order of blocks, blocks set order of questions
         flows = [
@@ -245,7 +248,7 @@ class Qualtrics:
                     yield item
 
     @classmethod
-    def questionnaire_group(cls, survey_id, survey, block_id, block):
+    def questionnaire_group(cls, survey_id: str, survey: dict, block_id: str, block: dict) -> dict:
         """
         Returns a FHIR resource for a QuestionnaireItem parsed from
         a block of Qualtrics survey's questions. This should be used
@@ -302,7 +305,7 @@ class Qualtrics:
             raise e
 
     @classmethod
-    def _qid_to_linkid(cls, qid):
+    def _qid_to_linkid(cls, qid: str) -> str:
         """
         This is a utility method to convert a Qualtrics QID question ID
         to a FHIR Questionnaire/QuestionnaireResponse Link ID.
@@ -315,7 +318,7 @@ class Qualtrics:
         return f'question-{qid.replace("QID", "").replace("S", "-")}'
 
     @classmethod
-    def questionnaire_item(cls, survey_id, survey, question_id, question):
+    def questionnaire_item(cls, survey_id: str, survey: dict, question_id: str, question: dict) -> dict:
         """
         Returns a FHIR resource for a QuestionnaireItem parsed from
         the Qualtrics survey's question
@@ -615,8 +618,16 @@ class Qualtrics:
 
     @classmethod
     def questionnaire_response(
-        cls, study, ppm_id, questionnaire_id, survey_id, response_id, survey_definition=None, survey=None, response=None
-    ):
+        cls,
+        study: PPM.Study | str,
+        ppm_id: str,
+        questionnaire_id: str,
+        survey_id: str,
+        response_id: str,
+        survey_definition: dict = None,
+        survey: dict = None,
+        response: dict = None,
+    ) -> dict:
         """
         Returns QuestionnaireResponse resource for a survey taken through
         Qualtrics. This method requires that Qualtrics question names are
@@ -701,7 +712,9 @@ class Qualtrics:
         return data
 
     @classmethod
-    def questionnaire_response_item_generator(cls, survey_definition, survey, response, blocks):
+    def questionnaire_response_item_generator(
+        cls, survey_definition: dict, survey: dict, response: dict, blocks: dict
+    ) -> collections.Iterator[dict]:
         """
         Accepts the survey, response objects as well as the list of blocks add their
         respective questions and yields a set of QuestionnareResponseItem
@@ -717,7 +730,7 @@ class Qualtrics:
         :type blocks: dict
         :raises Exception: Raises exception if value is an unhandled type
         :returns A generator of QuestionnaireResponseItem resources
-        :rtype generator
+        :rtype Iterator[dict]
         """
         question_id = None
         for block_id, question_ids in blocks.items():
@@ -814,7 +827,7 @@ class Qualtrics:
                 raise e
 
     @classmethod
-    def survey_response_is_required(cls, survey_definition, survey, response, key):
+    def survey_response_is_required(cls, survey_definition: dict, survey: dict, response: dict, key: str) -> bool:
         """
         Returns whether a response to the question is required or not according
         to the Qualtrics survey object. This inspects not only properties of
@@ -822,7 +835,7 @@ class Qualtrics:
         not enabled, will not be returned as required.
 
         :param survey_definition: The Qualtrics survey definition object
-        :type survey_definition: dict, defaults to None
+        :type survey_definition: dict
         :param survey: The Qualtrics survey object
         :type survey: object
         :param response: The response object
@@ -967,7 +980,7 @@ class Qualtrics:
         return True
 
     @classmethod
-    def get_survey_response_values(cls, survey, response, qid):
+    def get_survey_response_values(cls, survey: dict, response: dict, qid: str) -> list | None:
         """
         This method parses a survey response and returns the value of the
         response for the given question, if any at all.
@@ -1234,7 +1247,7 @@ class Qualtrics:
         return {"linkId": link_id, "answer": FHIR.Resources.questionnaire_response_answer(answer)}
 
     @classmethod
-    def questionnaire_transaction(cls, questionnaire, questionnaire_id=None):
+    def questionnaire_transaction(cls, questionnaire: dict, questionnaire_id: str = None) -> dict | None:
         """
         Accepts a Questionnaire object and builds the transaction to be used
         to perform the needed operation in FHIR. Operations can be POST or PUT,
@@ -1261,9 +1274,6 @@ class Qualtrics:
             # No need to recreate it
             logger.debug(f"PPM/Qualtrics: Questionnaire already exists for survey version {version}")
             return None
-
-        # Use the FHIR client lib to validate our resource.
-        questionnaire = Questionnaire(questionnaire)
 
         return FHIR.fhir_create(
             resource_type="Questionnaire",

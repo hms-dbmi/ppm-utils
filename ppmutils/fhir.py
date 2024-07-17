@@ -2150,6 +2150,24 @@ class FHIR:
         return system.url
 
     @staticmethod
+    def get_last_participant_id(ppm_study: str = None) -> str:
+        """
+        Gets the last Patient created and fetches their PPM ID. If a study is
+        passed, the last Patient for that study is returned.
+        """
+        # Build the query and fetch the patient
+        query = {"_count": 1, "_sort": "-_lastUpdated"}
+        patient = next(iter(FHIR.fhir_get(path=["Patient"], query=query)["entry"]))["resource"]
+
+        # Set regex to match study participant identifier system
+        pattern = r"https://peoplepoweredmedicine.org/study/[a-zA-z0-9-_]+/participant"
+
+        # Get study ID
+        ppm_id = next(i["value"] for i in patient["identifier"] if re.match(pattern, i["system"]))
+
+        return ppm_id
+
+    @staticmethod
     def create_patient(
         ppm_study: str,
         email: str,
@@ -2234,8 +2252,10 @@ class FHIR:
             patient_id = patient.get("id") if patient else ppm_id if ppm_id else uuid.uuid1().urn
 
             # Participant identifier should be unique between studies
-            # TODO: Implement a counter to allow for shorter identifiers to be used for study participants
-            participant_id = str(uuid.uuid1())
+            last_participant_id = FHIR.get_last_participant_id()
+
+            # Increment
+            participant_id = str(int(last_participant_id) + 1)
 
             # Check for a patient
             if not patient:
@@ -2314,12 +2334,12 @@ class FHIR:
             resource_ids = FHIR.fhir_create_and_get_ids(resources, transaction=True)
 
             # Get specific resource IDs
-            research_subject_id = [next(iter(ids)) for ids in resource_ids.get("ResearchSubject", [])]
-            flag_id = [next(iter(ids)) for ids in resource_ids.get("Flag", [])]
+            research_subject_id = next(iter(resource_ids.get("ResearchSubject", [])))
+            flag_id = next(iter(resource_ids.get("Flag", [])))
 
             # Check if Patient created
             if not patient_exists:
-                patient_id = [next(iter(ids)) for ids in resource_ids.get("Patient", [])]
+                patient_id = next(iter(resource_ids.get("Patient", [])))
 
             # Log create resources
             logger.debug(f"{prefix}: Created {resource_ids}")
@@ -7811,14 +7831,17 @@ class FHIR:
                     consent_object["date_signed"] = FHIR._format_date(date_time, "%m/%d/%Y")
 
                     # Exceptions are for when they refuse part of the consent.
-                    consent_exception_extension = next(
-                        (e for e in signed_consent.extension if e.url == FHIR.consent_exception_extension_url), None
-                    )
-                    if consent_exception_extension:
+                    if signed_consent.extension:
 
-                        # Iterate exception codings and add to list
-                        for consent_exception in consent_exception_extension.valueCodeableConcept.coding:
-                            consent_exceptions.append(FHIR._exception_description(consent_exception.display))
+                        # Get the extensions holding exceptions
+                        consent_exception_extension = next(
+                            (e for e in signed_consent.extension if e.url == FHIR.consent_exception_extension_url), None
+                        )
+                        if consent_exception_extension:
+
+                            # Iterate exception codings and add to list
+                            for consent_exception in consent_exception_extension.valueCodeableConcept.coding:
+                                consent_exceptions.append(FHIR._exception_description(consent_exception.display))
 
                 elif bundle_entry.resource.resource_type == "Composition":
 
@@ -8337,7 +8360,7 @@ class FHIR:
                     },
                     {
                         "system": FHIR.enrollment_flag_patient_identifier_system,
-                        "value": patient_ref,
+                        "value": patient_ref.replace("urn:uuid:", ""),
                     },
                 ],
             }
@@ -8467,7 +8490,7 @@ class FHIR:
                         },
                         {
                             "system": FHIR.research_subject_patient_identifier_system,
-                            "value": patient_ref,
+                            "value": patient_ref.replace("urn:uuid:", ""),
                         },
                     ]
                 )
@@ -9503,7 +9526,7 @@ class FHIR:
                         raise ValueError(f"Cannot use temporary IDs with bundle type '{bundle_type}'")
                     resource.id = None
 
-                else:
+                elif resource_id:
                     # Make it a PUT since we are specifying the ID at creation
                     bundle_entry_request.method = "PUT"
                     bundle_entry_request.url = f"{resource.resource_type}/{resource_id}"
@@ -9511,8 +9534,11 @@ class FHIR:
                 # Add it to the entry
                 bundle_entry = BundleEntry()
                 bundle_entry.resource = resource
-                bundle_entry.fullUrl = resource_id
                 bundle_entry.request = bundle_entry_request
+
+                # Set resource ID as URL if specified
+                if resource_id:
+                    bundle_entry.fullUrl = resource_id
 
                 # Add it
                 bundle.entry.append(bundle_entry)
