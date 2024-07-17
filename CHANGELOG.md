@@ -1,3 +1,10 @@
+## [2.0.7](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.6...v2.0.7) (2024-07-17)
+
+
+### Bug Fixes
+
+* **qualtrics:** Fixed import ([e6e71fb](https://github.com/hms-dbmi/ppm-utils/commit/e6e71fb855e16cfbe57d7129c06a7eb46f35c3ba))
+
 ## [2.0.6](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.5...v2.0.6) (2024-07-17)
 
 
