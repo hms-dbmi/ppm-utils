@@ -1,3 +1,11 @@
+## [2.0.6](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.5...v2.0.6) (2024-07-17)
+
+
+### Bug Fixes
+
+* **fhir:** Fixed participant ID generation; fixed issue with how resource IDs are fetched after creation of new Patient; fixed issue when how exceptions are retrieved from Consent resources ([753f620](https://github.com/hms-dbmi/ppm-utils/commit/753f62092f59a6746c21c11f5842dc9648969de6))
+* **qualtrics:** Removed unecessary resource validation that was inadvertently changing return value; added type hints for methods ([71ec972](https://github.com/hms-dbmi/ppm-utils/commit/71ec9721bb7bd0f2b6fb34c676e09745a2ebbc9c))
+
 ## [2.0.5](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.4...v2.0.5) (2024-07-15)
 
 
