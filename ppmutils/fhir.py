@@ -2762,7 +2762,7 @@ class FHIR:
         # Add query if passed and set a return count to a high number,
         # despite the server
         # probably ignoring it.
-        url_builder.query.params.add("_count", 100)
+        url_builder.query.params.add("_count", 999)
         if query is not None:
             for key, value in query.items():
                 if type(value) is list:
@@ -2879,19 +2879,28 @@ class FHIR:
         if enrollments:
             enrollments = [PPM.Enrollment.get(enrollment).value for enrollment in enrollments]
 
-        # Build the query
-        query = {"_revinclude": ["ResearchSubject:individual", "Flag:subject"]}
+        # Build the query for ResearchSubjects first
+        query = {
+            "study": ",".join([f"ResearchStudy/{PPM.Study.fhir_id(s)}" for s in studies]),
+            "_include": ["ResearchSubject:individual:Patient"],
+        }
 
-        # Check if filtering on active
-        if active is not None:
-            query["active"] = "false" if not active else "true"
-
-        # Peel out patients
-        bundle = FHIR._query_bundle("Patient", query)
+        # Get ResearchSubjects first
+        bundle = FHIR._query_bundle("ResearchSubject", query)
 
         # Check for empty query set
         if not bundle.entry:
             return []
+
+        # Build the query for Flags second
+        flag_query = {
+            "identifier": ",".join(
+                [f"{FHIR.enrollment_flag_study_identifier_system}|{PPM.Study.fhir_id(s)}" for s in studies]
+            ),
+        }
+
+        # Get Flags
+        flag_bundle = FHIR._query_bundle("Flag", flag_query)
 
         # Build a dictionary keyed by FHIR IDs containing enrollment status
         patient_enrollments = {
@@ -2900,8 +2909,7 @@ class FHIR:
                 "date_accepted": entry.resource.period.start.origval if entry.resource.period else "",
                 "date_updated": entry.resource.meta.lastUpdated.origval,
             }
-            for entry in bundle.entry
-            if entry.resource.resource_type == "Flag"
+            for entry in flag_bundle.entry
         }
 
         # Build a dictionary keyed by FHIR IDs containing flattened study objects
@@ -2912,13 +2920,16 @@ class FHIR:
             }
             for entry in bundle.entry
             if entry.resource.resource_type == "ResearchSubject"
-            and FHIR.is_ppm_research_subject(entry.resource.as_json())
         }
 
         # Process patients
         patients = []
         for patient in [entry.resource for entry in bundle.entry if entry.resource.resource_type == "Patient"]:
             try:
+                # Check if filtering by 'active'
+                if active is not None and patient.active != active:
+                    continue
+
                 # Fetch their email
                 email = next(
                     identifier.value
