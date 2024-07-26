@@ -2881,9 +2881,12 @@ class FHIR:
 
         # Build the query for ResearchSubjects first
         query = {
-            "study": ",".join([f"ResearchStudy/{PPM.Study.fhir_id(s)}" for s in studies]),
             "_include": ["ResearchSubject:individual:Patient"],
         }
+
+        # Add studies filter, if passed
+        if studies:
+            query["study"] = (",".join([f"ResearchStudy/{PPM.Study.fhir_id(s)}" for s in studies]),)
 
         # Get ResearchSubjects first
         bundle = FHIR._query_bundle("ResearchSubject", query)
@@ -2893,11 +2896,13 @@ class FHIR:
             return []
 
         # Build the query for Flags second
-        flag_query = {
-            "identifier": ",".join(
+        flag_query = {}
+
+        # Check if filtering on studies
+        if studies:
+            flag_query["identifier"] = ",".join(
                 [f"{FHIR.enrollment_flag_study_identifier_system}|{PPM.Study.fhir_id(s)}" for s in studies]
-            ),
-        }
+            )
 
         # Get Flags
         flag_bundle = FHIR._query_bundle("Flag", flag_query)

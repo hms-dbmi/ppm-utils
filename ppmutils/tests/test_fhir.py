@@ -186,11 +186,28 @@ class TestFHIR(unittest.TestCase):
         # Start a data set
         data = FHIRData(self.fhir_url, participants=3)
 
+        # Separate bundle since we do this in two queries
+        research_subject_bundle = dict(data.bundle)
+        research_subject_bundle["entry"] = [
+            e
+            for e in research_subject_bundle["entry"]
+            if e["resource"]["resourceType"] in ["Patient", "ResearchSubject"]
+        ]
+
+        flag_bundle = dict(data.bundle)
+        flag_bundle["entry"] = [e for e in flag_bundle["entry"] if e["resource"]["resourceType"] in ["Flag"]]
+
         # Build the response handler
         responses.add(
             responses.GET,
-            re.compile(self.fhir_url + r"/Patient.*"),
-            json=data.bundle,
+            re.compile(self.fhir_url + r"/ResearchSubject.*"),
+            json=research_subject_bundle,
+            status=200,
+        )
+        responses.add(
+            responses.GET,
+            re.compile(self.fhir_url + r"/Flag.*"),
+            json=flag_bundle,
             status=200,
         )
 
@@ -198,13 +215,158 @@ class TestFHIR(unittest.TestCase):
         participants = FHIR.query_participants(testing=True)
 
         # Check it
-        self.assertGreaterEqual(len(responses.calls), 1)
+        self.assertGreaterEqual(len(responses.calls), 2)
         self.assertEqual(len(participants), 3)
 
         # Check some properties
         self.assertTrue(PPM.Study.enum(participants[2]["study"]) in PPM.Study)
         self.assertTrue(participants[1]["email"] is not None)
         self.assertTrue(PPM.Enrollment.enum(participants[2]["enrollment"]) in PPM.Enrollment)
+
+    @responses.activate
+    def test_query_study_participants(self):
+
+        # Start a data set
+        data = FHIRData(self.fhir_url, participants=100)
+
+        # Separate bundle since we do this in two queries
+        research_subject_bundle = dict(data.bundle)
+        research_subject_bundle["entry"] = [
+            e
+            for e in research_subject_bundle["entry"]
+            if e["resource"]["resourceType"] in ["Patient", "ResearchSubject"]
+        ]
+
+        flag_bundle = dict(data.bundle)
+        flag_bundle["entry"] = [e for e in flag_bundle["entry"] if e["resource"]["resourceType"] in ["Flag"]]
+
+        # Build the response handler
+        responses.add(
+            responses.GET,
+            re.compile(self.fhir_url + r"/ResearchSubject.*"),
+            json=research_subject_bundle,
+            status=200,
+        )
+        responses.add(
+            responses.GET,
+            re.compile(self.fhir_url + r"/Flag.*"),
+            json=flag_bundle,
+            status=200,
+        )
+
+        # Do the query
+        participants = FHIR.query_participants(studies=[PPM.Study.NEER], testing=True)
+
+        # Check it
+        self.assertGreaterEqual(len(responses.calls), 2)
+
+        # Ensure non-NEER participants are fitered out
+        self.assertLess(len(participants), 100)
+
+        # Check some properties
+        self.assertTrue(PPM.Study.enum(participants[2]["study"]) is PPM.Study.NEER)
+        self.assertTrue(participants[1]["email"] is not None)
+        self.assertTrue(PPM.Enrollment.enum(participants[2]["enrollment"]) in PPM.Enrollment)
+
+    @responses.activate
+    def test_query_enrollment_participants(self):
+
+        # Start a data set
+        data = FHIRData(self.fhir_url, participants=100)
+
+        # Separate bundle since we do this in two queries
+        research_subject_bundle = dict(data.bundle)
+        research_subject_bundle["entry"] = [
+            e
+            for e in research_subject_bundle["entry"]
+            if e["resource"]["resourceType"] in ["Patient", "ResearchSubject"]
+        ]
+
+        flag_bundle = dict(data.bundle)
+        flag_bundle["entry"] = [e for e in flag_bundle["entry"] if e["resource"]["resourceType"] in ["Flag"]]
+
+        # Build the response handler
+        responses.add(
+            responses.GET,
+            re.compile(self.fhir_url + r"/ResearchSubject.*"),
+            json=research_subject_bundle,
+            status=200,
+        )
+        responses.add(
+            responses.GET,
+            re.compile(self.fhir_url + r"/Flag.*"),
+            json=flag_bundle,
+            status=200,
+        )
+
+        # Do the query
+        participants = FHIR.query_participants(enrollments=[PPM.Enrollment.Accepted], testing=True)
+
+        # Check it
+        self.assertGreaterEqual(len(responses.calls), 2)
+
+        # Ensure non-Accepted participants are fitered out
+        self.assertLess(len(participants), 100)
+
+        # Check some properties
+        self.assertTrue(
+            PPM.Enrollment.enum(participants[random.randint(0, len(participants))]["enrollment"])
+            is PPM.Enrollment.Accepted
+        )
+        self.assertTrue(participants[1]["email"] is not None)
+
+    @responses.activate
+    def test_query_study_enrollment_participants(self):
+
+        # Set total number of participants
+        total_participants = 1000
+
+        # Start a data set
+        data = FHIRData(self.fhir_url, participants=total_participants)
+
+        # Separate bundle since we do this in two queries
+        research_subject_bundle = dict(data.bundle)
+        research_subject_bundle["entry"] = [
+            e
+            for e in research_subject_bundle["entry"]
+            if e["resource"]["resourceType"] in ["Patient", "ResearchSubject"]
+        ]
+
+        flag_bundle = dict(data.bundle)
+        flag_bundle["entry"] = [e for e in flag_bundle["entry"] if e["resource"]["resourceType"] in ["Flag"]]
+
+        # Build the response handler
+        responses.add(
+            responses.GET,
+            re.compile(self.fhir_url + r"/ResearchSubject.*"),
+            json=research_subject_bundle,
+            status=200,
+        )
+        responses.add(
+            responses.GET,
+            re.compile(self.fhir_url + r"/Flag.*"),
+            json=flag_bundle,
+            status=200,
+        )
+
+        # Do the query
+        participants = FHIR.query_participants(
+            studies=[PPM.Study.RANT], enrollments=[PPM.Enrollment.Consented], testing=True
+        )
+
+        # Check it
+        self.assertGreaterEqual(len(responses.calls), 2)
+
+        # Ensure participants are fitered out
+        self.assertLess(len(participants), total_participants)
+
+        # Check some properties
+        self.assertTrue(
+            PPM.Enrollment.enum(participants[random.randint(0, len(participants))]["enrollment"])
+            is PPM.Enrollment.Consented
+        )
+        self.assertTrue(PPM.Study.enum(participants[random.randint(0, len(participants))]["study"]) is PPM.Study.RANT)
+        self.assertTrue(participants[1]["email"] is not None)
 
     @responses.activate
     def test_patient_update_lastname(self):
@@ -1800,7 +1962,7 @@ class FHIRData(object):
     bundle = None
     fhir_url = None
 
-    def __init__(self, fhir_url, participants=1, study=None):
+    def __init__(self, fhir_url, participants=1, study=None, enrollment=None):
 
         # Retain
         self.fhir_url = fhir_url
@@ -1810,17 +1972,28 @@ class FHIRData(object):
 
             # If not study, randomize it
             if not study:
-                study = PPM.Study(
+                _study = PPM.Study(
                     list(dict(PPM.Study.choices()).keys())[random.randint(1, len(PPM.Study.choices())) - 1]
                 )
+            else:
+                _study = study
+
+            # If not enrollment, randomize it
+            if not enrollment:
+                _enrollment = PPM.Enrollment(
+                    list(dict(PPM.Enrollment.choices()).keys())[random.randint(1, len(PPM.Enrollment.choices())) - 1]
+                )
+                print(_enrollment.value)
+            else:
+                _enrollment = enrollment
 
             # Create the resources
             (
                 research_study,
                 patient,
-                enrollment,
+                flag,
                 research_subject,
-            ) = FHIRData.participant(study)
+            ) = FHIRData.participant(study=_study, enrollment=_enrollment)
 
             # Add the study if not already there
             if not self.bundle:
@@ -1828,15 +2001,13 @@ class FHIRData(object):
                 # Start it
                 self.bundle = FHIRData.create_bundle([research_study], fhir_url)
 
-            elif not next(r for r in self.bundle["entry"] if r["resource"]["id"] == research_study["id"]):
+            elif not next((r for r in self.bundle["entry"] if r["resource"]["id"] == research_study["id"]), None):
 
                 # Add it
                 self.bundle["entry"].extend(FHIRData.create_bundle([research_study], fhir_url)["entry"])
 
             # Add remaining resources
-            self.bundle["entry"].extend(
-                FHIRData.create_bundle([patient, enrollment, research_subject], fhir_url)["entry"]
-            )
+            self.bundle["entry"].extend(FHIRData.create_bundle([patient, flag, research_subject], fhir_url)["entry"])
 
     def add_participant(self, patient, enrollment, research_subject, research_study):
         """
