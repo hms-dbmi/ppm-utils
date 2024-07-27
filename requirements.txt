@@ -1,7 +1,7 @@
 django
 boto3
 python-dateutil==2.*
-fhirclient==4.*
+fhirclient==4.2.*
 requests==2.*
 furl==2.*
 requests-auth-aws-sigv4

@@ -25,6 +25,8 @@ from django.conf import settings
 from fhirclient.models.domainresource import DomainResource
 from fhirclient.models.fhirdate import FHIRDate
 from fhirclient.models.period import Period
+from fhirclient.models.fhirinstant import FHIRInstant
+from fhirclient.models.fhirdatetime import FHIRDateTime
 from fhirclient.models.patient import Patient
 from fhirclient.models.flag import Flag
 from fhirclient.models.bundle import Bundle, BundleEntry, BundleEntryRequest
@@ -4547,7 +4549,7 @@ class FHIR:
                         flag.period.end = None
 
                     else:
-                        now = FHIRDate(datetime.now(timezone.utc).isoformat())
+                        now = FHIRDateTime(datetime.now(timezone.utc).isoformat())
                         period = Period()
                         period.start = now
                         flag.period = period
@@ -4560,7 +4562,7 @@ class FHIR:
 
                     # Set an end date if a flag is present
                     if flag.period:
-                        now = FHIRDate(datetime.now(timezone.utc).isoformat())
+                        now = FHIRDateTime(datetime.now(timezone.utc).isoformat())
                         flag.period.end = now
                     else:
                         logger.debug(f"{prefix}: Flag has no period/start, cannot set end")
@@ -4573,7 +4575,7 @@ class FHIR:
 
                     # Set an end date if a flag is present
                     if flag.period:
-                        now = FHIRDate(datetime.now(timezone.utc).isoformat())
+                        now = FHIRDateTime(datetime.now(timezone.utc).isoformat())
                         flag.period.end = now
                     else:
                         logger.debug(f"{prefix}: Flag has no period/start, cannot set end")
@@ -8923,7 +8925,7 @@ class FHIR:
             response.questionnaire = canonical_url.url
             response.source = FHIR.Resources.reference_to(patient)
             response.status = "completed"
-            response.authored = FHIRDate(date.isoformat())
+            response.authored = FHIRDateTime(date.isoformat())
             response.author = FHIR.Resources.reference_to(author if author else patient)
             response.subject = FHIR.Resources.reference_to(questionnaire)
 
@@ -9081,7 +9083,7 @@ class FHIR:
                 answer.valueInteger = value
 
             elif type(value) is datetime:
-                answer.valueDateTime = FHIRDate(value.isoformat())
+                answer.valueDateTime = FHIRDateTime(value.isoformat())
 
             elif type(value) is date:
                 answer.valueDate = FHIRDate(value.isoformat())
@@ -9193,7 +9195,7 @@ class FHIR:
             consent = Consent()
             consent.status = "proposed"
             consent.id = uuid.uuid1().urn
-            consent.dateTime = FHIRDate(date.isoformat())
+            consent.dateTime = FHIRDateTime(date.isoformat())
             consent.patient = FHIR.Resources.reference_to(patient)
 
             # Policy
@@ -9257,7 +9259,7 @@ class FHIR:
             # Build it
             contract = Contract(strict=True)
             contract.status = "executed"
-            contract.issued = FHIRDate(date.isoformat())
+            contract.issued = FHIRDateTime(date.isoformat())
             contract.id = uuid.uuid1().urn
             contract.subject = [FHIR.Resources.reference_to(patient)]
 
@@ -9275,7 +9277,7 @@ class FHIR:
                     "http://hl7.org/fhir/ValueSet/signature-type", "1.2.840.10065.1.12.1.7", "Consent Signature"
                 )
             ]
-            signature.when = FHIRDate(date.isoformat())
+            signature.when = FHIRInstant(date.isoformat())
             signature.sigFormat = "text/plain"
             signature.data = FHIR.Resources.blob(patient_signature)
             signature.who = FHIR.Resources.reference_to(patient)
@@ -9331,7 +9333,7 @@ class FHIR:
             # Build it
             contract = Contract()
             contract.status = "executed"
-            contract.issued = FHIRDate(date.isoformat())
+            contract.issued = FHIRDateTime(date.isoformat())
             contract.id = uuid.uuid1().urn
 
             # Signer
@@ -9348,7 +9350,7 @@ class FHIR:
                     "http://hl7.org/fhir/ValueSet/signature-type", "1.2.840.10065.1.12.1.7", "Consent Signature"
                 )
             ]
-            signature.when = FHIRDate(date.isoformat())
+            signature.when = FHIRInstant(date.isoformat())
             signature.sigFormat = "text/plain"
             signature.data = FHIR.Resources.blob(related_person_signature)
             signature.who = FHIR.Resources.reference_to(related_person)
@@ -9398,7 +9400,7 @@ class FHIR:
             composition.id = uuid.uuid1().urn
             composition.status = "final"
             composition.subject = FHIR.Resources.reference_to(patient)
-            composition.date = FHIRDate(date.isoformat())
+            composition.date = FHIRDateTime(date.isoformat())
             composition.title = "Signature"
             composition.author = [FHIRReference({"reference": "Device/hms-dbmi-ppm-consent"})]
 

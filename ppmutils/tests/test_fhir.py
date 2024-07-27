@@ -5,7 +5,7 @@ import unittest
 import uuid
 import re
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ppmutils.ppm import PPM
 from ppmutils.fhir import FHIR
@@ -310,7 +310,7 @@ class TestFHIR(unittest.TestCase):
 
         # Check some properties
         self.assertTrue(
-            PPM.Enrollment.enum(participants[random.randint(0, len(participants))]["enrollment"])
+            PPM.Enrollment.enum(participants[random.randint(0, len(participants) - 1)]["enrollment"])
             is PPM.Enrollment.Accepted
         )
         self.assertTrue(participants[1]["email"] is not None)
@@ -362,10 +362,12 @@ class TestFHIR(unittest.TestCase):
 
         # Check some properties
         self.assertTrue(
-            PPM.Enrollment.enum(participants[random.randint(0, len(participants))]["enrollment"])
+            PPM.Enrollment.enum(participants[random.randint(0, len(participants) - 1)]["enrollment"])
             is PPM.Enrollment.Consented
         )
-        self.assertTrue(PPM.Study.enum(participants[random.randint(0, len(participants))]["study"]) is PPM.Study.RANT)
+        self.assertTrue(
+            PPM.Study.enum(participants[random.randint(0, len(participants) - 1)]["study"]) is PPM.Study.RANT
+        )
         self.assertTrue(participants[1]["email"] is not None)
 
     @responses.activate
@@ -864,7 +866,7 @@ class TestFHIR(unittest.TestCase):
     def test_update_patient_deceased_1(self):
 
         # Set the deceased date
-        deceased = datetime.now()
+        deceased = datetime.now(timezone.utc)
 
         # Start a data set
         research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
@@ -929,7 +931,7 @@ class TestFHIR(unittest.TestCase):
     def test_update_patient_deceased_3(self):
 
         # Set the deceased date
-        deceased = datetime.now()
+        deceased = datetime.now(timezone.utc)
 
         # Start a data set
         research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
@@ -1652,7 +1654,7 @@ class TestFHIR(unittest.TestCase):
     def test_update_research_subject_1(self):
 
         # Set the dates
-        end = datetime.now()
+        end = datetime.now(timezone.utc)
 
         # Start a data set
         research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
@@ -1724,8 +1726,8 @@ class TestFHIR(unittest.TestCase):
 
         # Set a date on research subject otherwise it won't be deleted
         research_subject["period"] = {
-            "start": datetime.now().isoformat(),
-            "end": datetime.now().isoformat(),
+            "start": datetime.now(timezone.utc).isoformat(),
+            "end": datetime.now(timezone.utc).isoformat(),
         }
 
         def update_callback(request):
@@ -1755,7 +1757,7 @@ class TestFHIR(unittest.TestCase):
     def test_update_ppm_research_subject_1(self):
 
         # Set the dates
-        end = datetime.now()
+        end = datetime.now(timezone.utc)
 
         # Start a data set
         research_study, patient, flag, research_subject = FHIRData.participant(PPM.Study.NEER)
@@ -1843,8 +1845,8 @@ class TestFHIR(unittest.TestCase):
 
         # Set a date on research subject otherwise it won't be deleted
         research_subject["period"] = {
-            "start": datetime.now().isoformat(),
-            "end": datetime.now().isoformat(),
+            "start": datetime.now(timezone.utc).isoformat(),
+            "end": datetime.now(timezone.utc).isoformat(),
         }
 
         # Build the response handler
@@ -2082,7 +2084,7 @@ class FHIRData(object):
         return {
             "resourceType": "Bundle",
             "id": f"{uuid.uuid4()}",
-            "meta": {"lastUpdated": datetime.now().isoformat()},
+            "meta": {"lastUpdated": datetime.now(timezone.utc).isoformat()},
             "type": "searchset",
             "total": len(resources),
             "link": [{"relation": "self", "url": fhir_url}],
@@ -2218,7 +2220,7 @@ class FHIRData(object):
         patient,
         study,
         enrollment=PPM.Enrollment.Registered.value,
-        start=datetime.now(),
+        start=datetime.now(timezone.utc),
         end=None,
     ):
         """
