@@ -1,3 +1,12 @@
+## [2.0.8](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.7...v2.0.8) (2024-07-27)
+
+
+### Bug Fixes
+
+* **fhir:** Fixed filtering in query_participants; added and fixed tests ([cc8f36a](https://github.com/hms-dbmi/ppm-utils/commit/cc8f36ad24e55f4dc4a400ab2b72e69b13b2ab82))
+* **fhir:** Fixed issues caused by fhirclient v4.2.0 ([12ced4e](https://github.com/hms-dbmi/ppm-utils/commit/12ced4ee7b257a8e3948104a54799cf7945dbad2))
+* **fhir:** Fixed Participants query not including all resources due to GCP issues by breaking request into two separate ones ([a9612a7](https://github.com/hms-dbmi/ppm-utils/commit/a9612a712cf80640275decc1913c3fd685931f8e))
+
 ## [2.0.7](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.6...v2.0.7) (2024-07-17)
 
 
