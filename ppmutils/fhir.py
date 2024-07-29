@@ -7098,22 +7098,22 @@ class FHIR:
 
                 # Check for answer type and check if it's in their list of items
                 if enable_when.answerString is not None:
-                    if enable_when.answerString not in answer:
+                    if not answer or enable_when.answerString not in answer:
                         return False
                 elif enable_when.answerBoolean is not None:
-                    if enable_when.answerBoolean not in answer:
+                    if not answer or enable_when.answerBoolean not in answer:
                         return False
                 elif enable_when.answerDate is not None:
-                    if enable_when.answerDate.isostring not in answer:
+                    if not answer or enable_when.answerDate.isostring not in answer:
                         return False
                 elif enable_when.answerDateTime is not None:
-                    if enable_when.answerDateTime.isostring not in answer:
+                    if not answer or enable_when.answerDateTime.isostring not in answer:
                         return False
                 elif enable_when.answerInteger is not None:
-                    if enable_when.answerInteger not in answer:
+                    if not answer or enable_when.answerInteger not in answer:
                         return False
                 elif enable_when.answerDecimal is not None:
-                    if enable_when.answerDecimal not in answer:
+                    if not answer or enable_when.answerDecimal not in answer:
                         return False
                 else:
                     logger.error(f"PPM/FHIR: Unhandled enableWhen answer type: {enable_when.as_json()}")
