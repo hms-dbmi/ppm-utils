@@ -1,3 +1,10 @@
+## [2.0.9](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.8...v2.0.9) (2024-07-29)
+
+
+### Bug Fixes
+
+* **fhir:** Fixed handling of conditionally enabled questionnaire items ([ab2c086](https://github.com/hms-dbmi/ppm-utils/commit/ab2c086b020e88889e9a0c5d3bc3224a8ca72964))
+
 ## [2.0.8](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.7...v2.0.8) (2024-07-27)
 
 
