@@ -2172,6 +2172,7 @@ class FHIR:
     @staticmethod
     def create_patient(
         ppm_study: str,
+        ppm_id: str,
         email: str,
         first_name: str,
         last_name: str,
@@ -2182,7 +2183,6 @@ class FHIR:
         phone: str = None,
         contact_email: str = None,
         how_heard_about_ppm: str = None,
-        ppm_id: str = None,
     ) -> Optional[tuple[str, str, str]]:
         """
         Creates the core resources necessary for a participant in PPM. Resources
@@ -2192,6 +2192,9 @@ class FHIR:
 
         :param ppm_study: The identifier of the study for which the enrollment was for
         :type ppm_study: str
+        :param ppm_id: Used to specify a specific ID to use for the Patient
+        resource
+        :type ppm_id: str
         :param email: The email of the participant
         :type email: str
         :param first_name: The first name of the participant
@@ -2214,9 +2217,6 @@ class FHIR:
         :type contact_email: str, optional
         :param how_heard_about_ppm: How the participant heard about PPM,
         defaults to None
-        :param ppm_id: Used to specify a specific ID to use for the Patient
-        resource
-        :type ppm_id: str
         :type how_heard_about_ppm: str, optional
         :raises FHIRValidationError: If the resource fails FHIR validation
         :raises Exception: if resource creation request fails.
@@ -2251,13 +2251,7 @@ class FHIR:
             resources = []
 
             # Get or set the Patient identifier
-            patient_id = patient.get("id") if patient else ppm_id if ppm_id else uuid.uuid1().urn
-
-            # Participant identifier should be unique between studies
-            last_participant_id = FHIR.get_last_participant_id()
-
-            # Increment
-            participant_id = str(int(last_participant_id) + 1)
+            patient_id = participant_id = patient.get("id") if patient else ppm_id
 
             # Check for a patient
             if not patient:
