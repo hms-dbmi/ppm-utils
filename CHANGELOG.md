@@ -1,3 +1,15 @@
+# [3.0.0](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.9...v3.0.0) (2024-09-09)
+
+
+### Bug Fixes
+
+* **fhir:** The ID of the Patient resource to be created must now be specified by the caller ([99f8e2c](https://github.com/hms-dbmi/ppm-utils/commit/99f8e2cf1fd53f5f181dc1602c33774295fb7100))
+
+
+### BREAKING CHANGES
+
+* **fhir:** The 'FHIR.create_patient' method now requires the 'ppm_id' argument
+
 ## [2.0.9](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.8...v2.0.9) (2024-07-29)
 
 
