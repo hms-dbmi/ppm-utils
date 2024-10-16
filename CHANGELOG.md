@@ -1,3 +1,10 @@
+## [3.0.2](https://github.com/hms-dbmi/ppm-utils/compare/v3.0.1...v3.0.2) (2024-10-16)
+
+
+### Bug Fixes
+
+* **fhir:** Another attempt at fix for no consent exceptions ([9b5f5f3](https://github.com/hms-dbmi/ppm-utils/commit/9b5f5f37f79baa9e2bc625b1fde41297a7f42dcd))
+
 ## [3.0.1](https://github.com/hms-dbmi/ppm-utils/compare/v3.0.0...v3.0.1) (2024-10-16)
 
 
