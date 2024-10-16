@@ -1,3 +1,10 @@
+## [3.0.1](https://github.com/hms-dbmi/ppm-utils/compare/v3.0.0...v3.0.1) (2024-10-16)
+
+
+### Bug Fixes
+
+* **fhir:** Resolved issue with empty consent exceptions coding ([6a7ce53](https://github.com/hms-dbmi/ppm-utils/commit/6a7ce5319e4739f70d6c34e1476a90b12eccea6c))
+
 # [3.0.0](https://github.com/hms-dbmi/ppm-utils/compare/v2.0.9...v3.0.0) (2024-09-09)
 
 
