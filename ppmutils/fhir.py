@@ -7849,12 +7849,10 @@ class FHIR:
                         consent_exception_extension = next(
                             (e for e in signed_consent.extension if e.url == FHIR.consent_exception_extension_url), None
                         )
-                        if consent_exception_extension:
+                        if consent_exception_extension and consent_exception_extension.valueCodeableConcept.coding:
 
                             # Iterate exception codings and add to list
-                            for consent_exception in getattr(
-                                consent_exception_extension.valueCodeableConcept, "coding", []
-                            ):
+                            for consent_exception in consent_exception_extension.valueCodeableConcept.coding:
                                 consent_exceptions.append(FHIR._exception_description(consent_exception.display))
 
                 elif bundle_entry.resource.resource_type == "Composition":
